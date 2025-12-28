@@ -1,0 +1,17 @@
+{
+  "financials_cache": {
+    "ttl_days": 7
+  },
+  "prices": {
+    "ttl_days": 1
+  },
+  "analysis": {
+    "ttl_days": 1
+  },
+  "pe_pb_analysis": {
+    "ttl_days": 1
+  },
+  "basic_info_cache": {
+    "ttl_days": 100
+  }
+}

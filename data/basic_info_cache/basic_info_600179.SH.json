@@ -1,0 +1,45 @@
+{
+  "Meta Data": {
+    "1. Information": "Basic stock info snapshot. 字段说明: {\"stock_name\": \"股票名称/别名 (字符串)\", \"latest_price\": \"最近收盘价，单位：元\", \"daily_change_pct\": \"最近收盘价相对上一交易日的涨跌幅 (字符串, 如 +7%)\", \"latest_volume\": \"最近成交额，单位：亿元\", \"pe_ttm\": \"动态市盈率 (TTM)\", \"pb\": \"市净率\", \"ps\": \"市销率\", \"market_cap\": \"总市值，单位：人民币亿元\", \"pe_3y_median\": \"近3年TTM市盈率中位数\", \"pe_3y_percentile\": \"当前TTM市盈率在近3年样本中的分位数 (0-1)\", \"pe_3y_std\": \"近3年TTM市盈率标准差\", \"pe_current_vs_median\": \"当前TTM市盈率 / 近3年中位数\", \"return_3m\": \"近3个月累计收益率 (%)\", \"sharpe_3m\": \"近3个月夏普比率\", \"volatility_3m\": \"近3个月年化波动率 (%)\", \"max_drawdown_3m\": \"近3个月最大回撤 (%)\", \"return_6m\": \"近6个月累计收益率 (%)\", \"sharpe_6m\": \"近6个月夏普比率\", \"volatility_6m\": \"近6个月年化波动率 (%)\", \"max_drawdown_6m\": \"近6个月最大回撤 (%)\", \"return_1y\": \"近12个月累计收益率 (%)\", \"sharpe_1y\": \"近12个月夏普比率\", \"volatility_1y\": \"近12个月年化波动率 (%)\", \"max_drawdown_1y\": \"近12个月最大回撤 (%)\", \"revenue_growth_yoy\": \"营业总收入同比增速 (%)\", \"net_income_growth_yoy\": \"归母净利润同比增速 (%)\", \"gross_margin\": \"毛利率 (%)\", \"net_profit_margin\": \"净利率/销售净利率 (%)\", \"roe\": \"净资产收益率 ROE (%)\", \"turnover_rate\": \"最新单日换手率 (%)\", \"avg_turnover_30d\": \"近30日平均换手率 (%)\", \"liquidity_score\": \"流动性综合评分 (0-1)\"}",
+    "2. Symbol": "安通控股_600179.SH",
+    "3. Last Refreshed": "2025-12-12",
+    "4. Output Size": "basic_info",
+    "5. Time Zone": "Asia/Shanghai"
+  },
+  "Time Series (Daily)": {
+    "2025-12-12": {
+      "stock_name": "安通控股",
+      "latest_price": 4.16,
+      "daily_change_pct": "-2.58%",
+      "latest_volume": 3.0762,
+      "pe_ttm": 15.8146,
+      "pb": 1.5393,
+      "ps": 2.0103,
+      "market_cap": 176.0315,
+      "pe_3y_median": 15.3263,
+      "pe_3y_percentile": 0.6154,
+      "pe_3y_std": 7.0618,
+      "pe_current_vs_median": 1.0319,
+      "return_3m": 21.9941,
+      "sharpe_3m": 1.639,
+      "volatility_3m": 54.6666,
+      "max_drawdown_3m": -18.6475,
+      "return_6m": 51.8248,
+      "sharpe_6m": 2.0878,
+      "volatility_6m": 43.8738,
+      "max_drawdown_6m": -18.6475,
+      "return_1y": 33.7621,
+      "sharpe_1y": 0.985,
+      "volatility_1y": 40.9491,
+      "max_drawdown_1y": -23.2836,
+      "revenue_growth_yoy": 22.6499,
+      "net_income_growth_yoy": 311.7712,
+      "gross_margin": 15.2905,
+      "net_profit_margin": 10.159,
+      "roe": 5.98,
+      "turnover_rate": 1.95,
+      "avg_turnover_30d": 2.7,
+      "liquidity_score": 0.6554
+    }
+  }
+}

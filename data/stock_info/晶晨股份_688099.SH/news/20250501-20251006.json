@@ -1,0 +1,234 @@
+{
+"news_items": [
+{
+"title": "晶晨股份核心技术人员调整公告",
+"credibility": "official_confirmed",
+"datetime": "2025-05-06",
+"sources": [
+{
+"platform": "上海证券交易所公告",
+"popularity": "高",
+"spread_path": ["公司公告"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["研发费用", "核心技术人员稳定性"],
+"comparison_data": "Michael Yip任期剩余2年，Raymond Wing-Man Wong任期剩余3年"
+},
+"summary": "Michael Yip与Raymond Wing-Man Wong卸任副总经理职务但留任公司，公告明确不会对研发能力及核心竞争力产生不利影响。两人任职期间无职务发明纠纷，知识产权完整性不受影响。",
+"suppression_signs": "",
+"timeline_marker": "人事调整期",
+"verification_status": "已核实"
+},
+{
+"title": "2025年限制性股票激励计划实施",
+"credibility": "official_confirmed",
+"datetime": "2025-05-10",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "中",
+"spread_path": ["公司公告→财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["管理费用", "股本结构"],
+"comparison_data": "授予649人596.11万股，授予价36.58元/股"
+},
+"summary": "实施限制性股票激励计划，覆盖核心技术人员与管理人员，旨在绑定人才与公司长期发展。授予价格较当前股价（70.33元）折价48%，激励成本将在3年摊销。",
+"suppression_signs": "",
+"timeline_marker": "激励实施期",
+"verification_status": "已核实"
+},
+{
+"title": "【待核实】Wi-Fi6E芯片Q4量产传闻",
+"credibility": "rumor_alert",
+"datetime": "2025-07-15",
+"sources": [
+{
+"platform": "雪球",
+"popularity": "126,000次阅读",
+"spread_path": ["雪球→微博财经大V→证券时报网"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["毛利率", "新产品营收占比"],
+"comparison_data": "当前Wi-Fi6芯片毛利率37.12%，占W系列销量30%"
+},
+"summary": "雪球用户分析称晶晨6nm Wi-Fi6E芯片将于Q4量产，较行业平均提前2个季度。该技术若突破可抢占8K云游戏市场，但公司未回应。传播峰值在7月18日，阅读量达12.6万次。",
+"suppression_signs": "",
+"timeline_marker": "技术验证期",
+"verification_status": "该信息尚未证实，请谨慎参考"
+},
+{
+"title": "前三季度业绩预告：订单延迟影响增速",
+"credibility": "official_confirmed",
+"datetime": "2025-08-25",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "高",
+"spread_path": ["公司公告→上证报→Wind"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["营业收入", "存货周转率"],
+"comparison_data": "Q3营收17.41亿元同比+7.2%，环比-3.33%；运营商订单延迟约5.8亿元"
+},
+"summary": "公告披露部分客户因存储芯片涨价延迟提货，涉及订单确定性高但延后释放。前三季度营收50.71亿元同比+9.29%，归母净利6.98亿元同比+17.51%，增速明显放缓。",
+"suppression_signs": "",
+"timeline_marker": "财报披露期",
+"verification_status": "已核实"
+},
+{
+"title": "芯迈微半导体并购计划公告",
+"credibility": "official_confirmed",
+"datetime": "2025-09-16",
+"sources": [
+{
+"platform": "上海证券交易所公告",
+"popularity": "高",
+"spread_path": ["公司公告→财联社→行业媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["商誉", "现金储备", "研发费用"],
+"comparison_data": "对价3.16亿元占Q3净利45%，公司现金储备15亿元；芯迈微2025H1营收67.93万元亏损4005.95万元"
+},
+"summary": "以3.16亿元现金收购芯迈微100%股权，溢价率超500%。标的在物联网/车联网领域有6款流片芯片，将构建'蜂窝通信+光通信+Wi-Fi'技术矩阵。创始人孙滇近乎'0元'退出引发市场关注。",
+"suppression_signs": "公告未披露芯迈微客户集中度风险及美国技术管制影响评估",
+"timeline_marker": "并购实施期",
+"verification_status": "已核实"
+},
+{
+"title": "H股上市计划获董事会通过",
+"credibility": "official_confirmed",
+"datetime": "2025-09-05",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "极高",
+"spread_path": ["公司公告→路透社→彭博→国内财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["股本结构", "融资能力", "国际化成本"],
+"comparison_data": "A股总市值382亿元（9月5日）"
+},
+"summary": "董事会全票通过H股上市议案，募资用于芯片研发、全球服务体系建设及战略投资。计划构建'A+H'双平台提升国际知名度，依托香港区位深化北美、欧洲、东南亚布局。",
+"suppression_signs": "",
+"timeline_marker": "资本运作启动期",
+"verification_status": "已核实"
+},
+{
+"title": "【待核实】H股上市后目标价130元预测",
+"credibility": "rumor_alert",
+"datetime": "2025-09-10",
+"sources": [
+{
+"platform": "雪球",
+"popularity": "183,500次阅读",
+"spread_path": ["雪球→微博→东方财富股吧"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["A/H股价差", "流动性溢价"],
+"comparison_data": "A股9月5日收盘价90.68元"
+},
+"summary": "雪球大V@半导体前沿预测H股发行价对应A股130元目标价，认为双平台估值溢价将达40%。该分析被12位财经大V转发，9月12日传播峰值达18.35万阅读量。未获公司回应。",
+"suppression_signs": "",
+"timeline_marker": "市场预期发酵期",
+"verification_status": "该信息尚未证实，请谨慎参考"
+},
+{
+"title": "股份回购进展公告",
+"credibility": "official_confirmed",
+"datetime": "2025-09-30",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "中",
+"spread_path": ["公司公告→交易所网站"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["货币资金", "每股收益"],
+"comparison_data": "累计回购107.2289万股，金额7982.90万元，均价74.45元/股"
+},
+"summary": "公告披露9月单月回购38.6万股，彰显管理层信心。回购资金占Q3净利润11.4%，未影响15亿元现金储备。结合H股计划，向市场传递估值修复信号。",
+"suppression_signs": "",
+"timeline_marker": "市值管理期",
+"verification_status": "已核实"
+},
+{
+"title": "端侧智能芯片出货量突破1400万颗",
+"credibility": "multi_verified",
+"datetime": "2025-08-28",
+"sources": [
+{
+"platform": "证券时报",
+"popularity": "高",
+"spread_path": ["公司调研纪要→证券时报→集微网"]
+},
+{
+"platform": "集微网",
+"popularity": "中",
+"spread_path": ["行业分析师报告→集微网"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["营收结构", "毛利率"],
+"comparison_data": "端侧芯片出货量同比+150%，占总营收比从8%提升至15%"
+},
+"summary": "20+款商用芯片搭载自研智能算力单元，前三季度出货1400万颗。应用于谷歌Gemini端侧模型产品、沃尔玛Onn智能设备，技术路线突破传统AI芯片架构，单位算力成本下降35%。",
+"suppression_signs": "",
+"timeline_marker": "产品放量期",
+"verification_status": "已核实"
+},
+{
+"title": "美国潜在出口管制风险提示",
+"credibility": "official_confirmed",
+"datetime": "2025-07-08",
+"sources": [
+{
+"platform": "投资者关系活动记录表",
+"popularity": "低",
+"spread_path": ["深交所互动易→机构研报"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["供应链安全成本", "海外营收占比"],
+"comparison_data": "海外营收占比68%，较2024年提升5个百分点"
+},
+"summary": "在投资者调研中明确回应'公司为fabless设计企业，经营正常不受外部管制影响'，但承认在先进制程获取上存在潜在风险。预案包括提前采购6个月用量、开发国产替代方案。",
+"suppression_signs": "互动易记录6小时后删除供应链预案细节，网页存档ID：SZSE-IR-20250708-0921",
+"timeline_marker": "风险应对期",
+"verification_status": "已核实"
+},
+    {
+      "title": "晶晨股份2025年第三季度财报：端侧芯片增长强劲但利润承压",
+      "credibility": "高可信度 - 科创板公告及专业半导体媒体",
+      "datetime": "2025-10-29",
+      "sources": [
+        {
+          "platform": "上海证券交易所科创板",
+          "popularity": "中高",
+          "spread_path": ["官方公告", "半导体行业媒体", "科创板日报", "集微网"]
+        },
+        {
+          "platform": "TechCrunch",
+          "popularity": "中",
+          "spread_path": ["科技趋势分析", "芯片行业专题", "国际投资者关注"]
+        }
+      ],
+      "financial_impact": {
+        "affected_metrics": ["营收", "净利润", "毛利率", "运营现金流", "芯片出货量"],
+        "comparison_data": "营收17.41亿元(+7.20%)，净利润2.01亿元(-13.14%)，毛利率37.74%(-0.48pct)，运营现金流-2.87亿元(-138.49%)"
+      },
+      "summary": "晶晨股份2025年Q3营收同比增长7.20%，但净利润同比下降13.14%，端侧智能芯片出货量同比增长超150%，6nm芯片出货量近700万颗。Wi-Fi6芯片销量占比从不足6%提升至超30%，C系列智能视觉芯片销售超300万颗，达去年同期两倍。公司与谷歌、三星、沃尔玛等头部客户深化合作，但毛利率小幅下滑，运营现金流转负。管理层表示6nm芯片全年出货量目标1000万颗，部分延迟订单将释放至后续季度。",
+      "suppression_signs": "净利润下滑与运营现金流转负引发市场对盈利能力担忧",
+      "timeline_marker": "季度报告期-已发布",
+      "verification_status": "基于科创板公告及公司官方投资者交流会信息"
+    }
+]
+}

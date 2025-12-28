@@ -1,0 +1,18 @@
+langchain==1.0.2
+langchain-openai==1.0.1
+langchain-mcp-adapters>=0.1.0
+fastmcp==2.12.5
+pandas-market-calendars>=4.3.1
+
+# 股票分析系统依赖
+akshare>=1.12.0
+pandas>=2.0.0
+numpy>=1.24.0
+IPython>=8.0.0
+google-generativeai>=0.3.0
+pydantic>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+ta-lib>=0.6.8
+openai>=1.55.0
+python-dotenv

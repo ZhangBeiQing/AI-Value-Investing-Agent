@@ -1,0 +1,204 @@
+{
+"news_items": [
+{
+"title": "北方华创申请等离子体刻蚀系统和方法专利，解决现有技术中刻蚀孔的侧壁垂直程度较差问题",
+"credibility": "official_confirmed",
+"datetime": "2025-05-01",
+"sources": [
+{
+"platform": "新浪财经",
+"popularity": "高",
+"spread_path": ["新浪财经", "行业媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["研发投入", "技术壁垒"],
+"comparison_data": "2025年前三季度研发费用32.85亿元，同比增长48.39%"
+},
+"summary": "北方华创申请等离子体刻蚀系统和方法专利，有望提升5nm以下先进制程的工艺良率，增强技术壁垒，为后续产品迭代奠定基础",
+"suppression_signs": "",
+"timeline_marker": "技术突破",
+"verification_status": "已核实"
+},
+{
+"title": "北方华创申请构建晶圆承载装置温度控制模型专利，获取小区温度与加热器功率关系",
+"credibility": "official_confirmed",
+"datetime": "2025-05-01",
+"sources": [
+{
+"platform": "新浪财经",
+"popularity": "高",
+"spread_path": ["新浪财经", "行业媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["研发投入", "技术壁垒"],
+"comparison_data": "2025年前三季度研发费用32.85亿元，同比增长48.39%"
+},
+"summary": "北方华创申请晶圆承载装置温度控制模型专利，可增强设备在复杂工艺中的稳定性，提升产品竞争力",
+"suppression_signs": "",
+"timeline_marker": "技术突破",
+"verification_status": "已核实"
+},
+{
+"title": "北方华创申请半导体工艺设备相关专利，解决湿氧工艺中吹扫问题",
+"credibility": "official_confirmed",
+"datetime": "2025-05-01",
+"sources": [
+{
+"platform": "新浪财经",
+"popularity": "高",
+"spread_path": ["新浪财经", "行业媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["研发投入", "技术壁垒"],
+"comparison_data": "2025年前三季度研发费用32.85亿元，同比增长48.39%"
+},
+"summary": "北方华创申请湿氧工艺点火腔室专利，解决吹扫问题，避免氧气泄漏导致的干氧工艺干扰，提升工艺安全性",
+"suppression_signs": "",
+"timeline_marker": "技术突破",
+"verification_status": "已核实"
+},
+{
+"title": "北方华创完成芯源微股份过户登记，正式纳入合并报表",
+"credibility": "official_confirmed",
+"datetime": "2025-05-01",
+"sources": [
+{
+"platform": "新浪财经",
+"popularity": "高",
+"spread_path": ["新浪财经", "财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["营收规模", "市场份额"],
+"comparison_data": "芯源微客户包括中芯国际、长江存储等，与北方华创高度重合，整合后有望形成协同效应"
+},
+"summary": "北方华创完成芯源微股份过户登记，正式将其纳入合并报表，补全光刻工艺环节布局，增强平台化能力",
+"suppression_signs": "",
+"timeline_marker": "并购完成",
+"verification_status": "已核实"
+},
+{
+"title": "北方华创马来西亚研发中心启动，加强供应链全球化布局",
+"credibility": "single_source",
+"datetime": "2025-05-01",
+"sources": [
+{
+"platform": "新浪财经",
+"popularity": "中",
+"spread_path": ["新浪财经"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["供应链安全", "国际化布局"],
+"comparison_data": "计划2026年实现真空泵、MFC自给率≥60%，降低5nm以下零部件进口依赖（40%）"
+},
+"summary": "北方华创启动马来西亚研发中心，加强供应链全球化布局，规避贸易风险，但具体实施进展和效果尚未披露",
+"suppression_signs": "",
+"timeline_marker": "战略调整",
+"verification_status": "待核实"
+},
+{
+"title": "北方华创取代中芯国际，成A股半导体'盈利王'",
+"credibility": "single_source",
+"datetime": "2025-05-07",
+"sources": [
+{
+"platform": "雪球",
+"popularity": "中",
+"spread_path": ["雪球"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["盈利能力", "市场地位"],
+"comparison_data": "2024年营收298.38亿元，净利润56.21亿元；2025年Q1营收82.06亿元，净利润15.81亿元"
+},
+"summary": "北方华创因多款新产品批量销售和经营效率提升，净利润规模超过中芯国际，成为A股半导体'盈利王'，反映其市场地位提升",
+"suppression_signs": "",
+"timeline_marker": "业绩亮点",
+"verification_status": "待核实"
+},
+{
+"title": "北方华创股价波动区间分析",
+"credibility": "single_source",
+"datetime": "2025-06-09",
+"sources": [
+{
+"platform": "雪球",
+"popularity": "中",
+"spread_path": ["雪球"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["股价表现", "市场情绪"],
+"comparison_data": "股价在417.11到437.90元之间波动，较2-3月上涨后有所回调"
+},
+"summary": "北方华创股价在417.11到437.90元之间波动，较前期上涨后回调，分析师认为需关注技术催化和情绪影响",
+"suppression_signs": "",
+"timeline_marker": "股价分析",
+"verification_status": "待核实"
+},
+{
+"title": "国家大基金减持北方华创259.2万股，占流通股比例0.36%",
+"credibility": "official_confirmed",
+"datetime": "2025-09-17",
+"sources": [
+{
+"platform": "新浪财经",
+"popularity": "高",
+"spread_path": ["新浪财经", "财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["股东结构", "市场情绪"],
+"comparison_data": "减持后持股比例降至4.999932%，不再为持股5%以上股东"
+},
+"summary": "国家大基金减持北方华创259.2万股，套现近10亿元，反映一期基金进入回收期，资金将用于支持三期投资，重点投向光刻机等'卡脖子'环节",
+"suppression_signs": "",
+"timeline_marker": "资本运作",
+"verification_status": "已核实"
+},
+{
+"title": "北方华创新增'光刻机(胶)'概念，控股子公司芯源微补全光刻配套",
+"credibility": "single_source",
+"datetime": "2025-09-29",
+"sources": [
+{
+"platform": "雪球",
+"popularity": "中",
+"spread_path": ["雪球"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["业务布局", "协同效应"],
+"comparison_data": "芯源微涂胶显影设备与北方华创原有产品线形成协同，补全光刻工艺环节关键布局"
+},
+"summary": "北方华创新增'光刻机(胶)'概念，通过控股子公司芯源微补全光刻配套环节，平台化能力增强，但具体协同效应数据未披露",
+"suppression_signs": "",
+"timeline_marker": "业务拓展",
+"verification_status": "待核实"
+},
+{
+"title": "北方华创发布2025年第三季度报告，营收111.60亿元同比增长38.31%，净利润19.22亿元增长14.60%",
+"credibility": "official_confirmed",
+"datetime": "2025-10-03",
+"sources": [
+{
+"platform": "网易订阅",
+"popularity": "高",
+"spread_path": ["网易订阅", "财经媒体", "投资者交流平台"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["营收增长", "净利润", "毛利率", "研发投入", "存货水平", "现金流状况", "合同负债", "出口业务"],
+"comparison_data": "Q3营收111.60亿元(+38.31%)，净利润19.22亿元(+14.60%)，毛利率40.31%(-1.95pct同比)，研发费用32.85亿元(+48.39%)，存货301.99亿元(+28.62%)，经营现金流净流出25.66亿元(同比下降713.01%)，合同负债47.04亿元(较年初-24.30%)，出口订单占比提升至15%"
+},
+"summary": "北方华创2025年Q3业绩显示营收和净利润均实现同比增长，芯源微并表贡献约103亿元收入，但净利润增速低于营收增速反映成本压力。毛利率同比下降1.95pct至40.31%，期间费用率同比增长1.03pct至22.61%，研发投入大幅增加48.39%至32.85亿元，同时存货增长28.62%和经营现金流大幅流出反映业务扩张带来的短期资金压力。出口订单占比提升至15%显示国际化战略取得进展，合同负债下降24.30%表明订单交付节奏加速。",
+"suppression_signs": "",
+"timeline_marker": "财报发布",
+"verification_status": "已核实"
+}
+]
+}

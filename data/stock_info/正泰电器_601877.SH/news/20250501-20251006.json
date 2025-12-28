@@ -1,0 +1,239 @@
+{
+"news_items": [
+{
+"title": "正泰电器获得'插入式小型断路器'发明专利授权",
+"credibility": "official_confirmed",
+"datetime": "2025-05-06",
+"sources": [
+{
+"platform": "国家知识产权局公告",
+"popularity": "权威官方渠道",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["研发费用", "产品毛利率"],
+"comparison_data": "2025年上半年研发费用6.17亿元，同比增长6.29%"
+},
+"summary": "公司获得关键低压电器技术专利，提升产品装配效率与稳定性，巩固技术壁垒，有望带动高端产品销售占比提升。",
+"suppression_signs": "",
+"timeline_marker": "产品创新",
+"verification_status": "已由国家知识产权局正式授权"
+},
+{
+"title": "正泰电器完成股份回购，用于员工持股计划",
+"credibility": "official_confirmed",
+"datetime": "2025-05-07",
+"sources": [
+{
+"platform": "上交所公告",
+"popularity": "监管披露",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["货币资金", "库存股"],
+"comparison_data": "累计回购20,839,551股，支付约5亿元；同期货币资金135.4亿元"
+},
+"summary": "公司完成股份回购并拟用于员工持股计划，体现管理层对公司长期价值的信心，但需关注对短期现金流的影响。",
+"suppression_signs": "",
+"timeline_marker": "资本运作",
+"verification_status": "公司公告确认"
+},
+{
+"title": "正泰电器召开第十届董事会第一次会议，任命新任总裁及副总裁",
+"credibility": "official_confirmed",
+"datetime": "2025-05-24",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "监管披露",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["管理费用", "战略方向"],
+"comparison_data": "新任总裁陈国良为内部晋升，原总裁张智寰任期未满即卸任"
+},
+"summary": "公司完成高管换届，新任总裁陈国良接替张智寰，同时新增三位副总裁。人事调整属战略优化，可能影响未来业务重心与执行效率。",
+"suppression_signs": "原总裁卸任未发布感谢信，但有明确继任者，不构成异常离职",
+"timeline_marker": "治理变动",
+"verification_status": "董事会决议公告确认"
+},
+{
+"title": "【待核实】正泰安能光伏安装施工引发火灾事故",
+"credibility": "rumor_alert",
+"datetime": "2025-05-16",
+"sources": [
+{
+"platform": "行业论坛/雪球",
+"popularity": "局部传播，未达10万阅读",
+"spread_path": ["行业论坛", "雪球", "财经自媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["营业外支出", "品牌声誉"],
+"comparison_data": "无直接财务数据关联"
+},
+"summary": "传闻称正泰安能在陕西岐山县光伏安装中因电焊违规引发民宅火灾，涉事公司被指推诿赔偿。该事件若属实，可能引发安全事故追责及客户信任危机。",
+"suppression_signs": "相关帖文在部分平台被删除，但无大规模删帖证据",
+"timeline_marker": "突发事件",
+"verification_status": "该信息尚未证实，请谨慎参考"
+},
+{
+"title": "正泰电器DTSU666型光储防逆流电表入选省级优秀工业新产品",
+"credibility": "official_confirmed",
+"datetime": "2025-06-10",
+"sources": [
+{
+"platform": "浙江省经信厅公示",
+"popularity": "政府公示",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["新产品收入占比", "毛利率"],
+"comparison_data": "2025年上半年重点产品与新产品销售占比达15%"
+},
+"summary": "公司新能源电表产品获省级认可，突破传统导轨表技术瓶颈，有望在光储充一体化市场扩大份额，提升高毛利产品结构。",
+"suppression_signs": "",
+"timeline_marker": "产品突破",
+"verification_status": "政府公示文件确认"
+},
+{
+"title": "国家能源局新规实施：非自然人分布式光伏不得以自然人名义备案",
+"credibility": "official_confirmed",
+"datetime": "2025-05-01",
+"sources": [
+{
+"platform": "国家能源局文件",
+"popularity": "政策强制执行",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["户用光伏装机增速", "合规成本"],
+"comparison_data": "正泰安能上半年新增装机超9GW，总装机达27.84GW"
+},
+"summary": "新规终结‘自然人备案’模式，倒逼户用光伏企业转型法人备案。正泰安能已试点新模式，短期或影响装机节奏，长期利好合规龙头。",
+"suppression_signs": "",
+"timeline_marker": "政策动态",
+"verification_status": "政策已正式生效"
+},
+{
+"title": "正泰电器中标三峡集团保加利亚67MW光伏项目",
+"credibility": "multi_verified",
+"datetime": "2025-07-15",
+"sources": [
+{
+"platform": "中国能源报",
+"popularity": "行业主流媒体",
+"spread_path": []
+},
+{
+"platform": "PV Tech",
+"popularity": "国际光伏媒体",
+"spread_path": []
+},
+{
+"platform": "公司官网新闻稿",
+"popularity": "官方发布",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["海外营收", "应收账款"],
+"comparison_data": "2025Q2营收150.60亿元，同比增长15.22%"
+},
+"summary": "公司通过提供218台组串式逆变器等设备，成功进入欧洲大型地面电站项目，标志其海外EPC能力获国际认可，有助于提升海外毛利率。",
+"suppression_signs": "",
+"timeline_marker": "重大订单",
+"verification_status": "多方独立报道交叉验证"
+},
+{
+"title": "正泰电器2025年半年度财报发布：净利润同比增长19.49%，资产负债率升至66.09%",
+"credibility": "official_confirmed",
+"datetime": "2025-08-27",
+"sources": [
+{
+"platform": "上交所公告",
+"popularity": "法定披露",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["净利润", "资产负债率", "存货", "经营性现金流"],
+"comparison_data": "存货同比+30.26%；经营现金流净额152.52亿元，同比+103.37%；短期借款137.45亿元 vs 货币资金135.4亿元"
+},
+"summary": "公司业绩稳健增长但财务风险上升，高存货与高负债并存，现金流改善显著但短期偿债压力大，反映扩张激进与回款周期长的结构性矛盾。",
+"suppression_signs": "财报中对‘存货增加原因’表述较往期模糊，仅称‘业务规模扩大’，未细化供应链或需求端变化",
+"timeline_marker": "财报发布",
+"verification_status": "经审计财报披露"
+},
+{
+"title": "正泰电器撤回子公司正泰安能主板IPO申请",
+"credibility": "official_confirmed",
+"datetime": "2025-09-01",
+"sources": [
+{
+"platform": "上交所公告",
+"popularity": "监管披露",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["合并报表净利润", "资本开支规划"],
+"comparison_data": "正泰安能2025H1净利润19.01亿元，占上市公司归母净利约45%；原计划募资60亿元"
+},
+"summary": "公司主动终止分拆上市，主因市场环境与统筹业务发展。此举保留利润并表，短期利好EPS，但失去独立融资渠道，可能制约其高速扩张。",
+"suppression_signs": "公告后股价未明显异动，但股吧出现多条质疑帖后被限流",
+"timeline_marker": "资本运作",
+"verification_status": "公司公告确认"
+},
+{
+"title": "正泰电器涉及建设工程施工合同纠纷案将于10月开庭",
+"credibility": "official_confirmed",
+"datetime": "2025-10-02",
+"sources": [
+{
+"platform": "上海市闵行区人民法院公告",
+"popularity": "司法公开",
+"spread_path": []
+}
+],
+"financial_impact": {
+"affected_metrics": ["预计负债", "营业外支出"],
+"comparison_data": "暂无金额披露，无法计算占净利润比例"
+},
+"summary": "公司作为被告卷入与苏华建设集团的工程合同纠纷，若败诉可能产生赔偿支出，但目前未披露涉案金额，影响程度待定。",
+"suppression_signs": "",
+"timeline_marker": "法律事件",
+"verification_status": "法院公告确认"
+},
+{
+      "title": "正泰电器2025年第三季度财报：毛利率提升抵消营收下滑",
+      "credibility": "高可信度 - 公司官方公告及权威财经媒体",
+      "datetime": "2025-10-27",
+      "sources": [
+        {
+          "platform": "上海证券交易所",
+          "popularity": "高",
+          "spread_path": ["官方公告", "财经日报", "同花顺", "雪球"]
+        },
+        {
+          "platform": "路透社",
+          "popularity": "中高",
+          "spread_path": ["全球能源报道", "亚洲市场分析", "ESG投资专题"]
+        }
+      ],
+      "financial_impact": {
+        "affected_metrics": ["营收", "净利润", "毛利率", "运营现金流", "光伏业务收入"],
+        "comparison_data": "营收167.77亿元(-3.70%)，净利润16.25亿元(+3.12%)，毛利率27.51%(+2.10pct)，运营现金流152.52亿元(+103.37%)"
+      },
+      "summary": "正泰电器2025年Q3营收同比下降3.70%，但毛利率同比提升2.10个百分点至27.51%，盈利能力持续改善。光伏业务装机容量同比增长43.49%至24.93GW，成为核心盈利业务。公司在数据中心领域取得突破，获得淡马锡、华为等标志性项目，实现美国数据中心及墨西哥工业园电气配套的标杆案例。机构预计全年净利润同比增长48%，主要受益于光伏业务扩张和毛利率提升。",
+      "suppression_signs": "传统工业需求疲软导致低压电器业务营收微降",
+      "timeline_marker": "季度报告期-已发布",
+      "verification_status": "基于上海证券交易所公告及公司投资者关系确认"
+    }
+]
+}

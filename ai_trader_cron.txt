@@ -1,0 +1,6 @@
+# AI-Trader 缓存管理任务
+# 每天 12:00 自动检查和更新股票数据
+0 12 * * * /usr/bin/python3 /home/zhangbeiqing/programer/AI-Trader_my/cache_manager.py check
+
+# 每周日凌晨 2:00 清理过期缓存
+0 2 * * 0 /usr/bin/python3 /home/zhangbeiqing/programer/AI-Trader_my/cache_manager.py clean

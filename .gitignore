@@ -1,0 +1,74 @@
+# ---- Python / 项目通用忽略 ----
+# 编译与缓存
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+venv/
+.venv/
+ENV/
+env/
+
+# 构建与打包产物
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# 测试/类型检查缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/                                                                                                                                                                                                                                                                                                                                                         
+
+# IDE/编辑器
+.vscode/
+.idea/
+
+# 操作系统杂项
+.DS_Store
+Thumbs.db
+
+# 环境配置与运行时
+.runtime_env.json
+
+# 日志与数据文件（常见大文件类型）
+logs/
+*.log
+*.tsv
+*.jsonl
+*.xlsx
+*.parquet
+*.pkl
+*.joblib
+*.sqlite
+*.db
+*.cache
+*.tmp
+*.bak
+*.png
+*.svg
+*.js
+*.css
+*.csv
+*.md
+!/docs/*/*.md
+!AGENTS.md
+*.json
+*.pdf
+!/news/*.md
+!PROJECT_SYSTEM_SUMMARY.md
+# Notebook 检查点
+.ipynb_checkpoints/
+*.txt
+**/*.txt
+
+!configs/prompt_flow/default_flow.json
+# 忽略项目中的所有PDF文件
+**/*.pdf
+
+# 临时文件/目录

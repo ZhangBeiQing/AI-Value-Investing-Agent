@@ -1,0 +1,188 @@
+{
+"news_items": [
+{
+"title": "恒瑞医药正式登陆港交所，募资98.9亿港元",
+"credibility": "official_confirmed",
+"datetime": "2025-05-23",
+"sources": [
+{
+"platform": "港交所公告",
+"popularity": "454.85倍超额认购",
+"spread_path": ["港交所官网", "公司公告", "财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["货币资金", "股本", "股价表现"],
+"comparison_data": "募资98.9亿港元，扣除费用后净额97.47亿港元；上市首日股价上涨30.76%，报57.6港元/股"
+},
+"summary": "恒瑞医药（01276.HK）正式登陆港交所，获得454.85倍超额认购，IPO募资98.9亿港元，上市首日股价上涨30.76%。资金将用于研发计划、建设新的生产和研发设施，以及升级现有生产设施。这一资本运作显著增强了公司的资金实力，为创新药研发和国际化布局提供了有力支持。",
+"suppression_signs": "",
+"timeline_marker": "里程碑事件",
+"verification_status": "已通过港交所公告及公司官方确认"
+},
+{
+"title": "恒瑞医药与GSK达成5亿美元首付款授权合作",
+"credibility": "official_confirmed",
+"datetime": "2025-07-01",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "高",
+"spread_path": ["公司官网", "财经媒体", "行业分析报告"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["营业收入", "合同负债", "现金流"],
+"comparison_data": "首付款5亿美元（约35亿元人民币）相当于2025年Q2营收（85.56亿元）的41%，已确认19.9亿元收入，剩余30.91亿元计入合同负债"
+},
+"summary": "恒瑞医药与GSK达成协议，将PDE3/4抑制剂HRS-9821及至多11个临床前项目的全球独家开发权授权给GSK，获得5亿美元首付款和约120亿美元潜在里程碑付款。首付款中的19.9亿元已在2025年上半年确认为收入，剩余30.91亿元计入合同负债。这一交易显著提升了公司的现金流和国际化影响力，是恒瑞医药从'产品出海'向'体系能力出海'转型的重要标志。",
+"suppression_signs": "",
+"timeline_marker": "战略合作",
+"verification_status": "已通过公司公告确认"
+},
+{
+"title": "恒瑞医药与雅本化学签署10年战略供应协议",
+"credibility": "official_confirmed",
+"datetime": "2025-08-10",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "中",
+"spread_path": ["公司官网", "行业媒体", "财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["供应链稳定性", "生产成本", "原料药质量"],
+"comparison_data": "合作期限10年，雅本化学作为恒瑞医药在医药中间体及原料药领域的战略合作伙伴，拥有国际化CDMO服务能力"
+},
+"summary": "恒瑞医药与雅本化学签署《供应战略协议》，建立为期10年的战略合作伙伴关系，共同推动特定医药中间体及原料药产品的技术创新与质量升级。雅本化学作为恒瑞医药在医药中间体及原料药领域的战略合作伙伴，拥有国际化CDMO服务能力，此次合作将有助于恒瑞医药在创新药生产环节的国际化布局，增强供应链稳定性。",
+"suppression_signs": "",
+"timeline_marker": "供应链合作",
+"verification_status": "已通过公司公告确认"
+},
+{
+"title": "第11批药品集采涉及恒瑞5款仿制药，预计收入损失超10亿元",
+"credibility": "multi_verified",
+"datetime": "2025-08-15",
+"sources": [
+{
+"platform": "国家医保局",
+"popularity": "高",
+"spread_path": ["国家医保局官网", "医药行业媒体", "财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["营业收入", "毛利率", "净利润"],
+"comparison_data": "预计收入损失超10亿元，占2024年总营收比例约2.5%"
+},
+"summary": "国家医保局发布第11批药品集采名单，恒瑞医药有5款仿制药被纳入，预计导致收入损失超过10亿元。这一政策变动短期内将对公司业绩造成压力，但考虑到创新药收入占比已提升至60.66%，长期影响有限。集采政策加速了恒瑞医药从仿制药向创新药的战略转型进程。",
+"suppression_signs": "",
+"timeline_marker": "政策影响",
+"verification_status": "已通过国家医保局公告及多家权威媒体报道确认"
+},
+{
+"title": "恒瑞医药董事会通过10-20亿元A股回购计划",
+"credibility": "official_confirmed",
+"datetime": "2025-08-20",
+"sources": [
+{
+"platform": "上交所公告",
+"popularity": "中",
+"spread_path": ["上交所官网", "公司公告", "财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["货币资金", "股本结构", "每股收益"],
+"comparison_data": "回购价格不超过90.85元/股，资金总额10-20亿元；截至2025年10月31日已累计回购791.88万股，支付5.35亿元"
+},
+"summary": "恒瑞医药董事会审议通过A股回购方案，拟使用自有资金以集中竞价交易方式回购股份，用于员工持股计划，回购期限一年，价格不超过90.85元/股，资金总额10-20亿元。此举旨在增强团队凝聚力，提升公司核心竞争力，同时向市场传递对公司长期价值的信心。",
+"suppression_signs": "",
+"timeline_marker": "资本运作",
+"verification_status": "已通过董事会决议公告确认"
+},
+{
+"title": "恒瑞医药达成三笔重磅BD合作，首付款合计约5.83亿美元",
+"credibility": "official_confirmed",
+"datetime": "2025-09-15",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "高",
+"spread_path": ["公司官网", "财经媒体", "行业分析报告"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["合同负债", "未来收入", "投资收益"],
+"comparison_data": "与Braveheart Bio合作首付款6500万美元，与Glenmark合作首付款1800万美元，与默沙东合作首付款2亿美元，合计5.83亿美元（约40.81亿元人民币）"
+},
+"summary": "恒瑞医药在9月密集达成三笔BD合作：1）与Braveheart Bio采用'NewCo模式'合作，授权心肌肌球蛋白小分子抑制剂HRS-1893海外权益，首付款6500万美元，恒瑞持有NewCo约20%股权；2）与Glenmark合作瑞康曲妥珠单抗部分国际市场权益，首付款1800万美元；3）与默沙东合作开发Lp(a)口服小分子药物HRS-5346，首付款2亿美元。三笔合作首付款合计约5.83亿美元，将显著增强公司现金流，同时标志着恒瑞国际化战略从'产品出海'向'体系能力出海'升级。",
+"suppression_signs": "",
+"timeline_marker": "战略合作",
+"verification_status": "已通过公司公告确认"
+},
+{
+"title": "前凯莱英CTO胡新辉加盟恒瑞医药任副总裁兼首席技术官",
+"credibility": "official_confirmed",
+"datetime": "2025-09-28",
+"sources": [
+{
+"platform": "公司官网",
+"popularity": "中",
+"spread_path": ["公司官网", "医药行业媒体", "人才招聘平台"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["研发效率", "技术创新能力", "人才成本"],
+"comparison_data": "胡新辉拥有丰富的跨国药企和国内创新药企工作经验，将负责CMC研发、技术运营、供应链管理及生产基地建设"
+},
+"summary": "恒瑞医药宣布前凯莱英CTO胡新辉先生以副总裁、首席技术官身份加盟公司，负责CMC研发、技术运营、供应链管理以及生产基地建设等重要业务。胡新辉拥有丰富的跨国药企和国内创新药企工作经验，此次引进被视为恒瑞医药在强化技术研发实力、加速创新药布局方面的重要人才战略举措，有助于提升公司在CDMO领域的竞争力和国际化水平。",
+"suppression_signs": "",
+"timeline_marker": "人事变动",
+"verification_status": "已通过公司官方宣布确认"
+},
+{
+"title": "恒瑞医药董事、高级副总裁孙杰平完成股份减持",
+"credibility": "official_confirmed",
+"datetime": "2025-09-30",
+"sources": [
+{
+"platform": "上交所公告",
+"popularity": "中",
+"spread_path": ["公司公告", "财经媒体", "投资者平台"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["股权结构", "高管持股比例", "市场信心"],
+"comparison_data": "减持237,040股，占总股本0.004%，减持金额15,633,183.67元；减持完成后仍持有1,669,992股，占总股本0.025%"
+},
+"summary": "恒瑞医药披露董事、高级副总裁孙杰平先生于2025年7月9日至9月25日期间，通过集中竞价交易方式减持公司股份237,040股，占公司总股本0.004%，减持金额1563.32万元。此次减持是根据2025年6月16日披露的减持计划实施，减持完成后孙杰平仍持有公司股份166.9992万股，占总股本0.025%。由于减持比例极小，对公司治理结构影响有限，但可能引发市场对高管信心的短期质疑。",
+"suppression_signs": "",
+"timeline_marker": "高管行为",
+"verification_status": "已通过公司公告确认"
+},{
+      "title": "恒瑞医药2025年第三季度财报：创新药驱动业绩稳健增长",
+      "credibility": "高可信度 - 官方投资者关系网站及证券交易所备案文件",
+      "datetime": "2025-10-28",
+      "sources": [
+        {
+          "platform": "上海证券交易所",
+          "popularity": "高",
+          "spread_path": ["官方公告", "证券时报", "东方财富网", "投资者关系平台"]
+        },
+        {
+          "platform": "恒瑞医药投资者关系网站",
+          "popularity": "中高",
+          "spread_path": ["公司官网", "机构投资者交流会", "分析师会议"]
+        }
+      ],
+      "financial_impact": {
+        "affected_metrics": ["营收", "净利润", "运营现金流", "研发费用", "国际合作收入"],
+        "comparison_data": "营收74.27亿元(+12.72%)，净利润13.01亿元(+9.53%)，运营现金流48.10亿元(+209.78%)"
+      },
+      "summary": "恒瑞医药2025年Q3业绩稳健增长，创新药收入占比超55%，成为核心增长动力。公司与GSK达成重磅合作，获得5亿美元首付款，潜在总金额约120亿美元。前三季度新药上市申请获受理13项，其中Q3达8项，覆盖肿瘤、代谢和心血管疾病领域。管理层预计2025年全年归母净利润同比增长37%，主要基于创新药占比提升和BD授权收入确认。",
+      "suppression_signs": "无明显压制迹象，海外授权合作提振市场信心",
+      "timeline_marker": "季度报告期-已发布",
+      "verification_status": "基于公司官方财报及投资者交流会确认数据"
+    }
+]
+}

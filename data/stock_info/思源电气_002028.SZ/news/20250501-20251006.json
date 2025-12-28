@@ -1,0 +1,130 @@
+{
+"news_items": [
+{
+"title": "思源电气新增买卖合同纠纷诉讼开庭",
+"credibility": "official_confirmed",
+"datetime": "2025-05-04",
+"sources": [
+{
+"platform": "上海市闵行区人民法院公告",
+"popularity": "低",
+"spread_path": ["法院公告系统"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["预计负债", "营业外支出"],
+"comparison_data": "为近一年内第13则开庭公告，买卖合同纠纷占比最高"
+},
+"summary": "思源电气作为原告/上诉人参与买卖合同纠纷诉讼，案号(2025)沪0112民初11484号，由上海市闵行区人民法院审理，开庭日期为5月7日。截至2025年10月6日，未有公开信息披露该诉讼的判决结果，存在不确定性风险。",
+"suppression_signs": "",
+"timeline_marker": "进行中",
+"verification_status": "已由法院公告确认"
+},
+{
+"title": "思源电气董事会通过股份回购方案及子公司担保议案",
+"credibility": "official_confirmed",
+"datetime": "2025-05-15",
+"sources": [
+{
+"platform": "深交所公告",
+"popularity": "高",
+"spread_path": ["公司公告", "证券时报", "东方财富网"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["库存股", "现金及现金等价物", "资产负债率"],
+"comparison_data": "拟回购金额3-5亿元，占2025年Q1末现金储备27.51亿元的10.9%-18.2%；担保总额5亿元，占2024年净资产比例约3.95%"
+},
+"summary": "第八届董事会第二十次会议通过《关于回购公司股份方案的议案》，拟使用自有资金回购3-5亿元股份用于注销；同时通过为三家全资子公司提供总计5亿元担保的议案。董事长董增平在提议前六个月内无买卖公司股票情况，但部分高管存在股权激励行权情况。",
+"suppression_signs": "",
+"timeline_marker": "已决议",
+"verification_status": "已由公司董事会决议及公告确认"
+},
+{
+"title": "雅鲁藏布江下游水电工程正式开工",
+"credibility": "multi_verified",
+"datetime": "2025-07-19",
+"sources": [
+{
+"platform": "国家发改委网站",
+"popularity": "极高",
+"spread_path": ["国家发改委", "新华社", "证券日报", "雪球"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["未来订单预期", "营业收入增长潜力"],
+"comparison_data": "项目总投资1.2万亿元，年发电量3000亿千瓦时，约为思源电气2024年全年营收的6倍"
+},
+"summary": "雅鲁藏布江下游水电工程正式开工，总投资高达1.2万亿元，年发电量3000亿千瓦时。作为国家电网体系核心参与企业，思源电气有望成为该水电项目的受益方，尤其在高压开关、变压器等设备供应方面存在潜在订单机会。",
+"suppression_signs": "",
+"timeline_marker": "已开工",
+"verification_status": "已由国家发改委及主流媒体报道确认"
+},
+{
+"title": "思源电气境外持股比例突破28%监管红线，外资买盘被叫停",
+"credibility": "multi_verified",
+"datetime": "2025-07-19",
+"sources": [
+{
+"platform": "港交所披露易",
+"popularity": "高",
+"spread_path": ["港交所公告", "财联社", "Wind资讯", "华尔街见闻"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["股价流动性", "股东结构"],
+"comparison_data": "摩根士丹利全资子公司持股1.11%，全国社保基金六零一组合持股1.2%，成为2025年首只被外资买到'限购'的A股"
+},
+"summary": "思源电气境外持股比例突破28%监管红线，外资买盘被紧急叫停，成为2025年首只被境外投资者买到'限购'的A股。摩根士丹利全资子公司MORGAN STANLEY & CO.INTERNATIONAL PLC.持有公司股份比例达1.11%，位列第八大股东，反映外资对公司前景强烈看好。",
+"suppression_signs": "",
+"timeline_marker": "已实施",
+"verification_status": "已由港交所监管文件及财经媒体报道确认"
+},
+{
+"title": "思源电气与怀柔实验室合作成立合资公司",
+"credibility": "official_confirmed",
+"datetime": "2025-09-26",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "中",
+"spread_path": ["深交所公告", "中国证券报", "上证报"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["长期股权投资", "研发费用", "现金及现金等价物"],
+"comparison_data": "计划投资不超过4亿元，对比2025年二季度末27.51亿元现金储备，占净资产比例约3.16%"
+},
+"summary": "思源电气与怀柔实验室合作成立合资公司，计划投资不超过4亿元，专注于基于IGCT器件平台的电力电子技术研发。该合作有望推动公司在电力电子领域的技术突破，特别是在高压直流输电、柔性输电等前沿领域。该议案已通过董事会审议，但尚未签署正式协议。",
+"suppression_signs": "",
+"timeline_marker": "董事会已通过",
+"verification_status": "已由公司董事会决议确认，尚未签署正式协议"
+},
+{
+      "title": "思源电气2025年第三季度财报：营收53.30亿元同比增长25.68%，净利润8.99亿元同比增长48.73%",
+      "credibility": "高 - 官方财报数据",
+      "datetime": "2025-10-22",
+      "sources": [
+        {
+          "platform": "深交所公告",
+          "popularity": "中",
+          "spread_path": ["电力设备行业媒体", "券商研报", "投资者关系网站"]
+        }
+      ],
+      "financial_impact": {
+        "affected_metrics": ["营收", "净利润", "毛利率", "合同负债", "海外业务占比"],
+        "comparison_data": {
+          "revenue": {"current": "53.30亿元", "yoy_growth": "25.68%"}, 
+          "net_profit": {"current": "8.99亿元", "yoy_growth": "48.73%"},
+          "gross_margin": {"current": "33.25%", "yoy_improvement": "2.29个百分点"},
+          "contract_liabilities": {"current": "28.96亿元", "yoy_growth": "29.52%"},
+          "overseas_business_cagr": "26.98%"
+        }
+      },
+      "summary": "思源电气2025年第三季度营收53.30亿元，同比增长25.68%；净利润8.99亿元，同比增长48.73%。毛利率提升至33.25%，同比提升2.29个百分点。海外市场营收CAGR达26.98%，欧洲、北美等电力发达地区输配电设备改造需求旺盛，东南亚、中东、非洲等地区电力基础设施建设需求广阔。合同负债达28.96亿元，同比增长29.52%，为未来业绩增长提供保障。华安证券预计2025-2027年收入分别为194.25/233.10/279.72亿元，归母净利润分别为28.67/34.85/38.12亿元。",
+      "suppression_signs": "无明显业绩压制迹象，产品结构优化和市场拓展顺利",
+      "timeline_marker": "业绩高速增长期",
+      "verification_status": "已通过官方财报验证"
+    }
+]
+}

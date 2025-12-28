@@ -1,0 +1,81 @@
+{
+  "agent_type": "BaseAgent",
+  "date_range": {
+    "init_date": "2025-12-29",
+    "end_date": "2025-12-29"
+  },
+  "models": [
+    {
+      "name": "claude-3.7-sonnet",
+      "basemodel": "anthropic/claude-3.7-sonnet", 
+
+      
+      "signature": "claude-3.7-sonnet",
+      "enabled": false,
+      "openai_base_url": "Optional: YOUR_OPENAI_BASE_URL,you can write them in .env file",
+      "openai_api_key": "Optional: YOUR_OPENAI_API_KEY,you can write them in .env file" 
+    },
+    {
+      "name": "deepseek-chat",
+      "basemodel": "deepseek-chat",
+      "signature": "deepseek-chat",
+      "enabled": false
+    },
+    {
+      "name": "deepseek-reasoner",
+      "basemodel": "deepseek-reasoner",
+      "signature": "deepseek-reasoner",
+      "enabled": true
+    },
+    {
+      "name": "gemini-3-pro",
+      "basemodel": "google/gemini-3-pro",
+      "signature": "gemini-3-pro",
+      "enabled": false,
+      "openai_base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "openai_api_key": "${GEMINI_API_KEY}"
+    },
+    {
+      "name": "qwen3-max",
+      "basemodel": "qwen3-max",
+      "signature": "qwen3-max",
+      "enabled": false,
+      "openai_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "openai_api_key": "sk-bad3a7fb158e42659cef53f7f94bd22c",
+      "extra_body": {"enable_thinking": true}
+    },
+    {
+      "name": "minimax",
+      "basemodel": "MiniMax-M2",
+      "signature": "MiniMax-M2",
+      "enabled": false,
+      "openai_base_url": "https://api.minimaxi.com/v1",
+      "openai_api_key": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJHcm91cE5hbWUiOiLlsI_onrrluL02OTE1IiwiVXNlck5hbWUiOiLlsI_onrrluL02OTE1IiwiQWNjb3VudCI6IiIsIlN1YmplY3RJRCI6IjE4NzkxNjMwMzc2OTMyNjQ3NTMiLCJQaG9uZSI6IjE4ODA3MDQ5MTI0IiwiR3JvdXBJRCI6IjE4NzkxNjMwMzc2ODQ4NzYxNDUiLCJQYWdlTmFtZSI6IiIsIk1haWwiOiIiLCJDcmVhdGVUaW1lIjoiMjAyNS0xMi0xOCAyMDo0OTo0NSIsIlRva2VuVHlwZSI6MSwiaXNzIjoibWluaW1heCJ9.G-dyv-UYEl15P-0sIAaZ0MUvF8Rl2OP7Os7BxgotkEgkb-G7JUvSPJ6F_LUTebegQTPUngSbBaPfUR4HC0lydMsqLWajiesI1PQwb5TChBahNQzvycYgL0L8hlbIYugm-AQ2UNC4XBi9rM6HWBY8QEQ6BWNexauzejAp5MUAGC3P7YSk5yI0iIBEMnWtXGNtCIR6GEj9PBV8crQjm7k9kRjub7Hp7oWF4sA2-GRshbKC85JnxfB6HHwa4TK4b4oYn9Z2JYSp_nNzDXarqM7rqx_ZXEfOyu6DifWAyNynheagbxb0lzF6VeslI_osGJqsjs_YVAs3o8jog9OOJnlT9g",
+      "extra_body": {
+        "reasoning_split": true
+      }
+    },
+    {
+      "name": "gemini-2.5-flash",
+      "basemodel": "google/gemini-2.5-flash",
+      "signature": "gemini-2.5-flash",
+      "enabled": false
+    },
+    {
+      "name": "gpt-5",
+      "basemodel": "openai/gpt-5",
+      "signature": "gpt-5",
+      "enabled": false
+    }
+  ],
+  "agent_config": {
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "initial_cash": 500000.0
+  },
+  "log_config": {
+    "log_path": "./data/agent_data"
+  }
+}
+
