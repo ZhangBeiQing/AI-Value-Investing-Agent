@@ -1,5 +1,7 @@
 # AI Value Investing Agent
 
+[中文版](README_CN.md)
+
 This project is an AI-driven investment agent capable of conducting value investing analysis and simulated trading for **A-shares and HK-shares**.
 
 It leverages Large Language Models (LLMs) to analyze financial data, news, and macroeconomic indicators, performing backtesting or live trading simulations based on configurable strategies.
