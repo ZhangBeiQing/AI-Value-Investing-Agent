@@ -1,0 +1,190 @@
+{
+"news_items": [
+{
+"title": "豪威集团证券简称正式由'韦尔股份'变更为'豪威集团'",
+"credibility": "official_confirmed",
+"datetime": "2025-05-20",
+"sources": [
+{
+"platform": "上海证券交易所",
+"popularity": "高",
+"spread_path": ["公司公告", "财经媒体", "投资者平台"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["品牌价值", "市场认知", "投资者结构"],
+"comparison_data": "反映公司战略重心向图像传感器(CIS)业务的聚焦，CIS业务占营收74.0%"
+},
+"summary": "公司证券简称正式变更，体现战略重心向图像传感器(CIS)业务的聚焦。当日股价上涨2.68%，报131.65元，成交金额达18.18亿元，主力资金净流入1.63亿元，市场对战略转型给予积极回应。",
+"suppression_signs": "",
+"timeline_marker": "战略转型期",
+"verification_status": "已通过公司公告及交易所文件确认"
+},
+{
+"title": "豪威集团向香港联交所递交H股上市申请",
+"credibility": "official_confirmed",
+"datetime": "2025-06-27",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "高",
+"spread_path": ["公司公告", "香港联交所网站", "财经媒体"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["融资渠道", "国际化进程", "股权结构"],
+"comparison_data": "截至2025年6月底，公司货币资金达112.24亿元，短期债务51.98亿元，现金覆盖率216%"
+},
+"summary": "公司正式向香港联交所递交发行境外上市股份(H股)申请，计划在香港联交所主板挂牌上市。该申请尚需取得中国证监会、香港证监会和香港联交所等相关监管机构的批准，存在不确定性。",
+"suppression_signs": "",
+"timeline_marker": "资本扩张期",
+"verification_status": "已通过公司公告及香港联交所网站信息确认"
+},
+{
+"title": "豪威集团完成股份回购，累计回购664.1万股",
+"credibility": "official_confirmed",
+"datetime": "2025-07-31",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "中",
+"spread_path": ["公司公告", "证券时报", "投资者互动平台"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["现金储备", "每股收益", "股东权益"],
+"comparison_data": "回购金额15.51亿元，占Q2末现金储备(112.24亿元)的13.8%"
+},
+"summary": "截至2025年7月31日，公司通过集中竞价交易方式累计回购A股股份664.1万股，占公司当前A股总股本的0.1508%，成交总金额为人民币15.51亿元（不含交易费用）。回购显示管理层对公司长期发展信心。",
+"suppression_signs": "",
+"timeline_marker": "价值维护期",
+"verification_status": "已通过公司公告确认"
+},
+{
+"title": "豪威集团2025年半年度业绩报告：营收139.56亿元，净利润20.28亿元",
+"credibility": "official_confirmed",
+"datetime": "2025-08-31",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "极高",
+"spread_path": ["公司公告", "财经媒体", "分析师研报", "投资者平台"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["营业收入", "净利润", "毛利率", "业务结构"],
+"comparison_data": "营收同比增长15.42%；归母净利润同比增长48.34%；毛利率30.00%，同比下降0.24%；汽车CIS业务营收37.89亿元，同比增长30.04%"
+},
+"summary": "公司2025年上半年业绩表现亮眼，营收139.56亿元(+15.42%)，归母净利润20.28亿元(+48.34%)。第二季度单季度营收74.84亿元(+16.07%)，创历史新高。业务结构持续优化，汽车CIS业务营收37.89亿元(+30.04%)，新兴市场CIS营收11.73亿元(+249.42%)，手机CIS业务营收39.20亿元(-19.48%)。",
+"suppression_signs": "",
+"timeline_marker": "业绩发布期",
+"verification_status": "已通过公司公告及财报数据确认"
+},
+{
+"title": "商务部对原产于美国的进口相关模拟芯片进行反倾销立案调查",
+"credibility": "official_confirmed",
+"datetime": "2025-09-13",
+"sources": [
+{
+"platform": "中华人民共和国商务部",
+"popularity": "高",
+"spread_path": ["商务部公告", "财经媒体", "行业分析报告"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["模拟芯片业务", "国产替代机会", "毛利率潜力"],
+"comparison_data": "公司模拟芯片业务2025年上半年营收7.67亿元(+20.88%)，占总营收比例约6%"
+},
+"summary": "商务部发布2025年第27号公告，对原产于美国的进口相关模拟芯片进行反倾销立案调查。作为全球领先的CIS厂商，豪威集团车载桥接SerDes芯片等模拟产品有望加速实现对德州仪器、亚德诺等公司的替代，但当前模拟芯片业务占比较小，短期业绩影响有限。",
+"suppression_signs": "",
+"timeline_marker": "政策受益期",
+"verification_status": "已通过商务部公告确认"
+},
+{
+"title": "控股股东虞仁荣计划减持公司股份不超过2400万股",
+"credibility": "official_confirmed",
+"datetime": "2025-10-01",
+"sources": [
+{
+"platform": "公司公告",
+"popularity": "高",
+"spread_path": ["公司公告", "财经媒体", "股吧", "雪球"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["股权结构", "市场情绪", "股价波动"],
+"comparison_data": "控股股东持有公司股份333,472,250股，占总股本27.65%，计划减持比例1.99%"
+},
+"summary": "控股股东虞仁荣因归还借款并降低质押率，计划通过大宗交易方式减持公司股份不超过2400万股（约1.99%）。减持后其质押股份占持有公司股份比例将大幅下降。市场反应中性，当日股价未出现大幅波动，但股吧出现'小米受让，组成战略同盟'等传闻。",
+"suppression_signs": "",
+"timeline_marker": "股权调整期",
+"verification_status": "已通过公司公告确认"
+},
+{
+"title": "【待核实】小米将战略入股豪威集团，承接控股股东减持股份",
+"credibility": "rumor_alert",
+"datetime": "2025-10-02",
+"sources": [
+{
+"platform": "股吧/雪球",
+"popularity": "中高",
+"spread_path": ["股吧", "雪球", "微博话题"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["市场情绪", "股价预期", "战略合作前景"],
+"comparison_data": "无官方财务数据支持"
+},
+"summary": "股吧和雪球平台出现关于'小米将承接虞仁荣减持股份，组成战略同盟'的传闻，相关话题阅读量超20万次。该传闻与控股股东减持公告时间吻合，引发投资者对产业资本介入的期待，但公司尚未对此传闻作出正式回应。",
+"suppression_signs": "",
+"timeline_marker": "传闻发酵期",
+"verification_status": "该信息尚未证实，请谨慎参考"
+},
+{
+"title": "豪威集团股价单日下跌5.47%，成交额达51.87亿元",
+"credibility": "multi_verified",
+"datetime": "2025-10-10",
+"sources": [
+{
+"platform": "证券时报",
+"popularity": "极高",
+"spread_path": ["财经媒体", "交易数据平台", "投资者社区"]
+}
+],
+"financial_impact": {
+"affected_metrics": ["市值", "投资者情绪", "交易活跃度"],
+"comparison_data": "单日成交额51.87亿元，换手率2.98%，较前5日平均成交额增长150%"
+},
+"summary": "公司股价下跌5.47%，报141.82元，成交额达51.87亿元，换手率为2.98%。当日公司公告将于10月20日召开2025年半年度业绩说明会。股价下跌可能与市场对控股股东减持计划的担忧和业绩说明会前的获利回吐有关，反映短期市场情绪波动。",
+"suppression_signs": "",
+"timeline_marker": "市场波动期",
+"verification_status": "已通过多家财经媒体及交易数据平台确认"
+},
+{
+      "title": "豪威集团2025年第三季度财报：营收78.27亿元同比增长14.81%，净利润11.82亿元同比增长17.26%",
+      "credibility": "高 - 官方财报数据",
+      "datetime": "2025-10-20",
+      "sources": [
+        {
+          "platform": "上交所公告",
+          "popularity": "中",
+          "spread_path": ["行业媒体", "半导体领域分析", "投资者关系网站"]
+        }
+      ],
+      "financial_impact": {
+        "affected_metrics": ["营收", "净利润", "毛利率", "新产品线", "市场份额"],
+        "comparison_data": {
+          "revenue": {"current": "78.27亿元", "yoy_growth": "14.81%"},
+          "net_profit": {"current": "11.82亿元", "yoy_growth": "17.26%"},
+          "gross_margin": "30.34%",
+          "market_position": "汽车CIS全球市场份额第一",
+          "new_products": ["800万像素汽车图像传感器OX08D20", "5000万像素一英寸高动态范围图像传感器OV50X", "2亿像素图像传感器"]
+        }
+      },
+      "summary": "豪威集团2025年第三季度营收78.27亿元，同比增长14.81%；净利润11.82亿元，同比增长17.26%，创单季历史新高。毛利率达30.34%，保持较高水平。汽车CIS全球市场份额第一，智能手机高端化和汽车智能驾驶渗透率提升推动业务增长。推出800万像素汽车图像传感器OX08D20、5000万像素一英寸高动态范围图像传感器OV50X及2亿像素图像传感器等新产品，预计将于2026年第四季度量产。管理层看好智能手机高端化和汽车智能驾驶渗透率提升带来的增长机会。",
+      "suppression_signs": "无明显业绩压制迹象，新产品研发和量产进度正常",
+      "timeline_marker": "业绩上升期",
+      "verification_status": "已通过官方财报验证"
+    }
+]
+}

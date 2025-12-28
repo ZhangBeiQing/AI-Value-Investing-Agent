@@ -1,0 +1,98 @@
+{
+  "stock": "迈瑞医疗 (300760.SZ)",
+  "today": "2025-12-29",
+  "news_items": [
+    {
+      "title": "关于实际控制人之一、董事长首次增持公司股份及后续增持计划的公告",
+      "datetime": "2025-11-27",
+      "category": "Equity_Change",
+      "summary": "实际控制人之一、董事长李西廷首次增持152,340股，均价196.862元/股，金额29,989,930.80元。计划未来6个月内继续增持2亿元（含本次金额）。增持后合计控制公司股份51.48%。",
+      "impact_level": "Medium",
+      "sentiment": "Positive",
+      "validity_period": "Medium",
+      "audit_analysis": "【业务归因】实际控制人增持体现对公司未来发展信心。【横向对比】医疗器械行业近期估值回调，高管增持行为有助于稳定市场信心。【纵向对比】公司历史上高管增持记录较少，本次增持具有信号意义。【综合诊断】管理层对公司价值认可的重要信号，但需关注后续实际执行情况。",
+      "financial_implication": null,
+      "price_driver": "管理层信心",
+      "risk_warning": "增持计划执行进度需持续跟踪"
+    },
+    {
+      "title": "关于向香港联交所递交境外上市外资股(H股)发行并上市的申请并刊发申请资料的公告",
+      "datetime": "2025-11-10",
+      "category": "Equity_Change",
+      "summary": "公司向香港联交所递交H股发行上市申请，申请资料已在香港联交所网站刊登。本次发行需取得中国证监会、香港证监会和香港联交所等相关监管机构批准，事项仍存在不确定性。",
+      "impact_level": "High",
+      "sentiment": "Positive",
+      "validity_period": "Long",
+      "audit_analysis": "【业务归因】迈瑞医疗作为国内医疗器械龙头，H股上市有助于拓展国际融资渠道和提升全球品牌影响力。",
+      "financial_implication": "若成功发行将增加公司资本金，拓展融资渠道",
+      "price_driver": "国际化战略推进",
+      "risk_warning": "发行审批存在不确定性"
+    },
+    {
+      "title": "关于2025年第三次中期利润分配方案公告",
+      "datetime": "2025-10-30",
+      "category": "Financial_Report",
+      "summary": "公司以2025年9月30日总股本1,212,441,394股为基数，向全体股东每10股派发现金股利13.50元（含税），合计派发1,636,795,881.90元。2025年累计现金分红4,934,636,473.58元，占2025年前三季度净利润65.19%。",
+      "impact_level": "Medium",
+      "sentiment": "Positive",
+      "validity_period": "Short",
+      "audit_analysis": "【业务归因】公司维持高分红政策，体现现金流充裕和回报股东意愿。【横向对比】医疗设备行业龙头普遍维持40-70%分红率，迈瑞处于行业较高水平。【纵向对比】公司历史上分红率稳定在60-70%区间，本次分红符合历史惯例。【综合诊断】稳健的分红策略，符合优质白马股特征，对市场情绪有正面支撑作用。",
+      "financial_implication": "现金流出16.37亿元，减少公司现金储备",
+      "price_driver": "稳定的股东回报",
+      "risk_warning": "无实质性风险"
+    },
+    {
+      "title": "关于控股股东部分股份质押和解除质押的公告",
+      "datetime": "2025-10-21",
+      "category": "Equity_Change",
+      "summary": "控股股东Magnifice（HK）Limited质押5,800,000股（占其持股1.95%，总股本0.48%），同时解除质押4,850,000股。操作后累计质押36,100,000股，占其持股12.16%，总股本2.98%。",
+      "impact_level": "Low",
+      "sentiment": "Neutral",
+      "validity_period": "Short",
+      "audit_analysis": "【业务归因】股东进行质押与解质押的滚动操作，净增加质押950,000股。\n【横向对比】医疗器械行业龙头企业股东质押活动频率和规模均属正常范围。\n【纵向对比】月度质押比例在10-12%区间波动，无异常变化。\n【综合诊断】此为控股股东常规的资金管理行为，质押比例稳定在安全范围内，对公司无实质性风险。",
+      "financial_implication": null,
+      "price_driver": "股东流动性管理",
+      "risk_warning": "无特殊风险提示"
+    },
+    {
+      "title": "关于控股股东部分股份质押的公告",
+      "datetime": "2025-10-14",
+      "category": "Equity_Change",
+      "summary": "控股股东Magnifice（HK）Limited质押4,400,000股（占其持股1.48%，总股本0.36%）。质押后累计质押35,150,000股，占其持股11.84%，总股本2.90%。",
+      "impact_level": "Low",
+      "sentiment": "Neutral",
+      "validity_period": "Short",
+      "audit_analysis": "【业务归因】股东进行小规模新增质押，用于一般资金需求。\n【横向对比】质押比例在同行业中处于较低水平。\n【纵向对比】与上月相比质押比例基本稳定。\n【综合诊断】持续的质押活动反映股东正常的融资需求，质押规模对公司影响可忽略不计。",
+      "financial_implication": null,
+      "price_driver": "常规股东融资",
+      "risk_warning": "无特殊风险提示"
+    },
+    {
+      "title": "关于控股股东部分股份解除质押的公告",
+      "datetime": "2025-09-30",
+      "category": "Equity_Change",
+      "summary": "控股股东Magnifice（HK）Limited解除质押5,200,000股。解除后累计质押30,750,000股，占其持股10.36%，总股本2.54%。",
+      "impact_level": "Low",
+      "sentiment": "Neutral",
+      "validity_period": "Short",
+      "audit_analysis": "【业务归因】股东按期解除到期质押，反映其资金周转正常。\n【横向对比】同行业可比公司控股股东质押比例多在类似水平。\n【纵向对比】质押比例从12.11%降至10.36%，显示股东流动性状况良好。\n【综合诊断】解质押行为属正常到期操作，进一步降低了整体质押风险。",
+      "financial_implication": null,
+      "price_driver": "股东流动性改善",
+      "risk_warning": "无特殊风险提示"
+    },
+    {
+      "title": "关于控股股东部分股份质押和解除质押的公告",
+      "datetime": "2025-09-12",
+      "category": "Equity_Change",
+      "summary": "控股股东Magnifice（HK）Limited质押5,600,000股（占其持股1.89%，总股本0.46%），同时解除质押5,000,000股。质押后累计质押35,950,000股，占其持股12.11%，总股本2.97%。经查该股东历史质押比例长期维持在10-15%区间，属正常资金管理行为。",
+      "impact_level": "Low",
+      "sentiment": "Neutral",
+      "validity_period": "Short",
+      "audit_analysis": "【业务归因】控股股东进行常规的质押融资操作，质押比例变化微小。\n【横向对比】医疗器械行业龙头企业控股股东质押比例普遍在10-20%范围内。\n【纵向对比】当前12.11%的质押比例与过去三年水平基本一致。\n【综合诊断】此为正常的资金周转安排，质押比例远低于风险警戒线，对公司治理和经营无实质性影响。",
+      "financial_implication": null,
+      "price_driver": "常规股东资金管理",
+      "risk_warning": "无特殊风险提示"
+    }
+  ],
+  "diagnostics": []
+}
