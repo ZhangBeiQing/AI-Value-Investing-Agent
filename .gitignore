@@ -59,6 +59,9 @@ logs/
 !/docs/*/*.md
 !AGENTS.md
 !back_up/*/*.md
+!.claude/
+!.claude/**
+!.claude/**/*.md
 *.json
 *.pdf
 !/news/*.md
@@ -81,3 +84,5 @@ logs/
 *.pyc
 *.pyo
 *.csv
+
+.env
