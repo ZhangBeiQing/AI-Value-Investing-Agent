@@ -41,7 +41,6 @@ from fastmcp import FastMCP
 load_dotenv()
 from agent_tools.logging_utils import init_tool_logger
 from configs.stock_pool import TRACKED_A_STOCKS
-from news.disclosures_builder import update_disclosures_for_stock
 from utlity import parse_symbol, is_cn_etf_symbol
 
 # === 请将此代码块放在脚本的最开头 ===
@@ -269,6 +268,13 @@ def _filter_low_impact_noise(
     return cleaned
 
 
+def _try_update_disclosures_for_stock(stock_name: str, stock_code: str, lookback_days: int = 365) -> None:
+    """按需触发公告构建，避免在 import 阶段硬依赖 marker。"""
+    from news.disclosures_builder import update_disclosures_for_stock
+
+    update_disclosures_for_stock(stock_name, stock_code, lookback_days=lookback_days)
+
+
 @mcp.tool()
 def search_stock_news(symbol: str, today_time: str) -> str:
     """
@@ -326,7 +332,7 @@ def search_stock_news(symbol: str, today_time: str) -> str:
     items = collect_news_items(stock_name, stock_code, diagnostics)
     if not items:
         try:
-            update_disclosures_for_stock(stock_name, stock_code, lookback_days=365)
+            _try_update_disclosures_for_stock(stock_name, stock_code, lookback_days=365)
             items = collect_news_items(stock_name, stock_code, diagnostics)
         except Exception as exc:
             diagnostics.append(f"公告构建失败: {exc}")

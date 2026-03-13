@@ -2,7 +2,7 @@ from fastmcp import FastMCP
 import os
 from dotenv import load_dotenv
 
-from logging_utils import init_tool_logger
+from agent_tools.logging_utils import init_tool_logger
 
 load_dotenv()
 
