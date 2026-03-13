@@ -23,7 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from basic_stock_info import basic_info  # type: ignore
 from enhanced_pe_pb_analyzer import EnhancedPEPBAnalyzer  # type: ignore
-from logging_utils import init_tool_logger
+from agent_tools.logging_utils import init_tool_logger
 from configs.stock_pool import TRACKED_A_STOCKS
 from stock_price_dynamics_summarizer import stock_price_dynamics_summarizer
 from utlity import (

@@ -12,7 +12,7 @@ from tools.price_tools import (
 )
 import json
 from tools.general_tools import get_config_value,write_config_value
-from logging_utils import init_tool_logger
+from agent_tools.logging_utils import init_tool_logger
 
 mcp = FastMCP("TradeTools")
 logger = init_tool_logger(mcp.name)

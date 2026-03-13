@@ -58,6 +58,7 @@ logs/
 *.md
 !/docs/*/*.md
 !AGENTS.md
+!back_up/*/*.md
 *.json
 *.pdf
 !/news/*.md
@@ -68,7 +69,15 @@ logs/
 **/*.txt
 
 !configs/prompt_flow/default_flow.json
+!configs/prompt_flow/skill_flow.json
 # 忽略项目中的所有PDF文件
 **/*.pdf
 
 # 临时文件/目录
+
+# ---- 项目运行缓存/生成数据 ----
+**/.cache_registry_meta.json
+**/__pycache__/
+*.pyc
+*.pyo
+*.csv
