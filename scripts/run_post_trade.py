@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
 from datetime import date
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from services.trading.post_trade_pipeline import run_post_trade
 
 
 def main() -> None:
@@ -21,30 +24,7 @@ def main() -> None:
     parser.add_argument("--confirm", action="store_true", help="Compatibility flag; execution still proceeds directly.")
     args = parser.parse_args()
 
-    execute_command = [
-        sys.executable,
-        str(PROJECT_ROOT / "scripts" / "execute_trade_from_decision.py"),
-        "--date",
-        args.run_date,
-        "--base-dir",
-        args.base_dir,
-    ]
-    if args.signature:
-        execute_command.extend(["--signature", args.signature])
-
-    merge_command = [
-        sys.executable,
-        str(PROJECT_ROOT / "scripts" / "merge_trade_summary.py"),
-        "--date",
-        args.run_date,
-        "--base-dir",
-        args.base_dir,
-    ]
-    if args.signature:
-        merge_command.extend(["--signature", args.signature])
-
-    subprocess.run(execute_command, check=True, cwd=str(PROJECT_ROOT))
-    subprocess.run(merge_command, check=True, cwd=str(PROJECT_ROOT))
+    run_post_trade(args.run_date, base_dir=args.base_dir, signature=args.signature)
 
 
 if __name__ == "__main__":

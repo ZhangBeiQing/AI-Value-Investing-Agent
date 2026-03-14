@@ -39,7 +39,7 @@ NAME_BY_SYMBOL = {entry.symbol: entry.name for entry in TRACKED_A_STOCKS}
 
 PROMPT_CONFIG_ENV = "PROMPT_FLOW_CONFIG"
 DEFAULT_PROMPT_CONFIG = (
-    Path(project_root) / "configs" / "prompt_flow" / "default_flow.json"
+    Path(project_root) / "configs" / "prompt_flow" / "skill_flow.json"
 )
 SUMMARY_PLACEHOLDER = "（暂无历史总结，请在今日结束后补充。）"
 SUMMARY_FILENAME = "daily_summary.json"

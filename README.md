@@ -2,9 +2,9 @@
 
 [中文版](README_CN.md)
 
-This project is an AI-driven investment agent capable of conducting value investing analysis and simulated trading for **A-shares and HK-shares**.
+This project is a local `skill-only` AI investment workflow for **A-shares and HK-shares**.
 
-It leverages Large Language Models (LLMs) to analyze financial data, news, and macroeconomic indicators, performing backtesting or live trading simulations based on configurable strategies.
+It prepares daily research inputs locally, lets your desktop LLM/agent read those prepared files via a fixed skill flow, and then executes simulated trading with local Python code.
 
 ## 📖 Documentation
 
@@ -34,27 +34,11 @@ TRACKED_A_STOCKS: List[StockEntry] = [
 ]
 ```
 
-#### Run Configuration
+#### Prompt Flow Configuration
 
-Modify `configs/default_config.json` (or create your own config file) to select the AI models to use and the date range for backtesting or live simulation:
+The active prompt flow is `configs/prompt_flow/skill_flow.json`.
 
-```json
-{
-  "date_range": {
-    "init_date": "2024-01-01",
-    "end_date": "2024-12-31"
-  },
-  "models": [
-    {
-      "name": "deepseek-reasoner",
-      "basemodel": "deepseek/deepseek-reasoner",
-      "signature": "deepseek-reasoner",
-      "enabled": true
-    }
-  ]
-  // ... other settings
-}
-```
+Your local agent should read the generated files under `data/skill_runs/{date}/` instead of calling MCP services.
 
 #### Environment Variables
 
@@ -74,12 +58,27 @@ Run the daily data management script to update all necessary data (prices, finan
 python scripts/manage_daily_data.py
 ```
 
-### 4. Run the Agent
+### 4. Build Daily Skill Inputs
 
-Finally, run the main script to start the AI backtest or simulation defined in your configuration:
+Generate the daily skill package for your local agent:
 
 ```bash
-python main.py
+python scripts/run_daily_pipeline.py --date 2026-03-14
+```
+
+This creates:
+
+- `01_global_context.md`
+- `02_basic_snapshot_payload.json`
+- `03_agent_input.md`
+- `04_stock_research/*.md`
+
+### 5. Execute Post-Trade Processing
+
+After your local agent writes `05_decision.json`, run:
+
+```bash
+python scripts/run_post_trade.py --date 2026-03-14
 ```
 
 ## 📊 Example Results
@@ -91,12 +90,13 @@ You can view the example results in the `data/agent_data/deepseek-reasoner/v2.1�
 
 ## 📂 Project Structure
 
-- `agent/`: Core agent logic.
+- `services/`: Core skill-only business services.
 - `configs/`: Configuration files.
 - `data/`: Data storage (cache, logs, results).
 - `docs/`: Design and system documentation.
-- `scripts/`: Utility scripts (data management, etc.).
-- `tools/`: MCP tools for the agent.
+- `scripts/`: CLI entry points for daily workflow.
+- `shared_data_access/`: Unified data access and cache layer.
+- `agent_tools/`: Thin legacy compatibility wrappers for a few historical import paths.
 
 ## 📄 License
 

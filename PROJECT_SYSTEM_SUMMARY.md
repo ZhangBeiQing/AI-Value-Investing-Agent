@@ -1,15 +1,15 @@
-更新日期：2025-12-07
+更新日期：2026-03-14
 
 # AI-Trader 项目系统白皮书
 
 ## 1. 顶层流程与运行方式
-- **入口脚本**：`main.py` 读取 `configs/default_config.json`（或自定义文件/环境变量），逐个启用配置中 `enabled` 的模型，动态加载 `agent.base_agent.BaseAgent`，并在 `INIT_DATE~END_DATE` 范围内执行交易循环。`main.sh` 封装了数据刷新、MCP 服务启动与对战流程的整套批处理。
-- **BaseAgent 生命周期**（`agent/base_agent/base_agent.py`）：启动时配置 MCP 客户端连接，通过 `langchain_mcp_adapters` 连接 `trade`/`analysis`/`python`/`news`/`macro` MCP 服务；运行阶段按 `max_steps` 执行“提问→调用工具→解析工具消息→日志写入”的闭环，并将每步会话写入 `data/agent_data/{signature}/log/{date}/log.jsonl`。
+- **当前主入口**：项目当前主流程已经切换为 `skill-only`。日常运行顺序为：`scripts/manage_daily_data.py` → `scripts/run_daily_pipeline.py --date YYYY-MM-DD` → 本地 Agent 读取 `data/skill_runs/{date}/` → `scripts/run_post_trade.py --date YYYY-MM-DD`。
+- **旧入口状态**：`main.py` 现已改为迁移提示入口；`main.sh` 与 `agent/base_agent/base_agent.py` 已从主流程中清理，不再保留实际运行能力。
 - **交易结果落地**：`tools.price_tools` 提供 `get_latest_position`、`get_open_prices`、`add_no_trade_record`、`compute_total_value` 等函数，所有买卖最终写入 `data/agent_data/{signature}/position/position.jsonl` 并更新 `IF_TRADE` 标记。
-- **运行前置与依赖**：`pip install -r requirements.txt` 安装依赖，`cp .env.example .env` 并填写 OpenAI/DeepSeek/Gemini 等密钥；运行 agent 之前需执行 `python agent_tools/start_mcp_services.py` 启动各 MCP 工具服务。
+- **运行前置与依赖**：`pip install -r requirements.txt` 安装依赖，`cp .env.example .env` 并填写密钥；当前主流程默认不再依赖启动 MCP 服务。
 
 ## 2. Agent 提示词、策略与上下文
-- **提示词生成**（`prompts/agent_prompt.py`）：新增 `PromptConfig` Pydantic 校验 + `configs/prompt_flow/default_flow.json`，把角色设定、流程、工具规范、决策约束等拆为配置片段，并自动注入 `{date}`、`{date_1}`（最新可用数据日）、`{positions}`、`{today_buy_price}`、`{position_costs}`、`{position_profit}`。生成的 System Prompt 强制执行“macro → 基础数据 → 分析 → 决策 → JSON 总结 流程。
+- **提示词生成**（`prompts/agent_prompt.py`）：当前默认 prompt flow 已切换到 `configs/prompt_flow/skill_flow.json`，角色设定、流程、决策约束等由该文件驱动，并自动注入 `{date}`、`{date_1}`、`{positions}`、`{today_buy_price}`、`{position_costs}`、`{position_profit}` 等上下文。
 - **历史总结注入**：`trade_summary.get_portfolio_historical_context` 会把 `operation_summary.json` 与最新 `portfolio_daily_summary.json` 中的要点合并成 JSON 块，作为 prompt 的“历史交易总结”输入，解决大模型“记忆断层”问题（详见 `docs/trade_summary/` 下的设计文档）。
 - **投资理念文件**：`AI agent的投资理念.md` 记录了深度投资策略、10 只固定股票池、变化响应机制等文字提示，可作为 prompt flow 的补充。
 - **停止信号与 JSON 提交**：所有 agent 回答必须输出指定结构的 JSON（包含 `stock_operations`、`system_risk_notes` 等字段），`prompts/agent_prompt.extract_json_from_ai_output` 用于在日志中稳健抽取 JSON。
@@ -28,13 +28,13 @@
 - **公告与新闻**：`news/disclosures_builder.py` 把 `SharedDataAccess` 的公告索引下载到本地 PDF/Markdown，并通过 OpenAI/Qwen 模型提取结构化 `raw_facts`、`quantitative_data`、`category` 等字段；`news/progressive_news_summarizer.py` 负责多源新闻/公告/研报收集。`docs/news/` 下的三篇设计文档详细定义了系统目标与规格。
 - **财报深度研究**（`fundamental/fundamental_research.py`）：以 `SharedDataAccess` + `disclosures_builder` 提供的公告 Markdown 为输入，`FinancialReportExtractor` 下载/提取要点，再由 `FundamentalResearchAgent` 按 `DOC_EXTRACTION_PROMPT` 与 `REPORT_ANALYSIS_AGENT_PROMPT` 生成结构化研究结果，落地到 `fundamental_reports/`。`docs/fundamental_research/README.md` 描述端到端流程。
 
-## 5. MCP 工具与运行治理
-- **工具进程**：`agent_tools/` 通过 FastMCP 暴露工具端点（`tool_trade.py`、`tool_stock_analysis.py`、`tool_macro_summary.py`、`tool_stock_news_search.py`、`tool_python.py`、`tool_math.py` 等）。`agent_tools/start_mcp_services.py` 用 `MCPServiceManager` 启动/监控所有服务，并将运行日志写入 `logs/`。
+## 5. 兼容层与运行治理
+- **兼容层状态**：`agent_tools/` 现在只保留少量历史导入路径兼容包装层，真实业务实现已经迁移到 `services/` 与 `core/`。项目当前不再保留 `start_mcp_services.py`、`tool_python.py`、`tool_math.py` 等旧 MCP 服务脚本。
 - **工具输出**：
   - `TradeTools`：提供 `buy`/`sell`，校验输入、读取仓位、调用 `price_tools`, 并把成功交易写入 position 日志。
 - `StockAnalysis`：默认开放 `analyze_stock_dynamics_and_valuation`（整合价格+估值）以及 `get_basic_stock_info`（需单测时恢复装饰器），原先的 `run_enhanced_pe_pb_analysis` / `summarize_stock_price_dynamics` 逻辑仍保留为内部函数。
-  - `tool_stock_news_search.py`/`tool_macro_summary.py`/`tool_python.py` 分别处理本地新闻检索、宏观 Markdown 输出、自定义 Python 执行。
-- **统一日志**：所有 MCP 工具通过 `agent_tools/logging_utils.init_tool_logger()` 获取 `logs/{model}/{tool}/{timestamp}.log` 的结构化日志，满足“工具级独立日志 + logging 分级”规范。
+  - `tool_stock_news_search.py`/`tool_macro_summary.py`/`tool_financial_report.py` 仅作为历史兼容入口，真实实现分别位于 `services/research/`。
+- **统一日志**：兼容包装层和脚本入口统一通过 `core/logging.py` 与 `agent_tools/logging_utils.init_tool_logger()` 获取 `logs/{model}/{tool}/{timestamp}.log` 的结构化日志，满足“工具级独立日志 + logging 分级”规范。
 
 ## 6. 交易总结数据库与上下文
 - **数据文件布局**：`trade_summary.py` 以 `data/agent_data/{signature}` 为根，维护 `stock_operations.json`（每日原始 JSON）、`operation_summary.json`（合并后的持有/买卖记录）与 `portfolio_daily_summary.json`（组合级别风险/焦点）。
@@ -50,4 +50,4 @@
 - **测试**：`test/test_deepseek_wrapper.py` 验证 Deepseek reasoner wrapper 会把 `reasoning_content` 正确回放；`test/test_prompt.py` 用于手动调试 prompt 输出（未来需替换为自动断言）。根据仓库指南，测试 MCP 工具函数前需移除 `@mcp.tool()` 装饰器，测试完再恢复。
 - **运行规范**：所有股票标识必须使用 `SymbolInfo` + `代码.后缀` 格式，数据抓取一律通过 `SharedDataAccess`；更新分析目录前需保留 `.cache_registry_meta.json` 并清理旧输出；日志需通过统一 logger；所有脚本/工具在写 `analysis/`、`pe_pb_analysis/` 等目录前需清扫旧文件。
 
-以上内容覆盖了 2025 年 12 月 07 日最新的代码与文档结构，后续如有重大重构，请同步更新本文件以保持团队对系统的一致认知。
+以上内容覆盖了 2026 年 03 月 14 日最新的代码与文档结构，后续如有重大重构，请同步更新本文件以保持团队对系统的一致认知。

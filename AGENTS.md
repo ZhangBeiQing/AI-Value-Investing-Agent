@@ -6,7 +6,7 @@ we are in windows WSL, so any resources that paste into claude code chatbox, we 
 ex, for "C:\temp\a.jpg", it will be transformed to "/nt/c/temp/a.jpg"
 
 ## 项目结构与模块组织
-交易入口位于 `main.py`，具体的智能体实现保存在 `agent/` 目录。共享工具和 MCP 集成分别放在 `agent_tools/` 与 `tools/`。提示词和竞赛配置位于 `prompts/` 与 `configs/`，默认配置文件是 `configs/default_config.json`。历史行情数据和生成的智能体日志分别写入 `data/` 与 `logs/`，而仪表盘文档存放在 `docs/`。自动化检查在 `test/` 目录下，遵循 `test_*.py` 的文件命名约定。`tmp_stock_analy_code/` 目录包含已迁移的 AI LLM 股票分析工具包，后续将重构为 MCP 工具，详情请参见该目录下的 `README.md`。
+当前项目主流程已经切换为本地 `skill-only` 架构。日常入口位于 `scripts/`，核心业务实现正在收敛到 `services/` 与 `shared_data_access/`。`agent_tools/` 与 `tools/` 中仍有部分历史兼容层，但新代码应优先放在 `services/`、`core/`、`shared_data_access/`。提示词和流程配置位于 `prompts/` 与 `configs/`，当前主 prompt flow 是 `configs/prompt_flow/skill_flow.json`。历史行情数据和运行产物写入 `data/`，日志写入 `logs/`，文档位于 `docs/`。自动化检查在 `test/` 目录下，遵循 `test_*.py` 的文件命名约定。
 
 ### 数据访问/缓存规范（必须遵守）
 - **统一入口**：任何需要调用 akshare 或其他外部行情、财报、股本接口的逻辑，都必须通过 `shared_data_access` 提供的 API（核心为 `SharedDataAccess.prepare_dataset()` / `ensure_symbol_data()`）。禁止在 analyzer、agent 或工具中直接访问 akshare。
@@ -16,10 +16,11 @@ ex, for "C:\temp\a.jpg", it will be transformed to "/nt/c/temp/a.jpg"
 - **输出/分析目录**：脚本在写入 `analysis/`、`pe_pb_analysis/` 等结果目录前应先清理旧文件，仅保留 `.cache_registry_meta.json`，防止缓存越堆越多（参考 `stock_price_dynamics_summarizer.py` 与 `enhanced_pe_pb_analyzer.py` 的实现）。
 
 ## 构建、测试与开发命令
-- `pip install -r requirements.txt` — 安装智能体及工具所需的全部 Python 依赖。
+- `pip install -r requirements.txt` — 安装项目依赖。
 - `cp .env.example .env` 并填写密钥 — 在任何运行前完成，确保不要将密钥提交到仓库。
-- `python main.py` 或 `python main.py configs/sample.json` — 使用默认或自定义场景启动对战。
-- `python main.sh` — 执行完整流水线（数据刷新、MCP 服务、智能体、文档服务）。
+- `python scripts/manage_daily_data.py` — 刷新每日数据缓存、股价、财报、公告等。
+- `python scripts/run_daily_pipeline.py --date YYYY-MM-DD` — 生成 `01-04` skill 输入产物。
+- `python scripts/run_post_trade.py --date YYYY-MM-DD` — 基于 `05_decision.json` 执行交易后处理并生成 `06-08`。
 
 ## 代码风格与命名规范
 Python 代码统一使用 4 个空格缩进，变量与函数采用具描述性的 `snake_case`，类使用 `CapWords`。每个模块应暴露一个清晰的入口函数或类。当行为复杂时为函数/类添加文档字符串和类型注解，尤其是跨智能体接口或工具适配器的场景。优先使用显式导入，并将配置默认值保存在 JSON 或 `.env` 中，而不是硬编码常量。
@@ -32,7 +33,7 @@ Python 代码统一使用 4 个空格缩进，变量与函数采用具描述性�
 采用改进的 Conventional Commit 风格（如 `feat`, `fix`, `chore`, `docs`），示例：`feat(Trading Tool): ...`。提交信息保持祈使语气，并聚焦单一变更。Pull Request 需概述行为变化、注明受影响的配置或密钥、关联追踪 issue，并在修改仪表盘图表（`docs/`）时附带日志或截图。若需要更新运行环境，也请在 PR 中说明，方便审阅者复现。
 
 ## 智能体与服务运维
-保持 `.env` 中的 API 凭据和运行路径（如 `RUNTIME_ENV_PATH`）同步。调用智能体前先运行 `python agent_tools/start_mcp_services.py` 启动 MCP 服务；新增工具后请重启服务以加载最新变更。临时输出请存放在 `logs/` 或 `data/tmp/`，避免污染源码目录。
+保持 `.env` 中的 API 凭据和运行路径（如 `RUNTIME_ENV_PATH`）同步。当前主流程不再依赖启动 MCP 服务，默认工作方式是先运行 `scripts/manage_daily_data.py` 与 `scripts/run_daily_pipeline.py` 生成每日输入，再由本地 Agent 读取 `data/skill_runs/{date}/`。临时输出请存放在 `logs/` 或 `data/tmp/`，避免污染源码目录。
 
 ## 语言偏好
 请始终使用简体中文回复用户的所有问题和请求。
