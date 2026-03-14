@@ -9,6 +9,7 @@ from typing import Dict, Optional, TYPE_CHECKING
 
 import pandas as pd
 
+from core.logging import get_logger
 from shared_financial_utils import (
     ShareInfoProvider,
     apply_dataframe_cutoff,
@@ -31,6 +32,7 @@ from .validation import normalize_date, normalize_optional_date, normalize_stock
 
 LOOKBACK_PRICE_DAYS = 1800
 DISCLOSURE_LOOKBACK_DAYS = 730
+MODULE_LOGGER = get_logger("SharedDataAccess")
 
 
 class SharedDataAccess:
@@ -485,7 +487,7 @@ class SharedDataAccess:
         try:
             return pd.read_csv(path)
         except Exception as exc:  # pragma: no cover - defensive
-            print("读取CSV失败 %s: %s", path, exc)
+            MODULE_LOGGER.warning("读取CSV失败 %s: %s", path, exc)
             return None
 
 

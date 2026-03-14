@@ -11,11 +11,13 @@ import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+from core.logging import get_logger
 from tools.general_tools import get_config_value
 from configs.stock_pool import TRACKED_SYMBOLS
 from utlity.stock_utils import get_latest_trading_day
 
 TRACKED_SYMBOLS_LIST = TRACKED_SYMBOLS
+LOGGER = get_logger("PriceTools")
 
 def get_yesterday_date(today_date: str, calendar_market: str = "CN") -> str:
     """
@@ -194,7 +196,7 @@ def get_today_init_position(today_date: str, modelname: str) -> Dict[str, float]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
 
     if not position_file.exists():
-        print(f"Position file {position_file} does not exist")
+        LOGGER.warning("Position file %s does not exist", position_file)
         return {}
     
     yesterday_date = get_yesterday_date(today_date)
@@ -395,7 +397,7 @@ def add_no_trade_record(today_date: str, modelname: str):
     """
     save_item = {}
     current_position, current_action_id = get_latest_position(today_date, modelname)
-    print(current_position, current_action_id)
+    LOGGER.info("add_no_trade_record 使用上一条仓位: position=%s, action_id=%s", current_position, current_action_id)
     save_item["date"] = today_date
     save_item["id"] = current_action_id+1
     save_item["this_action"] = {"action":"no_trade","symbol":"","amount":0}
@@ -554,22 +556,3 @@ def compute_position_costs_and_profit(
     return active_costs, profits
 
 
-if __name__ == "__main__":
-    today_date = get_config_value("TODAY_DATE")
-    today_date = datetime.strptime("20251106", "%Y%m%d").strftime("%Y-%m-%d")
-    signature = get_config_value("SIGNATURE")
-    signature = "deepseek-chat"
-    if signature is None:
-        raise ValueError("SIGNATURE environment variable is not set")
-    print(today_date, signature)
-    yesterday_date = get_yesterday_date(today_date)
-    # print(yesterday_date)
-    today_buy_price = get_open_prices(today_date, TRACKED_SYMBOLS_LIST)
-    # print(today_buy_price)
-    yesterday_buy_prices, yesterday_sell_prices = get_yesterday_open_and_close_price(today_date, TRACKED_SYMBOLS_LIST)
-    today_init_position = get_today_init_position(today_date, signature)
-    latest_position, latest_action_id = get_latest_position(today_date, signature)
-    print(latest_position, latest_action_id)
-    avg_costs, profits = compute_position_costs_and_profit(today_date, signature)
-    print(avg_costs, profits)
-    add_no_trade_record(today_date, signature)
