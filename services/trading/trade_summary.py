@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import List, Optional
 from configs.stock_pool import TRACKED_A_STOCKS
+from core.logging import init_component_logger
 from utlity import get_last_trading_day
 
 # --- 1. 文件路径定义 (模拟数据库) ---
@@ -27,6 +28,7 @@ def _portfolio_summary_file(signature: str) -> str:
 
 # 股票代码到名称的映射
 NAME_BY_SYMBOL = {entry.symbol: entry.name for entry in TRACKED_A_STOCKS}
+LOGGER = init_component_logger("TradeSummary", group="services/trading", filename_prefix="trade_summary")
 SUMMARY_DETAIL_FIELDS = [
     "action_num",
     "reason",
@@ -233,7 +235,7 @@ def save_daily_operations(signature: str, ai_output_json: dict) -> List[dict]:
     write_json_file(operations_file, all_operations)
     write_json_file(portfolio_file, all_portfolio_summaries)
 
-    print(f"成功保存 {summary_date} 的 {len(saved_operations)} 条股票操作记录和1条系统总结。")
+    LOGGER.info("成功保存 %s 的 %d 条股票操作记录和 1 条系统总结", summary_date, len(saved_operations))
     return saved_operations
 
 
@@ -242,7 +244,7 @@ def _rebuild_operation_summary(signature: str, summary_file: str | None = None) 
     operations_file = _stock_operations_file(signature)
     all_operations = read_json_file(operations_file)
     if not all_operations:
-        print("没有原始操作记录可供处理。")
+        LOGGER.info("没有原始操作记录可供处理")
         return
 
     operations_by_stock = defaultdict(list)
@@ -294,7 +296,7 @@ def _rebuild_operation_summary(signature: str, summary_file: str | None = None) 
     _sort_summary_entries(rebuilt_summary)
     _normalize_summary_reasons(rebuilt_summary)
     write_json_file(summary_file, rebuilt_summary)
-    print(f"全量重建 operation_summary 完成，共 {len(rebuilt_summary)} 条记录。")
+    LOGGER.info("全量重建 operation_summary 完成，共 %d 条记录", len(rebuilt_summary))
 
 
 def process_and_merge_operations(signature: str, new_operations: List[dict] | None = None):
@@ -305,9 +307,9 @@ def process_and_merge_operations(signature: str, new_operations: List[dict] | No
             _sort_summary_entries(summary_entries)
             _normalize_summary_reasons(summary_entries)
             write_json_file(summary_file, summary_entries)
-            print(f"增量更新 operation_summary，新增/合并 {len(new_operations)} 条记录。")
+            LOGGER.info("增量更新 operation_summary，新增/合并 %d 条记录", len(new_operations))
             return
-        print("增量更新 operation_summary 未产生变化，触发全量重建以确保一致性。")
+        LOGGER.info("增量更新 operation_summary 未产生变化，触发全量重建以确保一致性")
     _rebuild_operation_summary(signature, summary_file)
 
 
