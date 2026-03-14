@@ -45,7 +45,7 @@
 - **设计文档**：`docs/trade_summary/` 下的背景需求、详细设计与数据库设计文档详细描述了“记忆压缩、token 成本控制、表结构”。
 
 ## 7. 文档、测试与开发规范
-- **项目说明**：`README.md`、`AGENTS.md`（仓库指南、缓存/回测/指令/语言要求）、`PROJECT_SYSTEM_SUMMARY.md`（本文）作为快速入门材料。
+- **项目说明**：`README.md`、`AGENTS.md`（仓库指南、缓存/回测/指令/语言要求）、`docs/PROJECT_SYSTEM_SUMMARY.md`（本文）作为快速入门材料。
 - **设计文档**：`docs/cache/`、`docs/share_data_access/`、`docs/trade_summary/`、`docs/news/`、`docs/fundamental_research/` 提供当前仍有效的模块说明；已完成的历史重构计划与阶段性总结文档已从仓库中清理。
 - **测试**：当前仓库以脚本级和集成级验证为主，重大修改后应至少回归 `manage_daily_data`、`run_daily_pipeline`、`run_post_trade` 三条主链路。
 - **运行规范**：所有股票标识必须使用 `SymbolInfo` + `代码.后缀` 格式，数据抓取一律通过 `SharedDataAccess`；更新分析目录前需保留 `.cache_registry_meta.json` 并清理旧输出；日志需通过统一 logger；所有脚本/工具在写 `analysis/`、`pe_pb_analysis/` 等目录前需清扫旧文件。

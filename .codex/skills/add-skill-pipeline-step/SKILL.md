@@ -64,7 +64,7 @@ Compatibility Notes:
 至少同步以下其中之一：
 
 - `AGENTS.md`
-- `PROJECT_SYSTEM_SUMMARY.md`
+- `docs/PROJECT_SYSTEM_SUMMARY.md`
 - 相关 `docs/` 设计文档
 
 如果改了 `skill_flow.json`，必须说明上游输入和下游 JSON 契约是否变了。
@@ -91,4 +91,3 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 改文件名导致本地 Agent 读不到
 - 忘记同步 `run_manifest.json`
 - 验证时污染正式 `data/skill_runs/`
-

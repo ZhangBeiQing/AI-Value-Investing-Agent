@@ -22,8 +22,6 @@
   - 例如 `C:\temp\a.jpg` -> `/nt/c/temp/a.jpg`
 - Python 虚拟环境：`source /home/zhangbeiqing/venv/ai_stock/bin/activate`
 - 默认语言：始终使用简体中文回复用户
-- 默认主流程不再依赖启动 MCP 服务
-- `AReaL-main/` 仅作为外部参考仓库，除非用户明确要求，否则不要把它当成当前项目的一部分进行改动
 
 ## 核心目录
 
@@ -74,7 +72,6 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 不要在 `services/`、`shared_data_access/`、`core/` 中直接访问 akshare 之外的散乱数据源而不经统一封装
 - 不要用 `as_of_date` 裁剪抓取窗口，只能在读取阶段做时间截断
 - 不要把运行产物、临时调试文件、日志直接塞进源码目录
-- 不要默认把 `AReaL-main/` 的实现直接搬进来，必须先适配当前项目场景
 - 不要用 `from x import *`
 
 ## Progressive Disclosure
@@ -113,6 +110,10 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - `testing.md`：evidence-first 调试、最小复现、主链路验证要求
 
 上述规则以 `.codex/rules/` 为主维护目录；`.claude/rules/` 默认是兼容镜像。
+
+## Docs
+
+- `docs/PROJECT_SYSTEM_SUMMARY.md`：系统整体架构、日常主流程、关键模块、缓存布局与交易汇总链路总览，适合新 session 或大改动前快速建立全局上下文
 
 ## Skills
 
