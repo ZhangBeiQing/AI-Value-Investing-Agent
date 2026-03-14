@@ -7,7 +7,7 @@
 - 日常流程：`manage_daily_data` 刷新数据 -> `run_daily_pipeline` 生成 `01-04` 输入产物 -> 本地 Agent 读取 `data/skill_runs/{date}/` -> `run_post_trade` 执行 `05-08`
 - 当前主代码放在 `scripts/`、`services/`、`shared_data_access/`、`core/`
 - `agent_tools/`、`tools/` 仍保留少量兼容层，但不再是新代码主落点
-- 运行产物与缓存写入 `data/`，日志写入 `logs/`，规范与说明写入 `.claude/`、`docs/`
+- 运行产物与缓存写入 `data/`，日志写入 `logs/`，规范与说明写入 `.codex/`、`.claude/`、`docs/`
 
 ## WHY：设计目标
 
@@ -35,9 +35,10 @@
 - `shared_data_access/`：行情、财报、股本、公告的统一缓存入口
 - `core/`：日志、运行态、通用基础设施
 - `configs/prompt_flow/skill_flow.json`：当前主 flow
-- `.claude/rules/`：按主题或路径拆分的约束
-- `.claude/skills/`：可复用的项目开发流程
-- `.claude/commands/`：用户显式触发时执行的固定动作
+- `.codex/rules/`：当前主维护的规则目录，供 Codex 场景优先使用
+- `.codex/skills/`：当前主维护的项目技能文档
+- `.codex/commands/`：当前主维护的固定动作文档
+- `.claude/`：兼容 Claude Code 的镜像目录，默认通过软链接指向 `.codex/`
 
 ## 核心命令
 
@@ -80,13 +81,13 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 | 任务 | 首选参考 |
 | --- | --- |
-| 刷新每日数据 | `scripts/manage_daily_data.py`, `services/data_refresh/`, `.claude/skills/extend-shared-data-access/SKILL.md` |
-| 调整 `01-04` 产物 | `scripts/run_daily_pipeline.py`, `services/pipeline/`, `.claude/rules/skill-pipeline.md`, `.claude/skills/add-skill-pipeline-step/SKILL.md` |
-| 增加研究/快照字段 | `services/research/`, `services/snapshot/`, `.claude/rules/shared-data-access.md` |
-| 增加外部数据缓存 | `shared_data_access/`, `shared_financial_utils.py`, `.claude/skills/extend-shared-data-access/SKILL.md` |
-| 调整交易后处理 | `scripts/run_post_trade.py`, `services/trading/`, `.claude/rules/skill-pipeline.md` |
-| 排查主链路失败 | `logs/`, `run_manifest.json`, `latest_status.json`, `.claude/rules/testing.md`, `.claude/skills/debug-skill-run/SKILL.md` |
-| 统一日志接入 | `core/logging.py`, `.claude/rules/code-style.md` |
+| 刷新每日数据 | `scripts/manage_daily_data.py`, `services/data_refresh/`, `.codex/skills/extend-shared-data-access/SKILL.md` |
+| 调整 `01-04` 产物 | `scripts/run_daily_pipeline.py`, `services/pipeline/`, `.codex/rules/skill-pipeline.md`, `.codex/skills/add-skill-pipeline-step/SKILL.md` |
+| 增加研究/快照字段 | `services/research/`, `services/snapshot/`, `.codex/rules/shared-data-access.md` |
+| 增加外部数据缓存 | `shared_data_access/`, `shared_financial_utils.py`, `.codex/skills/extend-shared-data-access/SKILL.md` |
+| 调整交易后处理 | `scripts/run_post_trade.py`, `services/trading/`, `.codex/rules/skill-pipeline.md` |
+| 排查主链路失败 | `logs/`, `run_manifest.json`, `latest_status.json`, `.codex/rules/testing.md`, `.codex/skills/debug-skill-run/SKILL.md` |
+| 统一日志接入 | `core/logging.py`, `.codex/rules/code-style.md` |
 
 ## 数据与缓存规则
 
@@ -101,7 +102,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 新代码禁止在库代码里直接用 `print` 做运行日志
 - 统一使用 `core.logging`：`get_logger()`、`init_component_logger()`、`init_tool_logger()`
 - Logger 名称必须是业务语义明确的 PascalCase，如 `ManageDailyData`、`DailyPipeline`、`TradeSummary`
-- 详细规范见 `.claude/rules/code-style.md`
+- 详细规范见 `.codex/rules/code-style.md`
 
 ## Rules
 
@@ -111,16 +112,18 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - `skill-pipeline.md`：`01-08` 产物契约、脚本分层、manifest 与交易后处理约束
 - `testing.md`：evidence-first 调试、最小复现、主链路验证要求
 
+上述规则以 `.codex/rules/` 为主维护目录；`.claude/rules/` 默认是兼容镜像。
+
 ## Skills
 
 - `add-skill-pipeline-step`：新增或重构 `skill` 流水线步骤时使用
 - `extend-shared-data-access`：新增数据源、缓存目录或指标依赖时使用
 - `debug-skill-run`：`manage_daily_data` / `run_daily_pipeline` / `run_post_trade` 失败时使用
 
-以上三类 skill 位于 `.claude/skills/`，用于把重复开发流程写成稳定步骤，避免每次从零摸索。
+以上三类 skill 位于 `.codex/skills/`，`.claude/skills/` 默认通过软链接复用它们。
 
 ## Commands
 
 - `review-skill-run`：检查某一天的 `skill` 运行产物、manifest、日志与交易后处理是否完整且一致
 
-Commands 位于 `.claude/commands/`，适合“用户明确要求执行某个固定检查动作”的场景；它不替代 `rules` 或 `skills`，而是把高频动作写成统一入口。
+Commands 位于 `.codex/commands/`，`.claude/commands/` 默认通过软链接复用它们。它不替代 `rules` 或 `skills`，而是把高频动作写成统一入口。
