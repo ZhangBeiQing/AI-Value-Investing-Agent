@@ -13,7 +13,7 @@
 ### 1. 统一入口脚本
 新增 `scripts/manage_daily_data.py`，按以下步骤顺序执行：
 
-1. **环境准备**：读取 `configs/default_config.json` 或 `.env` 以确定股票池、日期区间、签名（默认 `deepseek-reasoner`）等参数。脚本允许覆盖参数（如 `--date 2025-11-03`、`--signature foo`）。
+1. **环境准备**：优先读取 CLI 参数与环境变量，以确定股票池、日期和签名（默认 `deepseek-reasoner`）。脚本允许覆盖参数（如 `--date 2025-11-03`、`--signature foo`）。
 2. **刷新行情/财务缓存**：
    - 读取 `configs/stock_pool.py` 的 `TRACKED_A_STOCKS` 列表。
    - 对每个 symbol 调用 `prepare_dataset(symbolInfo, as_of_date=target_date)`，以确保当天 20:00 前的最新缓存可供 AI 使用。
@@ -41,7 +41,7 @@
 
 ### 5. 配置/扩展
 
-- `scripts/manage_daily_data.py` 默认读取 `configs/default_config.json` 的 `agent_config.initial_cash`、股票池、signature 等。可通过 CLI 覆盖 `--signature`、`--symbols-file`、`--date`、`--force-refresh`。
+- `scripts/manage_daily_data.py` 当前以股票池配置、CLI 参数和环境变量为主；可通过 CLI 覆盖 `--signature`、`--symbols-file`、`--date`、`--force-refresh`。
 - 对于公告审计模型，优先使用 `.env` 中的 `AUDIT_MODEL_*`，若缺失则抛错提醒配置。
 
 ### 6. 实现要点

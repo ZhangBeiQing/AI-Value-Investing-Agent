@@ -1,8 +1,8 @@
 # AI Value Investing Agent (AI 价值投资代理)
 
-这是一个基于 AI 的投资代理项目，旨在进行价值投资分析和模拟交易，目前支持 **A股和港股**。
+这是一个本地 `skill-only` 的 AI 投资工作流项目，目前支持 **A股和港股**。
 
-该项目利用大语言模型（LLM）分析财务数据、新闻和宏观经济指标，根据可配置的策略执行回测或实时交易模拟。
+项目会在本地准备好每日研究输入，再由你本地的桌面 Agent / LLM 按固定 skill 流程读取这些文件完成分析，并通过本地 Python 完成模拟交易。
 
 ## 📖 文档
 
@@ -32,27 +32,11 @@ TRACKED_A_STOCKS: List[StockEntry] = [
 ]
 ```
 
-#### 运行配置
+#### Prompt Flow 配置
 
-修改 `configs/default_config.json`（或创建您自己的配置文件），选择用于回测或实时运行的模型以及日期范围：
+当前启用的提示词流程配置是 `configs/prompt_flow/skill_flow.json`。
 
-```json
-{
-  "date_range": {
-    "init_date": "2024-01-01",
-    "end_date": "2024-12-31"
-  },
-  "models": [
-    {
-      "name": "deepseek-reasoner",
-      "basemodel": "deepseek/deepseek-reasoner",
-      "signature": "deepseek-reasoner",
-      "enabled": true
-    }
-  ]
-  // ... 其他设置
-}
-```
+本项目现在的主流程是生成 `data/skill_runs/{date}/` 下的每日输入文件，供本地 Agent 读取，而不是再通过 MCP 服务实时取数。
 
 #### 环境变量
 
@@ -72,12 +56,27 @@ cp .env.example .env
 python scripts/manage_daily_data.py
 ```
 
-### 4. 运行代理
+### 4. 生成每日 Skill 输入
 
-最后，运行主程序以开始 `default_config.json` 中指定的 AI 回测或模拟：
+生成给本地 Agent 使用的每日输入包：
 
 ```bash
-python main.py
+python scripts/run_daily_pipeline.py --date 2026-03-14
+```
+
+会生成：
+
+- `01_global_context.md`
+- `02_basic_snapshot_payload.json`
+- `03_agent_input.md`
+- `04_stock_research/*.md`
+
+### 5. 运行交易后处理
+
+当本地 Agent 产出 `05_decision.json` 后，运行：
+
+```bash
+python scripts/run_post_trade.py --date 2026-03-14
 ```
 
 ## � 效果展示
@@ -89,12 +88,13 @@ python main.py
 
 ## �📂 项目结构
 
-- `agent/`: 代理核心逻辑。
+- `services/`: skill-only 业务核心服务层。
 - `configs/`: 配置文件。
 - `data/`: 数据存储（缓存、日志、结果）。
 - `docs/`: 设计和系统文档。
-- `scripts/`: 工具脚本（数据管理等）。
-- `tools/`: 代理使用的 MCP 工具。
+- `scripts/`: 每日工作流 CLI 入口。
+- `shared_data_access/`: 统一数据访问与缓存层。
+- `agent_tools/`: 少量历史导入路径的兼容包装层。
 
 ## 📄 许可证
 
