@@ -25,6 +25,13 @@ ex, for "C:\temp\a.jpg", it will be transformed to "/nt/c/temp/a.jpg"
 ## 代码风格与命名规范
 Python 代码统一使用 4 个空格缩进，变量与函数采用具描述性的 `snake_case`，类使用 `CapWords`。每个模块应暴露一个清晰的入口函数或类。当行为复杂时为函数/类添加文档字符串和类型注解，尤其是跨智能体接口或工具适配器的场景。优先使用显式导入，并将配置默认值保存在 JSON 或 `.env` 中，而不是硬编码常量。
 
+### 统一日志规范（必须遵守）
+- 新代码禁止在 `services/`、`core/`、`shared_data_access/`、`agent_tools/` 中直接用 `print` 做运行日志。
+- 日志必须优先使用 `core.logging` 提供的统一入口：`get_logger()`、`init_component_logger()`、`init_tool_logger()`。
+- Logger 名称必须使用具业务含义的 PascalCase 组件名，如 `ManageDailyData`、`StockAnalysis`、`TradeSummary`，不要使用 `__name__` 或 dotted path。
+- 新增核心组件时，如需指定控制台颜色分组，应在 `core/logging.py` 的 `LOGGER_COLORS_EXACT` 或 `LOGGER_PATTERNS` 中注册。
+- 详细规范见 `.claude/rules/code-style.md`。
+
 ## 测试指南
 对于mcp tool函数的测试，测试前请去掉@mcp.tool()装饰器，然后可以直接调用这个函数测试功能是否生效，测试完后再加把@mcp.tool()装饰器加回来。每次重大修改修改后都应该进行
 充分测试，确保修改完全准确符合预期才算结束
@@ -40,4 +47,5 @@ Python 代码统一使用 4 个空格缩进，变量与函数采用具描述性�
 
 ## rules
 
-"pre_commit_rule.md" git提交规则
+- `pre_commit_rule.md`：git 提交规则
+- `code-style.md`：代码风格与统一日志规则，包含 logger 命名、级别、目录和 `core.logging` 的使用约束

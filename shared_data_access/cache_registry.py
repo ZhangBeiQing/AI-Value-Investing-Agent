@@ -17,6 +17,7 @@ from typing import Dict, Iterable, Optional
 import pandas as pd
 import akshare as ak
 import pickle
+from core.logging import get_logger
 from utlity import *
 import logging
 import numpy as np
@@ -489,7 +490,7 @@ def update_financial_data_cached(
     
     # 如果没有提供logger，使用默认logger
     if logger is None:
-        logger = logging.getLogger(__name__)
+        logger = get_logger("CacheRegistry")
 
     # 判断是否为指数或ETF，跳过财务数据获取
     is_index = symbolInfo.market == "CN_INDEX"
@@ -761,7 +762,7 @@ def update_share_info_cached(
     
     # 如果没有提供logger，使用默认logger
     if logger is None:
-        logger = logging.getLogger(__name__)
+        logger = get_logger("CacheRegistry")
 
     # 判断是否为index和ETF（A股ETF代码通常以51、58、15、16、50、53等开头）
     is_index = symbolInfo.market == "CN_INDEX"
@@ -995,7 +996,7 @@ def update_disclosures_cached(
 ) -> None:
     """获取公告列表并缓存csv（使用DISCLOSURES缓存）"""
     if logger is None:
-        logger = logging.getLogger(__name__)
+        logger = get_logger("CacheRegistry")
 
     cache_dir = build_cache_dir(
         symbolInfo,

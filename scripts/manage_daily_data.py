@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import os
 import subprocess
 import sys
@@ -20,14 +19,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from basic_stock_info import DEFAULT_PRICE_LOOKBACK_DAYS  # type: ignore
 from configs.stock_pool import TRACKED_A_STOCKS  # type: ignore
+from core.logging import init_component_logger  # type: ignore
 from shared_data_access.data_access import SharedDataAccess  # type: ignore
 from utlity import ensure_stock_subdir, parse_symbol  # type: ignore
 
-LOG_DIR = PROJECT_ROOT / "logs" / "data_refresh"
+LOG_DIR = PROJECT_ROOT / "logs" / "main_scripts" / "ManageDailyData"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOGGER = logging.getLogger("manage_daily_data")
-if not LOGGER.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+LOGGER = init_component_logger("ManageDailyData", group="main_scripts", filename_prefix="manage_daily_data")
 
 DEFAULT_INDEX_SYMBOL = os.getenv("PRICE_DYNAMICS_INDEX", "000001.IDX")
 
@@ -141,7 +139,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
 
     try:
         ensure_manual_research_dirs(symbols)
-        print('[manage] refreshing shared data...', flush=True)
+        LOGGER.info("开始刷新 shared data: date=%s, symbols=%d", target_date, len(refresh_symbols))
         steps.append(
             refresh_shared_data(
                 target_date,
@@ -151,7 +149,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
                 log_file=log_file,
             )
         )
-        print('[manage] shared data refresh completed', flush=True)
+        LOGGER.info("shared data 刷新完成")
 
         basic_cmd = [
             sys.executable,
@@ -166,16 +164,16 @@ def manage_daily_data(args: argparse.Namespace) -> int:
             "--symbols",
             *symbols,
         ]
-        print('[manage] running basic_stock_info...', flush=True)
+        LOGGER.info("开始运行 basic_stock_info")
         steps.append(run_subprocess('basic_stock_info', basic_cmd, log_file))
-        print('[manage] basic_stock_info completed', flush=True)
+        LOGGER.info("basic_stock_info 完成")
 
-        print('[manage] running get_daily_price...', flush=True)
+        LOGGER.info("开始运行 get_daily_price")
         steps.append(run_subprocess('get_daily_price', [sys.executable, "-u", 'data/get_daily_price.py'], log_file))
-        print('[manage] get_daily_price completed', flush=True)
-        print('[manage] running merge_jsonl...', flush=True)
+        LOGGER.info("get_daily_price 完成")
+        LOGGER.info("开始运行 merge_jsonl")
         steps.append(run_subprocess('merge_jsonl', [sys.executable, "-u", 'data/merge_jsonl.py'], log_file))
-        print('[manage] merge_jsonl completed', flush=True)
+        LOGGER.info("merge_jsonl 完成")
 
         status_path = LOG_DIR / "latest_status.json"
         status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -188,7 +186,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
         # 简单判断：如果 args.symbols 或 args.symbols_file 存在，则视为部分更新
         try:
             if args.symbols or args.symbols_file:
-                 print(f'[manage] running disclosures_builder for {len(symbols)} specific symbols...', flush=True)
+                 LOGGER.info("开始按指定股票运行 disclosures_builder: symbols=%d", len(symbols))
                  for sym in symbols:
                     cmd = [
                         sys.executable, "-u", "news/disclosures_builder.py",
@@ -199,14 +197,14 @@ def manage_daily_data(args: argparse.Namespace) -> int:
                     steps.append(run_subprocess(f'disclosures_builder_{sym}', cmd, log_file))
             else:
                 disclosures_cmd = [sys.executable, "-u", "news/disclosures_builder.py", "--all", "--model", "qwen-doc-turbo", "--audit-model", "deepseek-v3.2-exp"]
-                print('[manage] running disclosures_builder (ALL)...', flush=True)
+                LOGGER.info("开始全量运行 disclosures_builder")
                 steps.append(run_subprocess('disclosures_builder_all', disclosures_cmd, log_file))
-            print('[manage] disclosures_builder completed', flush=True)
+            LOGGER.info("disclosures_builder 完成")
         except subprocess.CalledProcessError as exc:
             warning_message = f"disclosures_builder failed and was skipped: {exc}"
             steps.append({"name": "disclosures_builder", "status": "warning", "message": warning_message})
             status["status"] = "warning"
-            print(f"⚠️ {warning_message}", flush=True)
+            LOGGER.warning("%s", warning_message)
 
         return 0
     except Exception as exc:  # pragma: no cover - top-level guard
@@ -214,7 +212,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
         status["status"] = "failed"
         status_path = LOG_DIR / "latest_status.json"
         status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"❌ data refresh failed: {exc}")
+        LOGGER.exception("data refresh failed: %s", exc)
         return 1
 
 

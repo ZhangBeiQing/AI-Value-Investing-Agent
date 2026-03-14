@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import math
 from datetime import datetime, timedelta, date
 from pathlib import Path
@@ -14,6 +13,7 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from configs.stock_pool import TRACKED_A_STOCKS  # 添加导入
+from core.logging import init_component_logger
 from utlity import (  # type: ignore
     SymbolFormatError,
     SymbolInfo,
@@ -45,38 +45,13 @@ from indicator_library.calculators.fundamental import calculate_rolling_ttm_prof
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def setup_main_logger() -> logging.Logger:
+def setup_main_logger():
     """设置主脚本日志器，将日志输出到 logs/main_scripts/BasicStockInfo/ 目录"""
-    logger = logging.getLogger("basic_stock_info")
-    
-    # 清除现有处理器，避免重复添加
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-    
-    # 设置日志格式
-    formatter = logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(message)s", "%Y-%m-%d %H:%M:%S"
+    return init_component_logger(
+        "BasicStockInfo",
+        group="main_scripts",
+        filename_prefix="basic_stock_info",
     )
-    
-    # 控制台处理器
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-    
-    # 文件处理器 - 统一到 logs/main_scripts/BasicStockInfo/
-    main_scripts_dir = PROJECT_ROOT / "logs" / "main_scripts" / "BasicStockInfo"
-    main_scripts_dir.mkdir(parents=True, exist_ok=True)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_filename = f"basic_stock_info_{timestamp}.log"
-    file_handler = logging.FileHandler(
-        main_scripts_dir / log_filename, encoding="utf-8"
-    )
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    
-    logger.setLevel(logging.INFO)
-    return logger
 
 
 LOGGER = setup_main_logger()
