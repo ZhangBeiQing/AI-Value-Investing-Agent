@@ -8,7 +8,7 @@ This package exposes two primary entrypoints:
   computations shared by the analysis modules.
 
 Both abstractions enforce the formatting and data-quality guarantees outlined
-in ``PROJECT_SYSTEM_SUMMARY.md`` and should be preferred over ad-hoc helpers
+in ``docs/PROJECT_SYSTEM_SUMMARY.md`` and should be preferred over ad-hoc helpers
 inside individual tools.
 """
 

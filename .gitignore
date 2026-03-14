@@ -56,7 +56,8 @@ logs/
 *.css
 *.csv
 *.md
-!/docs/*/*.md
+!/docs/
+!/docs/**
 !AGENTS.md
 !.claude/
 !.claude/**
@@ -67,7 +68,6 @@ logs/
 *.json
 *.pdf
 !/news/*.md
-!PROJECT_SYSTEM_SUMMARY.md
 # Notebook 检查点
 .ipynb_checkpoints/
 *.txt
