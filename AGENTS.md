@@ -37,6 +37,7 @@
 - `configs/prompt_flow/skill_flow.json`：当前主 flow
 - `.claude/rules/`：按主题或路径拆分的约束
 - `.claude/skills/`：可复用的项目开发流程
+- `.claude/commands/`：用户显式触发时执行的固定动作
 
 ## 核心命令
 
@@ -117,3 +118,9 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - `debug-skill-run`：`manage_daily_data` / `run_daily_pipeline` / `run_post_trade` 失败时使用
 
 以上三类 skill 位于 `.claude/skills/`，用于把重复开发流程写成稳定步骤，避免每次从零摸索。
+
+## Commands
+
+- `review-skill-run`：检查某一天的 `skill` 运行产物、manifest、日志与交易后处理是否完整且一致
+
+Commands 位于 `.claude/commands/`，适合“用户明确要求执行某个固定检查动作”的场景；它不替代 `rules` 或 `skills`，而是把高频动作写成统一入口。
