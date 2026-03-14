@@ -1,51 +1,119 @@
 # 仓库指南
 
-# environment
-we are 
-we are in windows WSL, so any resources that paste into claude code chatbox, we transform its path to WSL path
-ex, for "C:\temp\a.jpg", it will be transformed to "/nt/c/temp/a.jpg"
+## WHAT：项目概览
 
-## 项目结构与模块组织
-当前项目主流程已经切换为本地 `skill-only` 架构。日常入口位于 `scripts/`，核心业务实现正在收敛到 `services/` 与 `shared_data_access/`。`agent_tools/` 与 `tools/` 中仍有部分历史兼容层，但新代码应优先放在 `services/`、`core/`、`shared_data_access/`。提示词和流程配置位于 `prompts/` 与 `configs/`，当前主 prompt flow 是 `configs/prompt_flow/skill_flow.json`。历史行情数据和运行产物写入 `data/`，日志写入 `logs/`，文档位于 `docs/`。自动化检查在 `test/` 目录下，遵循 `test_*.py` 的文件命名约定。
+本项目是一个本地 `skill-only` 的 AI 股票研究与交易流水线。
 
-### 数据访问/缓存规范（必须遵守）
-- **统一入口**：任何需要调用 akshare 或其他外部行情、财报、股本接口的逻辑，都必须通过 `shared_data_access` 提供的 API（核心为 `SharedDataAccess.prepare_dataset()` / `ensure_symbol_data()`）。禁止在 analyzer、agent 或工具中直接访问 akshare。
-- **缓存体系**：`shared_data_access/cache_registry.py` 已定义全部缓存目录与 TTL；若缺少某类数据，应先在 `shared_data_access` 中新增加载逻辑（例如扩展 `update_financial_data_cached`、`update_share_info_cached`），再由上层复用，避免重复代码和脏数据。
-- **回测兼容抓取**：所有 `update_*` 函数（价格、财报、股本、公告等）永远面向“当前真实时间”抓取足够长的历史窗口（例如价格默认 1800 天、公告默认 2 年≈730 天），不得根据回测 `as_of_date` 裁剪抓取范围。回测时只能在 `prepare_dataset` 读取阶段按 `as_of_date` 做时间截断，确保既拥有完整缓存又严格遵守因果性。
-- **SymbolInfo 传递**：涉及股票标识的函数和类，除非纯字符串处理，否则一律传递 `SymbolInfo`（通过 `parse_symbol` 解析）。这样可确保市场、代码、名称一致，并复用 `SymbolInfo` 内置的格式化与属性方法。
-- **输出/分析目录**：脚本在写入 `analysis/`、`pe_pb_analysis/` 等结果目录前应先清理旧文件，仅保留 `.cache_registry_meta.json`，防止缓存越堆越多（参考 `stock_price_dynamics_summarizer.py` 与 `enhanced_pe_pb_analyzer.py` 的实现）。
+- 日常流程：`manage_daily_data` 刷新数据 -> `run_daily_pipeline` 生成 `01-04` 输入产物 -> 本地 Agent 读取 `data/skill_runs/{date}/` -> `run_post_trade` 执行 `05-08`
+- 当前主代码放在 `scripts/`、`services/`、`shared_data_access/`、`core/`
+- `agent_tools/`、`tools/` 仍保留少量兼容层，但不再是新代码主落点
+- 运行产物与缓存写入 `data/`，日志写入 `logs/`，规范与说明写入 `.claude/`、`docs/`
 
-## 构建、测试与开发命令
-- `pip install -r requirements.txt` — 安装项目依赖。
-- `cp .env.example .env` 并填写密钥 — 在任何运行前完成，确保不要将密钥提交到仓库。
-- `python scripts/manage_daily_data.py` — 刷新每日数据缓存、股价、财报、公告等。
-- `python scripts/run_daily_pipeline.py --date YYYY-MM-DD` — 生成 `01-04` skill 输入产物。
-- `python scripts/run_post_trade.py --date YYYY-MM-DD` — 基于 `05_decision.json` 执行交易后处理并生成 `06-08`。
+## WHY：设计目标
 
-## 代码风格与命名规范
-Python 代码统一使用 4 个空格缩进，变量与函数采用具描述性的 `snake_case`，类使用 `CapWords`。每个模块应暴露一个清晰的入口函数或类。当行为复杂时为函数/类添加文档字符串和类型注解，尤其是跨智能体接口或工具适配器的场景。优先使用显式导入，并将配置默认值保存在 JSON 或 `.env` 中，而不是硬编码常量。
+- 保持和旧版 `skill` 工作流兼容，稳定产出 `01-08` 文件
+- 把外部数据访问统一收敛到 `shared_data_access`
+- 把脚本入口与业务实现分离，便于本地 Agent、人工脚本和后续重构复用
+- 把经验沉淀进 `rules/` 与 `skills/`，降低每次新 session 的上下文损耗
 
-### 统一日志规范（必须遵守）
-- 新代码禁止在 `services/`、`core/`、`shared_data_access/`、`agent_tools/` 中直接用 `print` 做运行日志。
-- 日志必须优先使用 `core.logging` 提供的统一入口：`get_logger()`、`init_component_logger()`、`init_tool_logger()`。
-- Logger 名称必须使用具业务含义的 PascalCase 组件名，如 `ManageDailyData`、`StockAnalysis`、`TradeSummary`，不要使用 `__name__` 或 dotted path。
-- 新增核心组件时，如需指定控制台颜色分组，应在 `core/logging.py` 的 `LOGGER_COLORS_EXACT` 或 `LOGGER_PATTERNS` 中注册。
-- 详细规范见 `.claude/rules/code-style.md`。
+## 环境约束
 
-## 测试指南
-对于mcp tool函数的测试，测试前请去掉@mcp.tool()装饰器，然后可以直接调用这个函数测试功能是否生效，测试完后再加把@mcp.tool()装饰器加回来。每次重大修改修改后都应该进行
-充分测试，确保修改完全准确符合预期才算结束
+- 当前环境是 Windows WSL，用户粘贴的 Windows 路径要转成 WSL 路径
+  - 例如 `C:\temp\a.jpg` -> `/nt/c/temp/a.jpg`
+- Python 虚拟环境：`source /home/zhangbeiqing/venv/ai_stock/bin/activate`
+- 默认语言：始终使用简体中文回复用户
+- 默认主流程不再依赖启动 MCP 服务
+- `AReaL-main/` 仅作为外部参考仓库，除非用户明确要求，否则不要把它当成当前项目的一部分进行改动
 
-## 提交与合并请求规范
-采用改进的 Conventional Commit 风格（如 `feat`, `fix`, `chore`, `docs`），示例：`feat(Trading Tool): ...`。提交信息保持祈使语气，并聚焦单一变更。Pull Request 需概述行为变化、注明受影响的配置或密钥、关联追踪 issue，并在修改仪表盘图表（`docs/`）时附带日志或截图。若需要更新运行环境，也请在 PR 中说明，方便审阅者复现。
+## 核心目录
 
-## 智能体与服务运维
-保持 `.env` 中的 API 凭据和运行路径（如 `RUNTIME_ENV_PATH`）同步。当前主流程不再依赖启动 MCP 服务，默认工作方式是先运行 `scripts/manage_daily_data.py` 与 `scripts/run_daily_pipeline.py` 生成每日输入，再由本地 Agent 读取 `data/skill_runs/{date}/`。临时输出请存放在 `logs/` 或 `data/tmp/`，避免污染源码目录。
+- `scripts/`：CLI 入口
+- `services/data_refresh/`：日常数据刷新编排
+- `services/pipeline/`：`01-04` skill 输入产物生成
+- `services/research/`：宏观、个股研究、财报、新闻整合
+- `services/trading/`：交易执行与 `06-08` 汇总
+- `shared_data_access/`：行情、财报、股本、公告的统一缓存入口
+- `core/`：日志、运行态、通用基础设施
+- `configs/prompt_flow/skill_flow.json`：当前主 flow
+- `.claude/rules/`：按主题或路径拆分的约束
+- `.claude/skills/`：可复用的项目开发流程
 
-## 语言偏好
-请始终使用简体中文回复用户的所有问题和请求。
+## 核心命令
 
-## rules
+```bash
+pip install -r requirements.txt
+cp .env.example .env
+
+python scripts/manage_daily_data.py
+python scripts/run_daily_pipeline.py --date YYYY-MM-DD
+python scripts/run_post_trade.py --date YYYY-MM-DD
+```
+
+## Boundaries
+
+### Always Do
+
+- 改代码前先读相关文件，不要凭印象改结构
+- 新业务逻辑优先写到 `services/`、`shared_data_access/`、`core/`
+- 任何外部行情、财报、股本、公告抓取都优先走 `shared_data_access`
+- 改主链路后至少给出对应验证证据：日志、`run_manifest.json`、输出文件或失败现场
+- 新增或修改核心组件时使用统一日志入口，不要直接散落 `print`
+
+### Ask First
+
+- 删除或重命名会影响 `01-08` 文件契约的字段、文件名、目录结构
+- 修改 `configs/prompt_flow/skill_flow.json` 的语义而不保持旧产物兼容
+- 新增第三方依赖、外部 API、系统级运行前提
+- 大规模删除历史兼容层，尤其是 `agent_tools/`、`tools/` 中仍被调用的部分
+- 修改真实交易落地规则、仓位计算规则、价格引用规则
+
+### Never Do
+
+- 不要在 `services/`、`shared_data_access/`、`core/` 中直接访问 akshare 之外的散乱数据源而不经统一封装
+- 不要用 `as_of_date` 裁剪抓取窗口，只能在读取阶段做时间截断
+- 不要把运行产物、临时调试文件、日志直接塞进源码目录
+- 不要默认把 `AReaL-main/` 的实现直接搬进来，必须先适配当前项目场景
+- 不要用 `from x import *`
+
+## Progressive Disclosure
+
+| 任务 | 首选参考 |
+| --- | --- |
+| 刷新每日数据 | `scripts/manage_daily_data.py`, `services/data_refresh/`, `.claude/skills/extend-shared-data-access/SKILL.md` |
+| 调整 `01-04` 产物 | `scripts/run_daily_pipeline.py`, `services/pipeline/`, `.claude/rules/skill-pipeline.md`, `.claude/skills/add-skill-pipeline-step/SKILL.md` |
+| 增加研究/快照字段 | `services/research/`, `services/snapshot/`, `.claude/rules/shared-data-access.md` |
+| 增加外部数据缓存 | `shared_data_access/`, `shared_financial_utils.py`, `.claude/skills/extend-shared-data-access/SKILL.md` |
+| 调整交易后处理 | `scripts/run_post_trade.py`, `services/trading/`, `.claude/rules/skill-pipeline.md` |
+| 排查主链路失败 | `logs/`, `run_manifest.json`, `latest_status.json`, `.claude/rules/testing.md`, `.claude/skills/debug-skill-run/SKILL.md` |
+| 统一日志接入 | `core/logging.py`, `.claude/rules/code-style.md` |
+
+## 数据与缓存规则
+
+- 统一入口：外部数据访问必须通过 `SharedDataAccess.prepare_dataset()` / `ensure_symbol_data()`
+- 缓存注册：新增缓存类型先改 `shared_data_access/cache_registry.py`
+- 时间因果：抓取时面向真实时间拿足历史，回测或复盘只在读取阶段裁剪
+- Symbol 传递：除纯字符串处理外，优先传 `SymbolInfo`
+- 输出目录：写 `analysis/`、`pe_pb_analysis/` 等目录前要清旧文件，仅保留 `.cache_registry_meta.json`
+
+## 日志规则
+
+- 新代码禁止在库代码里直接用 `print` 做运行日志
+- 统一使用 `core.logging`：`get_logger()`、`init_component_logger()`、`init_tool_logger()`
+- Logger 名称必须是业务语义明确的 PascalCase，如 `ManageDailyData`、`DailyPipeline`、`TradeSummary`
+- 详细规范见 `.claude/rules/code-style.md`
+
+## Rules
 
 - `pre_commit_rule.md`：git 提交规则
-- `code-style.md`：代码风格与统一日志规则，包含 logger 命名、级别、目录和 `core.logging` 的使用约束
+- `code-style.md`：代码风格与统一日志规范
+- `shared-data-access.md`：缓存、时间截断、SymbolInfo、数据访问统一入口
+- `skill-pipeline.md`：`01-08` 产物契约、脚本分层、manifest 与交易后处理约束
+- `testing.md`：evidence-first 调试、最小复现、主链路验证要求
+
+## Skills
+
+- `add-skill-pipeline-step`：新增或重构 `skill` 流水线步骤时使用
+- `extend-shared-data-access`：新增数据源、缓存目录或指标依赖时使用
+- `debug-skill-run`：`manage_daily_data` / `run_daily_pipeline` / `run_post_trade` 失败时使用
+
+以上三类 skill 位于 `.claude/skills/`，用于把重复开发流程写成稳定步骤，避免每次从零摸索。
