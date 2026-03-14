@@ -58,7 +58,6 @@ logs/
 *.md
 !/docs/*/*.md
 !AGENTS.md
-!back_up/*/*.md
 !.claude/
 !.claude/**
 !.claude/**/*.md
@@ -86,3 +85,4 @@ logs/
 *.csv
 
 .env
+*:Zone.Identifier

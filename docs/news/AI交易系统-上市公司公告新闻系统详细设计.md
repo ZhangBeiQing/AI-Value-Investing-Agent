@@ -87,7 +87,7 @@ graph TD
 
 ## 10. 实施步骤
 1. 在 `disclosures_builder.py` 中增加 `SUPPORTED_DIRECT_PDF_MODELS` 全局变量和 PDF 处理的判断逻辑。
-2. 实现 PDF 到 Markdown 的转换函数及缓存机制（可参考 `progressive_news_summarizer.py`）。
+2. 实现 PDF 到 Markdown 的转换函数及缓存机制（当前以 `gemini_utility.py` 与 `disclosures_builder.py` 的实现为准）。
 3. **（新增）** 创建一个新的函数或类，专门负责“战略审计流程”，实现3个月滚动批处理和数据替换逻辑。
 4. **（新增）并发改造**：针对 `--all` 批量处理模式，引入 `concurrent.futures.ThreadPoolExecutor`。对信息提取 (`update_disclosures_for_stock`) 和战略审计 (`audit_news_json`) 的循环进行并发改造，实现每只股票一个线程并行处理，大幅提升整体效率。
 5. 修改主流程，在生成原子摘要后，可以调用审计流程。

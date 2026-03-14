@@ -1254,9 +1254,9 @@ def _main() -> None:
     text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
-        print(f"已写入 {args.output}")
+        LOGGER.info("已写入 %s", args.output)
     else:
-        print(text)
+        LOGGER.info("%s", text)
 
 
 if __name__ == "__main__":

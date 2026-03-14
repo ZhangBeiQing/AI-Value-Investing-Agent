@@ -5,7 +5,7 @@
 
 1. **行情/财务/公告基础数据**：通过 `shared_data_access.data_access.prepare_dataset()` 的 `ensure_symbol_data()` 链路刷新（包含价格、财报、公告链接等缓存，遵循统一 TTL 与缓存策略）。
 2. **公告新闻审计库**：通过 `news/disclosures_builder.py` 抓取 PDF 并调用 `qwen-doc-turbo` 提取正文，再使用 `AUDIT_MODEL_BASE_URL`/`AUDIT_MODEL_API_KEY` 配置的审计模型对摘要进行复核，更新 `news/news_audited.json`。
-3. **基础面快照**：运行 `basic_stock_info.py` 生成/刷新每日 `basic_info_*.json`，供 user_query 中的 `basic_snapshot` 使用。
+3. **基础面快照**：运行 `basic_stock_info.py` 生成/刷新每日 `basic_info_*.json`，供 `02_basic_snapshot_payload.json` 使用。
 4. **遗留价格序列**：保留原项目的 `data/get_daily_price.py` 与 `data/merge_jsonl.py` 流程，生成历史价差/对齐 position 计算所需的结果。
 
 ## 设计思路
@@ -17,26 +17,26 @@
 2. **刷新行情/财务缓存**：
    - 读取 `configs/stock_pool.py` 的 `TRACKED_A_STOCKS` 列表。
    - 对每个 symbol 调用 `prepare_dataset(symbolInfo, as_of_date=target_date)`，以确保当天 20:00 前的最新缓存可供 AI 使用。
-3. **执行公告新闻构建**：调用 `python news/disclosures_builder.py --date <target_date> --model qwen-doc-turbo`（默认）并通过环境变量传入审计模型配置，脚本结束后检查 `news/news_audited.json` 时间戳。
+3. **执行公告新闻构建**：调用 `python news/disclosures_builder.py --all --model qwen-doc-turbo`（或逐股 `--symbol`）并通过环境变量传入审计模型配置。
 4. **生成基础信息**：运行 `python basic_stock_info.py --symbols ... --today-time <target_date> --get-look-back-days 0 --max-workers <n>`（使用多线程参数）。
 5. **遗留价格流程**：
    - `python data/get_daily_price.py --date <target_date>`
    - `python data/merge_jsonl.py --date <target_date>`
-6. **结果汇总**：将每个子流程的 stdout/stderr 重定向到 `logs/data_refresh/YYYYMMDD.log`，最终输出一个 JSON 状态报告（写入 `logs/data_refresh/latest_status.json`）。
+6. **结果汇总**：将每个子流程的输出汇总到 `logs/main_scripts/ManageDailyData/` 下的日志文件，并同步写状态报告到 `latest_status.json`。
 
 ### 2. 任务编排
 
-- **cron**：在服务器 `crontab` 中添加 `0 20 * * * /path/to/python scripts/manage_daily_data.py --date $(date +%F) >> logs/data_refresh/cron.log 2>&1`。
+- **cron**：如需定时任务，直接调用 `python scripts/manage_daily_data.py --date $(date +%F)`，并让系统层收集 stdout/stderr。
 - **可选手动触发**：脚本支持 `--force-refresh`，用于开发调试时跳过缓存 TTL。
 
 ### 3. 错误处理
 
-- 子流程采用 `subprocess.run(..., check=True)`；若失败，立即记录失败状态并退出，返回非零码。
+- 子流程采用统一封装的子进程执行；若失败，立即记录失败状态并退出，返回非零码。
 - 每个步骤写入 `status['steps']`（成功/失败时间、耗时、日志路径），便于 UI 或后续排查。
 
 ### 4. 目录约定
 
-- `logs/data_refresh/`：按日期写 `YYYYMMDD.log`，并附加 `latest_status.json`。
+- `logs/main_scripts/ManageDailyData/`：写组件日志与 `merged.log`，并附加 `latest_status.json`。
 - `data/cache_registry/` 原有结构不变，由 `prepare_dataset` 管理。
 
 ### 5. 配置/扩展

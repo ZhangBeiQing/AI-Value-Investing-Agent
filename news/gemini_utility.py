@@ -5,11 +5,14 @@ import filetype
 import time
 from pathlib import Path
 
+from core.logging import get_logger
 from IPython.display import display, HTML, Markdown
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.output import save_output, text_from_rendered
 from marker.config.parser import ConfigParser
+
+LOGGER = get_logger("PDFMarkdownConverter")
 
 # 创建一个单例模式的PDF转Markdown转换器类
 class PDFMarkdownConverter:
@@ -19,25 +22,25 @@ class PDFMarkdownConverter:
     
     def __new__(cls):
         if cls._instance is None:
-            print("初始化PDF转Markdown转换器...")
+            LOGGER.info("初始化 PDF 转 Markdown 转换器")
             cls._instance = super(PDFMarkdownConverter, cls).__new__(cls)
             cls._instance.initialized = False
         return cls._instance
         
     def __init__(self):
         if not self.initialized:
-            print("检查模型缓存...")
+            LOGGER.info("检查 marker 模型缓存")
             
             # 检查模型是否已经下载到缓存目录
             cache_dir = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'datalab', 'datalab', 'Cache', 'models')
             models_exist = self._check_models_exist(cache_dir)
             
             if models_exist:
-                print("发现已缓存的模型，快速加载...")
+                LOGGER.info("发现已缓存模型，快速加载")
             else:
-                print("首次运行，需要下载模型...")
+                LOGGER.info("首次运行，需要下载模型")
             
-            print("加载模型...")
+            LOGGER.info("开始加载模型")
             start_time = time.time()
             
             if not PDFMarkdownConverter._models_loaded:
@@ -50,7 +53,7 @@ class PDFMarkdownConverter:
             )
             
             load_time = time.time() - start_time
-            print(f"模型加载完成，耗时: {load_time:.2f}秒")
+            LOGGER.info("模型加载完成，耗时 %.2f 秒", load_time)
             self.initialized = True
     
     def _check_models_exist(self, cache_dir):
@@ -93,7 +96,7 @@ class PDFMarkdownConverter:
             str: 转换后的Markdown文本
         """
         # 执行转换
-        print(f"处理: {file_path}")
+        LOGGER.info("处理 PDF: %s", file_path)
         start_time = time.time()
         rendered = self.converter(file_path)
         process_time = time.time() - start_time
@@ -110,10 +113,9 @@ class PDFMarkdownConverter:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(text)
             
-            print(f"已保存到: {output_path}")
+            LOGGER.info("Markdown 已保存到: %s", output_path)
         
-        print(f"处理时间: {process_time:.2f}秒")
-        print(f"文件大小: {len(text)/1024:.2f} KB")
+        LOGGER.info("处理时间 %.2f 秒，文件大小 %.2f KB", process_time, len(text) / 1024)
         
         return text
 

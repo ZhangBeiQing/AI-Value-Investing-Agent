@@ -22,6 +22,7 @@ import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
+from core.logging import get_logger
 from utlity import SymbolInfo, get_stock_data_dir, parse_symbol
 from configs.stock_pool import TRACKED_A_STOCKS
 from openai import OpenAI
@@ -32,13 +33,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LOGGER = logging.getLogger("disclosures_builder.shared")
-if not LOGGER.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[shared][%(asctime)s] %(message)s"))
-    LOGGER.addHandler(handler)
-LOGGER.setLevel(logging.INFO)
-LOGGER.propagate = False
+LOGGER = get_logger("DisclosuresBuilder")
 
 
 # 用于缓存不同用途的客户端
@@ -415,15 +410,7 @@ def _sort_items_desc(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _log(msg: str) -> None:
-    """
-    摘要: 标准化调试打印输出（带时间与模块标签）
-    Args:
-        msg: 文本消息
-    Returns:
-        None
-    """
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[disclosures][{ts}] {msg}", flush=True)
+    LOGGER.info("%s", msg)
 
 
 def parse_announcement_row(row: Dict[str, Any]) -> Tuple[str, str, str, str, Optional[str]]:
@@ -1451,8 +1438,8 @@ def main() -> int:
     if args.all:
         tracked_infos = [parse_symbol(entry.symbol) for entry in TRACKED_A_STOCKS]
         stats = update_all_tracked_stocks(tracked_infos, model=args.model, lookback_days=args.lookback)
-        print("--- 摘要提取阶段完成 ---")
-        print(json.dumps(stats, ensure_ascii=False, indent=2))
+        LOGGER.info("--- 摘要提取阶段完成 ---")
+        LOGGER.info("%s", json.dumps(stats, ensure_ascii=False, indent=2))
         
         if args.audit_model:
             _log(f"开始对所有跟踪的股票进行并发审计，使用模型: {args.audit_model}")
@@ -1477,7 +1464,7 @@ def main() -> int:
         return 0
 
     if not args.symbol:
-        print("必须提供 --symbol，或使用 --all")
+        LOGGER.error("必须提供 --symbol，或使用 --all")
         return 0
     symbol_info = parse_symbol(args.symbol)
     
@@ -1488,7 +1475,10 @@ def main() -> int:
         model=args.model,
         data_access=data_access,
     )
-    print(json.dumps({"symbol": symbol_info.symbol, "name": symbol_info.stock_name, "added": cnt}, ensure_ascii=False))
+    LOGGER.info(
+        "%s",
+        json.dumps({"symbol": symbol_info.symbol, "name": symbol_info.stock_name, "added": cnt}, ensure_ascii=False),
+    )
     
     # 如果指定了审计模型，在更新完摘要后执行审计
     if args.audit_model:

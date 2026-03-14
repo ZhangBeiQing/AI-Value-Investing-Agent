@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List
 
 import pandas as pd
+from core.logging import get_logger
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from utlity.stock_utils import resolve_base_dir, SymbolInfo
@@ -22,6 +23,7 @@ DEEPSEEK_MODEL = (
     or "deepseek-chat"
 )
 DEEPSEEK_TIMEOUT = int(os.getenv("DEEPSEEK_TIMEOUT", "60"))
+LOGGER = get_logger("SimilarStocks")
 
 class SimilarStock(BaseModel):
     """相似股票数据模型"""
@@ -118,7 +120,7 @@ def extract_similar_stocks_from_json(json_data):
                 'reason': item['reasons_for_selecting_similar_stocks']
             })
     except Exception as e:
-        print(f"解析JSON数据时出错: {e}")
+        LOGGER.warning("解析 JSON 数据时出错: %s", e)
     
     return similar_stocks
 
@@ -218,7 +220,7 @@ def extract_similar_stocks_from_text(response_text):
         return similar_stocks
     
     # 如果以上方法都失败，返回空列表
-    print("无法从响应中提取股票信息，请检查响应格式")
+    LOGGER.warning("无法从响应中提取股票信息，请检查响应格式")
     return []
 
 def save_to_csv(target_stock_name, target_stock_code, similar_stocks, filename: str | Path | None = None, base_dir: Path | str | None = None):
@@ -274,7 +276,7 @@ def save_to_csv(target_stock_name, target_stock_code, similar_stocks, filename: 
         # 写入数据
         writer.writerow(row_data)
     
-    print(f"相似股票数据已保存到 {path}")
+    LOGGER.info("相似股票数据已保存到 %s", path)
 
 def get_similar_stocks(symbolInfo: SymbolInfo, base_dir: Path | str | None = None): 
     """获取与指定股票相似的股票"""
@@ -292,7 +294,7 @@ def get_similar_stocks(symbolInfo: SymbolInfo, base_dir: Path | str | None = Non
         existing_data = df[df['target_stock_code'] == stock_code]
         
         if not existing_data.empty:
-            print(f"从CSV文件中获取{stock_name}的相似股票数据...")
+            LOGGER.info("从 CSV 缓存中获取 %s 的相似股票数据", stock_name)
             similar_stocks = []
             row = existing_data.iloc[0]
             for i in range(1, 6):
@@ -338,31 +340,31 @@ def get_similar_stocks(symbolInfo: SymbolInfo, base_dir: Path | str | None = Non
         
         for attempt in range(max_retries):
             try:
-                print(f"尝试获取相似股票数据 (第{attempt + 1}次)...")
+                LOGGER.info("尝试获取相似股票数据（第 %d 次）", attempt + 1)
                 response_text = _call_deepseek_chat(prompt)
-                print(response_text)
+                LOGGER.debug("DeepSeek 原始返回: %s", response_text)
                 break  # 成功获取响应，跳出重试循环
                 
             except Exception as retry_error:
-                print(f"第{attempt + 1}次尝试失败: {retry_error}")
+                LOGGER.warning("第 %d 次尝试失败: %s", attempt + 1, retry_error)
                 if attempt == max_retries - 1:
-                    print("所有重试都失败，无法获取相似股票数据")
+                    LOGGER.error("所有重试都失败，无法获取相似股票数据")
                     return []
                 else:
-                    print("等待5秒后重试...")
+                    LOGGER.info("等待 5 秒后重试")
                     time.sleep(5)
 
         if not response_text:
-            print("DeepSeek 没有返回任何内容，结束本次请求。")
+            LOGGER.warning("DeepSeek 没有返回任何内容，结束本次请求")
             return []
         
         # 从响应中提取相似股票数据
         similar_stocks = extract_similar_stocks_from_text(response_text)
         
         if not similar_stocks:
-            print("未能成功提取股票信息，请检查响应格式或调整正则表达式")
+            LOGGER.warning("未能成功提取股票信息，请检查响应格式或调整正则表达式")
         else:
-            print(f"成功提取出{len(similar_stocks)}只相似股票信息")
+            LOGGER.info("成功提取出 %d 只相似股票信息", len(similar_stocks))
         
         # 保存到CSV（确保保存到全局缓存路径）
         save_to_csv(stock_name, stock_code, similar_stocks, filename=similar_stocks_path)
@@ -370,7 +372,7 @@ def get_similar_stocks(symbolInfo: SymbolInfo, base_dir: Path | str | None = Non
         return similar_stocks
 
     except Exception as e:
-        print(f"发生错误: {e}")
+        LOGGER.exception("获取相似股票时发生错误: %s", e)
         return []
 
 def query_similar_stocks(target_stock=None, base_dir: Path | str | None = None):
@@ -384,7 +386,7 @@ def query_similar_stocks(target_stock=None, base_dir: Path | str | None = None):
     """
     csv_path = resolve_base_dir(base_dir) / 'global_cache' / 'similar_stocks.csv'
     if not csv_path.is_file():
-        print("没有找到类似股票缓存文件，请先运行获取相似股票的功能")
+        LOGGER.warning("没有找到相似股票缓存文件，请先运行获取相似股票功能")
         return None
     
     df = pd.read_csv(csv_path)  # quoting=1 表示 QUOTE_ALL
@@ -396,7 +398,7 @@ def query_similar_stocks(target_stock=None, base_dir: Path | str | None = None):
     result = df[(df['target_stock_name'] == target_stock) | (df['target_stock_code'] == target_stock)]
     
     if result.empty:
-        print(f"没有找到与'{target_stock}'相关的数据")
+        LOGGER.info("没有找到与 %s 相关的数据", target_stock)
         return None
     
     return result
@@ -407,8 +409,8 @@ def print_similar_stocks(df):
         return
     
     for _, row in df.iterrows():
-        print(f"\n目标股票: {row['target_stock_name']} ({row['target_stock_code']})")
-        print("相似股票:")
+        LOGGER.info("目标股票: %s (%s)", row['target_stock_name'], row['target_stock_code'])
+        LOGGER.info("相似股票:")
         
         for i in range(1, 6):
             name_col = f'similar_stock{i}_name'
@@ -417,8 +419,8 @@ def print_similar_stocks(df):
             
             if pd.notna(row[name_col]) and pd.notna(row[code_col]):
                 reason = row[reason_col] if pd.notna(row[reason_col]) else "无"
-                print(f"  {i}. {row[name_col]} ({row[code_col]})")
-                print(f"     相关原因: {reason}")
+                LOGGER.info("  %d. %s (%s)", i, row[name_col], row[code_col])
+                LOGGER.info("     相关原因: %s", reason)
 
 # 示例用法
 if __name__ == "__main__":
@@ -443,14 +445,14 @@ if __name__ == "__main__":
     elif args.name and args.code:
         # 获取新的相似股票数据
         similar_stocks = get_similar_stocks(args.name, args.code)
-        print("\n提取到的相似股票:")
+        LOGGER.info("提取到的相似股票:")
         for i, stock in enumerate(similar_stocks, 1):
-            print(f"{i}. {stock['name']} ({stock['code']})")
-            print(f"   相关原因: {stock['reason']}")
+            LOGGER.info("%d. %s (%s)", i, stock['name'], stock['code'])
+            LOGGER.info("   相关原因: %s", stock['reason'])
     else:
         # 默认使用海康威视作为示例
         similar_stocks = get_similar_stocks("海康威视", "002415")
-        print("\n提取到的相似股票:")
+        LOGGER.info("提取到的相似股票:")
         for i, stock in enumerate(similar_stocks, 1):
-            print(f"{i}. {stock['name']} ({stock['code']})")
-            print(f"   相关原因: {stock['reason']}")
+            LOGGER.info("%d. %s (%s)", i, stock['name'], stock['code'])
+            LOGGER.info("   相关原因: %s", stock['reason'])

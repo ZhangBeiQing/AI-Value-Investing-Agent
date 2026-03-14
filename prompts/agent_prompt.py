@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 
 import sys
 
+from core.logging import get_logger
 from pydantic import BaseModel, Field, field_validator
 
 # Add project root directory to Python path
@@ -44,6 +45,7 @@ DEFAULT_PROMPT_CONFIG = (
 SUMMARY_PLACEHOLDER = "（暂无历史总结，请在今日结束后补充。）"
 SUMMARY_FILENAME = "daily_summary.json"
 SUMMARY_PATTERN = re.compile(r"<summary>(.*?)</summary>", re.IGNORECASE | re.DOTALL)
+LOGGER = get_logger("AgentPrompt")
 
 
 class PromptConfig(BaseModel):
@@ -328,8 +330,7 @@ def _format_metric_dict(raw: Dict[str, float], suffix: str) -> Dict[str, float]:
 
 
 def get_agent_system_prompt(today_date: str, signature: str) -> str:
-    print(f"signature: {signature}")
-    print(f"today_date: {today_date}")
+    LOGGER.info("生成 agent prompt: signature=%s, today_date=%s", signature, today_date)
     
     # Calculate yesterday's date for search restriction
     today_dt = datetime.strptime(today_date, "%Y-%m-%d")
@@ -409,13 +410,6 @@ def get_agent_system_prompt(today_date: str, signature: str) -> str:
 
 
 if __name__ == "__main__":
-    # today_date = get_config_value("TODAY_DATE") or datetime.now().strftime("%Y-%m-%d")
-    # date_str = "2025-11-06"
-    # # 先转为 datetime，再提取 date 部分
-    # date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
-    # signature = get_config_value("SIGNATURE") or "debug-signature"
-    # print(get_agent_system_prompt(str(date_obj), signature))
-
     prompt = ""
     output = extract_json_from_ai_output(prompt)
-    print(output)
+    LOGGER.info("extract_json_from_ai_output 输出: %s", output)
