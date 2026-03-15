@@ -22,6 +22,7 @@
 - **数据落地**：每只股票的数据均存放于 `data/{stock_name}_{symbol}/`（财经缓存、价格、analysis、pe_pb_analysis、news/announcements等），运行日志按组件或工具写入 `logs/` 下的分类目录。
 
 ## 4. 核心分析与研究模块
+- **一期选股系统基座**（`services/selection_system/`, `scripts/manage_selection_system.py`）：新增与现有 `skill-only` 主链路并存的轻量选股框架，当前先落地 `master_universe` 与状态目录骨架。初始化后会在 `data/universe/master_universe.json` 写入主股票宇宙，在 `data/market_state/`、`data/symbol_memory/`、`data/selection_runs/` 建立后续 `hot_news_state`、候选筛选与个股记忆的本地状态目录；目前不会改动 `manage_daily_data -> run_daily_pipeline -> run_post_trade` 的既有行为。
 - **基础指标批处理**（`basic_stock_info.py`）：`BasicStockInfoService` 会调用 `SharedDataAccess.prepare_dataset` + `IndicatorLibrary`，输出估值、财报增速、风险、流动性等字段并写入 `data/basic_info_cache/basic_info_{symbol}.json`（含历史快照）；CLI 支持 `--symbols`/`--history-days`。
 - **增强估值分析**（`enhanced_pe_pb_analyzer.py`）：以 `SymbolInfo` 为核心，串联财报/股本/价格缓存、TTM EPS、PEG、相似股比较、Markdown/CSV/JSON 报告写入。重构后通用指标计算迁移至 `indicator_library.calculators`，并通过 `cache_registry` 管理输出目录。
 - **股价动态总结**（`stock_price_dynamics_summarizer.py`）：围绕 `IndicatorLibrary` + `IndicatorBatchRequest` 计算 3/6/12 个月收益、夏普、相关性矩阵、MACD/RSI/MA、行业对比等信息，生成 Markdown + JSON 报告，供 `services/research/stock_analysis.py` 复用。
