@@ -59,6 +59,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=10,
         help="Number of leading stocks to show. Default: 10",
     )
+
+    run_parser = subparsers.add_parser("run-daily", help="Run the stage-1 selection system daily pipeline.")
+    run_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    run_parser.add_argument("--include-live-feeds", action="store_true", help="Pull AkShare live market feeds.")
+    run_parser.add_argument("--top-hot", type=int, default=12, help="Number of hot candidates.")
+    run_parser.add_argument("--top-core", type=int, default=12, help="Number of core candidates.")
+    run_parser.add_argument("--max-workers", type=int, default=6, help="Max workers for snapshot building.")
+    run_parser.add_argument("--signature", default="", help="Optional trade signature for holdings guardrail.")
+    run_parser.add_argument("--cache-only", action="store_true", help="Use local caches only and skip missing snapshot refresh.")
     return parser
 
 
@@ -98,6 +107,32 @@ def _handle_show_universe(base_dir: str, limit: int) -> int:
     return 0
 
 
+def _handle_run_daily(
+    base_dir: str,
+    run_date: str,
+    include_live_feeds: bool,
+    top_hot: int,
+    top_core: int,
+    max_workers: int,
+    signature: str,
+    cache_only: bool,
+) -> int:
+    from services.selection_system.daily_pipeline import run_selection_pipeline
+
+    run_dir = run_selection_pipeline(
+        run_date,
+        base_dir=base_dir,
+        include_live_feeds=include_live_feeds,
+        top_hot=top_hot,
+        top_core=top_core,
+        max_workers=max_workers,
+        signature=signature,
+        cache_only=cache_only,
+    )
+    LOGGER.info("selection run 完成: %s", run_dir)
+    return 0
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -108,6 +143,17 @@ def main() -> int:
         return _handle_validate_universe(args.base_dir)
     if args.command == "show-universe":
         return _handle_show_universe(args.base_dir, args.limit)
+    if args.command == "run-daily":
+        return _handle_run_daily(
+            args.base_dir,
+            args.date,
+            args.include_live_feeds,
+            args.top_hot,
+            args.top_core,
+            args.max_workers,
+            args.signature,
+            args.cache_only,
+        )
 
     parser.error(f"未知命令: {args.command}")
     return 2

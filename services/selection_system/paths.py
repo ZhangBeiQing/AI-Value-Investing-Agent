@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -61,6 +62,18 @@ class SelectionSystemPaths:
         return self.market_state_dir / "symbol_hot_state.json"
 
     @property
+    def runtime_hot_pool_path(self) -> Path:
+        return self.market_state_dir / "runtime_hot_pool.json"
+
+    @property
+    def runtime_core_pool_path(self) -> Path:
+        return self.market_state_dir / "runtime_core_pool.json"
+
+    @property
+    def runtime_holdings_guardrail_path(self) -> Path:
+        return self.market_state_dir / "runtime_holdings_guardrail.json"
+
+    @property
     def symbol_memory_dir(self) -> Path:
         return self.base_dir / "symbol_memory"
 
@@ -76,6 +89,39 @@ class SelectionSystemPaths:
     def selection_runs_manifest_path(self) -> Path:
         return self.selection_runs_dir / "manifest.json"
 
+    def run_dir(self, run_date: str) -> Path:
+        return self.selection_runs_dir / run_date
+
+    def run_manifest_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "run_manifest.json"
+
+    def run_raw_news_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "01_raw_news_items.json"
+
+    def raw_news_daily_path(self, run_date: str) -> Path:
+        return self.raw_news_dir / f"{run_date}.json"
+
+    def run_news_items_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "02_news_items.json"
+
+    def run_snapshot_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "03_simplified_snapshot.json"
+
+    def run_theme_state_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "04_theme_state.json"
+
+    def run_symbol_hot_state_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "05_symbol_hot_state.json"
+
+    def run_hot_candidates_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "06_hot_candidates.json"
+
+    def run_core_candidates_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "07_core_candidates.json"
+
+    def run_symbol_memory_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "08_symbol_memory.json"
+
     def ensure_directories(self) -> None:
         for path in (
             self.universe_dir,
@@ -85,3 +131,16 @@ class SelectionSystemPaths:
             self.selection_runs_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
+
+    def ensure_run_dir(self, run_date: str) -> Path:
+        run_dir = self.run_dir(run_date)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        return run_dir
+
+    def iter_run_dirs(self) -> Iterable[Path]:
+        if not self.selection_runs_dir.exists():
+            return []
+        return sorted(
+            (path for path in self.selection_runs_dir.iterdir() if path.is_dir()),
+            key=lambda path: path.name,
+        )

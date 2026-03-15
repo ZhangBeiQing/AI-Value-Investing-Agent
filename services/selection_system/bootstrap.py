@@ -61,6 +61,33 @@ def initialize_selection_system(
         force=force,
     )
     _write_json_if_needed(
+        resolved_paths.runtime_hot_pool_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "candidates": [],
+        },
+        force=force,
+    )
+    _write_json_if_needed(
+        resolved_paths.runtime_core_pool_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "candidates": [],
+        },
+        force=force,
+    )
+    _write_json_if_needed(
+        resolved_paths.runtime_holdings_guardrail_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "symbols": [],
+        },
+        force=force,
+    )
+    _write_json_if_needed(
         resolved_paths.symbol_memory_index_path,
         {
             "schema_version": 1,
