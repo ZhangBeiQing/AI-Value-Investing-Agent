@@ -1,6 +1,131 @@
 # AI选股系统一期落地设计
 
-更新日期：2026-03-15
+更新日期：2026-03-16
+
+## 0. 当前实施状态
+
+### 0.1 已完成
+
+1. `master_universe` 基础设施已落地。
+2. 已新增选股系统初始化脚本：
+   - `scripts/manage_selection_system.py`
+3. 已建立基础目录骨架：
+   - `data/universe/`
+   - `data/market_state/`
+   - `data/symbol_memory/`
+   - `data/selection_runs/`
+4. `master_universe` 已由人工扩充到 `110` 只股票，当前可作为一期样例池继续开发。
+5. 当前基线已提交本地 git：
+   - commit: `af38215`
+6. 已落地第一版可运行日跑链路：
+   - `raw_news_item`
+   - `news_item`
+   - `simplified_snapshot`
+   - `theme_state`
+   - `symbol_hot_state`
+   - `candidate_selector`
+   - `symbol_memory`
+7. 已支持两种运行模式：
+   - `--cache-only`
+   - `--include-live-feeds`
+8. 已验证 AkShare 实时快讯在提权外网环境下可正常访问。
+
+### 0.2 正在实施中的一期方案
+
+本轮开始，文档从“纯讨论稿”切换为“实施设计稿”。后续代码以这套方案为主推进。
+
+当前选择的第一版落地方案：
+
+1. 不直接做重型 LLM 驱动的全自动深研链。
+2. 先做一条“规则可跑通、产物可检查、后续可插入强模型”的轻量流水线。
+3. `hot_news_state` 第一版采用：
+   - `raw_news_item`
+   - `news_item`
+   - `theme_state`
+   - `symbol_hot_state`
+4. 第一版优先复用：
+   - AkShare 新闻 feed
+   - 现有公告/新闻审计产物
+   - `basic_info_cache`
+   - `trade_summary`
+5. 第一版候选筛选采用“规则打分 + 可解释 reasons”，不给系统一上来塞黑盒决策器。
+
+### 0.3 当前实施顺序
+
+1. 完善 `master_universe`
+   - 已完成基础文件与校验
+2. 落地 `selection_runs/{date}` 运行目录和每日产物
+3. 落地 `raw_news_item` 采集与标准化
+4. 落地 `news_item` 高保真结构化提取
+5. 落地 `theme_state` / `symbol_hot_state` 聚合
+6. 落地 `candidate_selector`
+7. 落地 `symbol_memory`
+8. 补强文档、日志、验证样例
+9. 后续再引入强模型增量融合和更好的主题归并
+
+### 0.4 当前代码落地结果
+
+当前已实现的主命令：
+
+```bash
+python scripts/manage_selection_system.py --base-dir data init
+python scripts/manage_selection_system.py --base-dir data validate-universe
+python scripts/manage_selection_system.py --base-dir data show-universe --limit 10
+python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only
+python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only --include-live-feeds
+```
+
+当前 `run-daily` 产物：
+
+```text
+data/selection_runs/YYYY-MM-DD/
+  01_raw_news_items.json
+  02_news_items.json
+  03_simplified_snapshot.json
+  04_theme_state.json
+  05_symbol_hot_state.json
+  06_hot_candidates.json
+  07_core_candidates.json
+  08_symbol_memory.json
+  run_manifest.json
+```
+
+同时会回写长期状态：
+
+```text
+data/market_state/raw_news/YYYY-MM-DD.json
+data/market_state/raw_news/raw_news_manifest.json
+data/market_state/theme_state.json
+data/market_state/symbol_hot_state.json
+data/market_state/runtime_hot_pool.json
+data/market_state/runtime_core_pool.json
+data/market_state/runtime_holdings_guardrail.json
+data/symbol_memory/index.json
+data/symbol_memory/{symbol}.json
+```
+
+### 0.5 最新验证记录
+
+已完成的验证：
+
+1. `master_universe` 校验通过，当前股票数 `110`。
+2. `cache-only` 模式下，`2026-03-15` 选股链路已完整跑通。
+3. `include-live-feeds` 模式下，`2026-03-16` 选股链路已完整跑通。
+4. 最新一次带实时 feed 的运行中：
+   - `raw_news_items`: `167`
+   - `themes`: `14+`
+   - `symbol_hot_state`: `110`
+   - `hot_candidates`: `12`
+   - `core_candidates`: `12`
+   - `symbol_memory`: `14`
+
+### 0.6 当前已知限制
+
+1. `basic_info_cache` 覆盖率仍不足，当前 `cache-only` 只能命中一部分股票；未命中的股票仍可进入热点链，但基本面打分会偏弱。
+2. 当前宏观输入仍来自本地 `data/macro_economy/`，如果该目录没有新文件，命中的可能是旧宏观总结。
+3. `theme_state` 第一版仍是规则聚合，尚未引入你设想中的“强模型渐进式融合 skill”。
+4. `board_state` 仍未落地，一期继续维持 `theme_state -> symbol_hot_state` 两层。
+5. `core_candidates` 当前仍是规则打分，不代表最终投资决策，只是为后续深挖缩小范围。
 
 ## 1. 背景与目标
 
