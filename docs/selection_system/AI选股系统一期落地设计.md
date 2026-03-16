@@ -112,6 +112,7 @@ data/symbol_memory/{symbol}.json
 1. `master_universe` 校验通过，当前股票数 `110`。
 2. `cache-only` 模式下，`2026-03-15` 选股链路已完整跑通。
 3. 默认启用 AkShare 高质量快讯源的模式下，`2026-03-16` 选股链路已完整跑通。
+4. `em_breakfast` 已增强为“摘要 + 正文 HTML + 环球市场图片 OCR 提取”三段式内容，并已写入 `01_raw_news_items.json`。
 4. 最新一次默认新闻主链运行中：
    - `raw_news_items`: `167`
    - `themes`: `14+`
@@ -128,6 +129,34 @@ data/symbol_memory/{symbol}.json
 4. `board_state` 仍未落地，一期继续维持 `theme_state -> symbol_hot_state` 两层。
 5. `core_candidates` 当前仍是规则打分，不代表最终投资决策，只是为后续深挖缩小范围。
 6. 搜索 API 补充层尚未接入，当前仍主要依赖 AkShare 高质量快讯源和短窗口公告辅助。
+
+### 0.7 东方财富财经早餐增强已落地
+
+当前 `raw_news_item` 中的 `em_breakfast` 已按以下方式增强：
+
+1. 先读取 `stock_info_cjzc_em` 返回的标题、摘要、链接。
+2. 进入东财文章页，抓取 `div#ContentBody` 正文。
+3. 识别 `环球市场` 小节中的图片资源，并下载原图到本地缓存目录。
+4. 调用 `qwen-doc-turbo` 对该图片做结构化提取。
+5. 将以下内容合并回单条 `raw_news_item.content`：
+   - 早餐标题
+   - AkShare 摘要
+   - 全文正文
+   - 环球市场图片提取结果
+
+当前缓存位置：
+
+```text
+data/market_state/raw_news_assets/breakfast/{article_id}.html
+data/market_state/raw_news_assets/breakfast/{article_id}_global_market.png
+data/market_state/raw_news_assets/breakfast/{article_id}_global_market.json
+```
+
+当前落地原则：
+
+1. `01_raw_news_items.json` 追求高保真，不在这一层压缩早餐正文。
+2. 图片 OCR 结果也保留在原始新闻层，后续 `news_item` / `theme_state` 再决定如何压缩。
+3. 如果东财正文或图片提取失败，则降级保留 AkShare 摘要，不阻断整条日跑。
 
 ## 1. 背景与目标
 
