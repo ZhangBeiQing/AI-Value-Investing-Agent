@@ -62,7 +62,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run_parser = subparsers.add_parser("run-daily", help="Run the stage-1 selection system daily pipeline.")
     run_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
-    run_parser.add_argument("--include-live-feeds", action="store_true", help="Pull AkShare live market feeds.")
+    run_parser.add_argument("--no-live-feeds", action="store_true", help="Disable AkShare market/news feeds.")
     run_parser.add_argument("--top-hot", type=int, default=12, help="Number of hot candidates.")
     run_parser.add_argument("--top-core", type=int, default=12, help="Number of core candidates.")
     run_parser.add_argument("--max-workers", type=int, default=6, help="Max workers for snapshot building.")
@@ -147,7 +147,7 @@ def main() -> int:
         return _handle_run_daily(
             args.base_dir,
             args.date,
-            args.include_live_feeds,
+            not args.no_live_feeds,
             args.top_hot,
             args.top_core,
             args.max_workers,

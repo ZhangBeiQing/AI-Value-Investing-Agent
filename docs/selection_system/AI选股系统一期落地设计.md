@@ -25,10 +25,11 @@
    - `symbol_hot_state`
    - `candidate_selector`
    - `symbol_memory`
-7. 已支持两种运行模式：
+7. 已支持第一版日跑模式：
+   - 默认启用高质量 AkShare 快讯源
    - `--cache-only`
-   - `--include-live-feeds`
-8. 已验证 AkShare 实时快讯在提权外网环境下可正常访问。
+   - `--no-live-feeds`
+8. 已验证 AkShare 实时快讯可正常访问。
 
 ### 0.2 正在实施中的一期方案
 
@@ -43,9 +44,9 @@
    - `news_item`
    - `theme_state`
    - `symbol_hot_state`
-4. 第一版优先复用：
-   - AkShare 新闻 feed
-   - 现有公告/新闻审计产物
+4. 第一版输入优先级已经修正为：
+   - 高质量 AkShare 市场快讯源为主输入
+   - 公告/新闻审计产物为个股催化辅助输入
    - `basic_info_cache`
    - `trade_summary`
 5. 第一版候选筛选采用“规则打分 + 可解释 reasons”，不给系统一上来塞黑盒决策器。
@@ -72,7 +73,7 @@ python scripts/manage_selection_system.py --base-dir data init
 python scripts/manage_selection_system.py --base-dir data validate-universe
 python scripts/manage_selection_system.py --base-dir data show-universe --limit 10
 python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only
-python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only --include-live-feeds
+python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only --no-live-feeds
 ```
 
 当前 `run-daily` 产物：
@@ -110,8 +111,8 @@ data/symbol_memory/{symbol}.json
 
 1. `master_universe` 校验通过，当前股票数 `110`。
 2. `cache-only` 模式下，`2026-03-15` 选股链路已完整跑通。
-3. `include-live-feeds` 模式下，`2026-03-16` 选股链路已完整跑通。
-4. 最新一次带实时 feed 的运行中：
+3. 默认启用 AkShare 高质量快讯源的模式下，`2026-03-16` 选股链路已完整跑通。
+4. 最新一次默认新闻主链运行中：
    - `raw_news_items`: `167`
    - `themes`: `14+`
    - `symbol_hot_state`: `110`
@@ -126,6 +127,7 @@ data/symbol_memory/{symbol}.json
 3. `theme_state` 第一版仍是规则聚合，尚未引入你设想中的“强模型渐进式融合 skill”。
 4. `board_state` 仍未落地，一期继续维持 `theme_state -> symbol_hot_state` 两层。
 5. `core_candidates` 当前仍是规则打分，不代表最终投资决策，只是为后续深挖缩小范围。
+6. 搜索 API 补充层尚未接入，当前仍主要依赖 AkShare 高质量快讯源和短窗口公告辅助。
 
 ## 1. 背景与目标
 
