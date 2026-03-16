@@ -64,7 +64,7 @@ python scripts/manage_selection_system.py --base-dir data init
 python scripts/manage_selection_system.py --base-dir data validate-universe
 python scripts/manage_selection_system.py --base-dir data show-universe --limit 10
 python scripts/manage_selection_system.py --base-dir data run-news --date YYYY-MM-DD --model deepseek-v3.2-exp --batch-size 20
-python scripts/manage_selection_system.py --base-dir data run-signals --date YYYY-MM-DD --board-limit 60 --stock-heat-limit 100
+python scripts/manage_selection_system.py --base-dir data run-signals --date YYYY-MM-DD --board-limit 12 --stock-limit 80
 python scripts/manage_selection_system.py --base-dir data render-hot-input --date YYYY-MM-DD
 python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only
 ```
@@ -141,7 +141,7 @@ data/selection_runs/YYYY-MM-DD/
 2. 进入东财文章页，抓取 `div#ContentBody` 正文。
 3. 识别 `环球市场` 小节中的图片资源，并下载原图到本地缓存目录。
 4. 调用 `qwen-doc-turbo` 对该图片做结构化提取。
-5. 将以下内容合并回单条 `raw_news_item.content`：
+5. 将以下内容合并回早餐候选与正文增强链：
    - 早餐标题
    - AkShare 摘要
    - 全文正文
@@ -516,7 +516,7 @@ graph TD
   "run_date": "2026-03-16",
   "items": [
     {
-      "news_id": "ths_20260316_abcd1234",
+      "news_id": "T001",
       "title": "工业和信息化部：全力巩固工业经济稳中向好态势",
       "published_at": "2026-03-16T17:15:41+08:00",
       "source": "ths_global",
@@ -532,6 +532,7 @@ graph TD
 1. `news_id`
    - 程序内部唯一标识
    - 用于去重后回写与回源抓正文
+   - 当前实际实现使用短 id，例如 `B001`、`T017`、`C002`
 2. `title`
    - 新闻标题
 3. `published_at`
@@ -568,7 +569,7 @@ graph TD
   "run_date": "2026-03-16",
   "items": [
     {
-      "news_id": "cls_20260316_efgh5678",
+      "news_id": "C001",
       "title": "金能科技：丙烯、聚丙烯、甲醇价格均有所上涨",
       "published_at": "2026-03-16T17:01:26+08:00",
       "source": "cls_key",
@@ -609,7 +610,7 @@ DeepSeek 在这一步不负责：
   "run_date": "2026-03-16",
   "items": [
     {
-      "news_id": "cjzc_20260316_0001",
+      "news_id": "B001",
       "title": "东方财富财经早餐 3月16日周一",
       "published_at": "2026-03-16T06:00:40+08:00",
       "source": "em_breakfast",
