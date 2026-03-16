@@ -24,6 +24,30 @@ from .symbols import stock_to_symbol_info
 
 LOGGER = get_logger("SelectionNews")
 
+PRIMARY_MARKET_SOURCES = {"cls_key", "ths_global", "em_global"}
+AUX_MARKET_SOURCES = {"em_breakfast"}
+GENERIC_THEME_NAMES = {"telegraph", "breakfast", "macro", "market_context", "industry_catalyst"}
+DISCLOSURE_LOOKBACK_DAYS = 14
+PRIMARY_NEWS_LOOKBACK_DAYS = 7
+CORE_HOT_NEWS_DAYS = 3
+MAX_ITEMS_PER_SOURCE = {
+    "cls_key": 80,
+    "ths_global": 80,
+    "em_global": 60,
+    "em_breakfast": 20,
+}
+DISCLOSURE_KEEP_CATEGORIES = {
+    "Financial_Report",
+    "Contract",
+    "M&A",
+    "Litigation",
+    "Regulation",
+    "Personnel",
+    "Equity_Change",
+    "Operation",
+}
+DISCLOSURE_KEEP_IMPACT = {"High", "Medium"}
+
 POSITIVE_KEYWORDS = ("增长", "上调", "中标", "回购", "突破", "催化", "景气", "订单", "扩产", "创新高")
 NEGATIVE_KEYWORDS = ("下滑", "处罚", "亏损", "风险", "减持", "诉讼", "暴跌", "违约", "调查", "质押")
 THEME_KEYWORDS: Dict[str, Sequence[str]] = {
@@ -102,13 +126,38 @@ def _load_disclosure_items(stock: MasterUniverseStock) -> List[Dict[str, Any]]:
     return []
 
 
+def _should_keep_disclosure_item(item: Dict[str, Any], run_dt: datetime) -> bool:
+    published_dt = _parse_dt(item.get("datetime"), fallback=run_dt.isoformat())
+    if published_dt is None:
+        return False
+    if published_dt.date() > run_dt.date():
+        return False
+    if published_dt < run_dt - timedelta(days=DISCLOSURE_LOOKBACK_DAYS):
+        return False
+
+    category = str(item.get("category") or "").strip()
+    impact = str(item.get("impact_level") or "").strip()
+    title = str(item.get("title") or "")
+    summary = str(item.get("summary") or "")
+    text = f"{title}\n{summary}"
+
+    if category and category not in DISCLOSURE_KEEP_CATEGORIES:
+        return False
+    if impact and impact not in DISCLOSURE_KEEP_IMPACT:
+        if not any(keyword in text for keyword in ("回购", "减持", "订单", "中标", "业绩", "处罚", "并购", "增持", "分红")):
+            return False
+    if any(keyword in text for keyword in ("监事会决议", "法律意见书", "核查意见", "质押", "担保")) and impact != "High":
+        return False
+    return True
+
+
 def collect_raw_news_items(
     universe: MasterUniverseDocument,
     run_date: str,
     *,
-    include_live_feeds: bool = False,
-    lookback_days: int = 30,
-    max_feed_rows: int = 60,
+    include_live_feeds: bool = True,
+    lookback_days: int = PRIMARY_NEWS_LOOKBACK_DAYS,
+    max_feed_rows: int = 80,
 ) -> List[Dict[str, Any]]:
     run_dt = _parse_dt(run_date, fallback=run_date) or datetime.now()
     collected_at = datetime.now().isoformat()
@@ -118,11 +167,7 @@ def collect_raw_news_items(
         disclosure_items = _load_disclosure_items(stock)
         for item in disclosure_items:
             published_dt = _parse_dt(item.get("datetime"), fallback=run_date)
-            if published_dt is None:
-                continue
-            if published_dt.date() > run_dt.date():
-                continue
-            if published_dt < run_dt - timedelta(days=lookback_days):
+            if not _should_keep_disclosure_item(item, run_dt) or published_dt is None:
                 continue
             title = str(item.get("title") or stock.name).strip()
             content_parts = [
@@ -155,6 +200,7 @@ def collect_raw_news_items(
                         "sector": stock.sector,
                         "industry": stock.industry,
                         "structured_item": item,
+                        "selection_role": "symbol_catalyst",
                     },
                 ).to_dict()
             )
@@ -171,7 +217,7 @@ def collect_raw_news_items(
                 title=f"{run_date} 宏观总结",
                 content=macro_text.strip(),
                 raw_tags=["宏观", "市场"],
-                extra={},
+                extra={"selection_role": "market_context"},
             ).to_dict()
         )
 
@@ -182,7 +228,8 @@ def collect_raw_news_items(
     for item in raw_items:
         key = item["raw_id"]
         deduped[key] = item
-    LOGGER.info("raw_news_items 收集完成: total=%d", len(deduped))
+    source_counts = Counter(item.get("source") for item in deduped.values())
+    LOGGER.info("raw_news_items 收集完成: total=%d source_counts=%s", len(deduped), dict(source_counts))
     return list(deduped.values())
 
 
@@ -202,11 +249,17 @@ def _collect_live_feed_items(run_dt: datetime, collected_at: str, *, max_feed_ro
             continue
         if frame is None or getattr(frame, "empty", True):
             continue
-        for _, row in frame.head(max_feed_rows).iterrows():
+        source_limit = min(max_feed_rows, MAX_ITEMS_PER_SOURCE.get(source_name, max_feed_rows))
+        for _, row in frame.head(source_limit).iterrows():
             title = str(row.get("标题") or row.get("内容") or row.get("摘要") or "").strip()
             content = str(row.get("内容") or row.get("摘要") or title).strip()
             published = _resolve_feed_published_at(row, run_dt)
+            published_dt = _parse_dt(published, fallback=run_dt.isoformat()) or run_dt
             if not title:
+                continue
+            if source_name in PRIMARY_MARKET_SOURCES and published_dt < run_dt - timedelta(days=PRIMARY_NEWS_LOOKBACK_DAYS):
+                continue
+            if source_name in AUX_MARKET_SOURCES and published_dt.date() != run_dt.date():
                 continue
             items.append(
                 RawNewsItem(
@@ -219,7 +272,11 @@ def _collect_live_feed_items(run_dt: datetime, collected_at: str, *, max_feed_ro
                     content=content,
                     url=str(row.get("链接") or row.get("url") or ""),
                     raw_tags=[],
-                    extra={"row": {key: str(value) for key, value in row.to_dict().items()}},
+                    extra={
+                        "row": {key: str(value) for key, value in row.to_dict().items()},
+                        "selection_role": "market_theme",
+                        "source_rank": _source_rank(source_name),
+                    },
                 ).to_dict()
             )
     return items
@@ -315,19 +372,24 @@ def _build_news_item_from_disclosure(raw: Dict[str, Any]) -> NewsItem:
             "audit_analysis": structured.get("audit_analysis"),
             "price_driver": structured.get("price_driver"),
             "risk_warning": structured.get("risk_warning"),
+            "selection_role": "symbol_catalyst",
         },
     )
 
 
 def _build_news_item_from_raw(raw: Dict[str, Any], universe: MasterUniverseDocument) -> NewsItem:
     text = f"{raw.get('title', '')}\n{raw.get('content', '')}"
-    matched = _match_universe_stocks(text, universe.stocks)
+    if str(raw.get("source_type")) == "macro_note":
+        matched = []
+    else:
+        matched = _match_universe_stocks(text, universe.stocks)
     sectors = sorted({stock.sector for stock in matched if stock.sector})
     themes = _extract_theme_tags(text, sector=" ".join(sectors), industry=" ".join(stock.industry for stock in matched if stock.industry))
     if not themes and sectors:
         themes = sectors[:3]
     if not themes:
-        themes = [str(raw.get("source_type") or "市场事件")]
+        fallback_theme = _infer_fallback_theme(text)
+        themes = [fallback_theme] if fallback_theme else []
     sentiment = _infer_sentiment(text)
     key_points = _compact_points(_split_sentences(text))
     bull_points = [point for point in key_points if any(keyword in point for keyword in POSITIVE_KEYWORDS)]
@@ -360,7 +422,10 @@ def _build_news_item_from_raw(raw: Dict[str, Any], universe: MasterUniverseDocum
         novelty_hint=0.5,
         sentiment_hint=sentiment,
         dedupe_hash=_sha1(str(raw["title"]) + str(raw["published_at"])),
-        extra={},
+        extra={
+            "selection_role": raw.get("extra", {}).get("selection_role", "market_theme"),
+            "source_rank": raw.get("extra", {}).get("source_rank", _source_rank(str(raw.get("source")))),
+        },
     )
 
 
@@ -383,25 +448,33 @@ def rebuild_theme_state(news_items: Sequence[Dict[str, Any]], run_date: str) -> 
     run_dt = _parse_dt(run_date, fallback=run_date) or datetime.now()
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for item in news_items:
+        if item.get("source_type") == "disclosure" and not item.get("entities", {}).get("themes"):
+            continue
         entities = item.get("entities") or {}
         themes = entities.get("themes") or entities.get("sectors") or [item.get("event_type") or "市场事件"]
         for theme in themes:
-            if theme:
+            if theme and str(theme).strip() not in GENERIC_THEME_NAMES:
                 groups[str(theme)].append(item)
 
     themes_payload = []
     for theme_name, evidence in groups.items():
         evidence_sorted = sorted(evidence, key=lambda entry: entry.get("published_at", ""), reverse=True)
         symbol_counts = Counter(symbol for item in evidence_sorted for symbol in (item.get("entities", {}).get("symbols") or []))
-        recent_scores = [_recency_weight(item.get("published_at"), run_dt) * float(item.get("importance_hint") or 0.5) for item in evidence_sorted]
+        recent_scores = [
+            _recency_weight(item.get("published_at"), run_dt, source=item.get("source"))
+            * float(item.get("importance_hint") or 0.5)
+            * _source_rank(str(item.get("source")))
+            for item in evidence_sorted
+        ]
         heat_score = min(100.0, round(sum(score * 28 for score in recent_scores), 2))
         importance_score = min(100.0, round(sum(float(item.get("importance_hint") or 0.5) for item in evidence_sorted) / max(len(evidence_sorted), 1) * 100, 2))
-        recent_3d = sum(1 for item in evidence_sorted if _days_ago(item.get("published_at"), run_dt) <= 3)
+        recent_3d = sum(1 for item in evidence_sorted if _days_ago(item.get("published_at"), run_dt) <= CORE_HOT_NEWS_DAYS)
         recent_7d = sum(1 for item in evidence_sorted if _days_ago(item.get("published_at"), run_dt) <= 7)
         novelty_score = round(min(100.0, recent_3d / max(len(evidence_sorted), 1) * 100), 2)
         persistence_score = round(min(100.0, len({str(item.get("published_at"))[:10] for item in evidence_sorted}) * 8.0), 2)
         crowdedness_score = round(min(100.0, max(len(evidence_sorted) - 1, 0) * 10.0), 2)
-        confidence_score = round(min(100.0, (sum(1 for item in evidence_sorted if item.get("source_type") == "disclosure") / max(len(evidence_sorted), 1)) * 80 + 20), 2)
+        market_source_count = sum(1 for item in evidence_sorted if str(item.get("source")) in PRIMARY_MARKET_SOURCES)
+        confidence_score = round(min(100.0, (market_source_count / max(len(evidence_sorted), 1)) * 85 + 15), 2)
         themes_payload.append(
             {
                 "theme_id": f"theme::{_sha1(theme_name)}",
@@ -598,6 +671,26 @@ def _guess_event_type(text: str, source_type: Any) -> str:
     return "industry_catalyst"
 
 
+def _infer_fallback_theme(text: str) -> str:
+    lowered = str(text or "").lower()
+    keyword_map = {
+        "政策": "政策催化",
+        "机器人": "机器人",
+        "半导体": "半导体",
+        "芯片": "半导体",
+        "电池": "新能源车",
+        "汽车": "新能源车",
+        "黄金": "黄金",
+        "医药": "创新药",
+        "算力": "AI",
+        "ai": "AI",
+    }
+    for keyword, theme in keyword_map.items():
+        if keyword in lowered:
+            return theme
+    return ""
+
+
 def _map_disclosure_event_type(category: str) -> str:
     mapping = {
         "Financial_Report": "earnings",
@@ -626,6 +719,8 @@ def _infer_importance(text: str, source_type: Any, matched_count: int) -> float:
     score = 0.35
     if str(source_type) == "macro_note":
         score += 0.15
+    if str(source_type) == "telegraph":
+        score += 0.2
     if any(keyword in str(text or "") for keyword in ("政策", "中标", "业绩", "回购", "减持", "处罚")):
         score += 0.25
     if matched_count:
@@ -633,8 +728,25 @@ def _infer_importance(text: str, source_type: Any, matched_count: int) -> float:
     return min(score, 0.95)
 
 
-def _recency_weight(published_at: Any, run_dt: datetime) -> float:
+def _recency_weight(published_at: Any, run_dt: datetime, *, source: Any = None) -> float:
     days = _days_ago(published_at, run_dt)
+    source_name = str(source or "")
+    if source_name in PRIMARY_MARKET_SOURCES:
+        if days <= 1:
+            return 1.0
+        if days <= CORE_HOT_NEWS_DAYS:
+            return 0.85
+        if days <= 7:
+            return 0.55
+        return 0.15
+    if source_name == "disclosure":
+        if days <= 3:
+            return 0.75
+        if days <= 7:
+            return 0.5
+        if days <= DISCLOSURE_LOOKBACK_DAYS:
+            return 0.25
+        return 0.05
     if days <= 3:
         return 1.0
     if days <= 7:
@@ -668,3 +780,15 @@ def _as_float(value: Any) -> float:
         return float(str(value).replace("%", ""))
     except Exception:
         return 0.0
+
+
+def _source_rank(source: str) -> float:
+    ranks = {
+        "cls_key": 1.2,
+        "ths_global": 1.0,
+        "em_global": 0.9,
+        "em_breakfast": 0.6,
+        "disclosure": 0.7,
+        "macro_summary": 0.5,
+    }
+    return ranks.get(source, 0.7)

@@ -33,7 +33,7 @@ def run_selection_pipeline(
     run_date: str,
     *,
     base_dir: str | Path = "data",
-    include_live_feeds: bool = False,
+    include_live_feeds: bool = True,
     top_hot: int = 12,
     top_core: int = 12,
     max_workers: int = 6,
