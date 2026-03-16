@@ -54,6 +54,22 @@ class SelectionSystemPaths:
         return self.raw_news_dir / "raw_news_manifest.json"
 
     @property
+    def board_signals_dir(self) -> Path:
+        return self.market_state_dir / "board_signals"
+
+    @property
+    def board_signals_manifest_path(self) -> Path:
+        return self.board_signals_dir / "manifest.json"
+
+    @property
+    def stock_heat_dir(self) -> Path:
+        return self.market_state_dir / "stock_heat"
+
+    @property
+    def stock_heat_manifest_path(self) -> Path:
+        return self.stock_heat_dir / "manifest.json"
+
+    @property
     def theme_state_path(self) -> Path:
         return self.market_state_dir / "theme_state.json"
 
@@ -104,6 +120,36 @@ class SelectionSystemPaths:
     def run_news_items_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "02_news_items.json"
 
+    def run_news_candidates_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "01_news_candidates.json"
+
+    def run_news_dedup_decisions_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "02_news_dedup_decisions.json"
+
+    def run_news_deduped_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "02_news_deduped.json"
+
+    def run_news_enriched_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "03_news_enriched.json"
+
+    def run_board_signals_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "04_board_signals.json"
+
+    def board_signals_daily_path(self, run_date: str) -> Path:
+        return self.board_signals_dir / f"{run_date}.json"
+
+    def run_stock_heat_signals_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "05_stock_heat_signals.json"
+
+    def stock_heat_daily_path(self, run_date: str) -> Path:
+        return self.stock_heat_dir / f"{run_date}.json"
+
+    def run_stock_heat_path(self, run_date: str) -> Path:
+        return self.run_stock_heat_signals_path(run_date)
+
+    def run_hot_state_input_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "06_hot_state_input.md"
+
     def run_snapshot_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "03_simplified_snapshot.json"
 
@@ -127,6 +173,8 @@ class SelectionSystemPaths:
             self.universe_dir,
             self.market_state_dir,
             self.raw_news_dir,
+            self.board_signals_dir,
+            self.stock_heat_dir,
             self.symbol_memory_dir,
             self.selection_runs_dir,
         ):

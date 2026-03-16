@@ -52,6 +52,24 @@ def initialize_selection_system(
         force=force,
     )
     _write_json_if_needed(
+        resolved_paths.board_signals_manifest_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "items": [],
+        },
+        force=force,
+    )
+    _write_json_if_needed(
+        resolved_paths.stock_heat_manifest_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "items": [],
+        },
+        force=force,
+    )
+    _write_json_if_needed(
         resolved_paths.symbol_hot_state_path,
         {
             "schema_version": 1,

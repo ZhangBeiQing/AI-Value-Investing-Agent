@@ -68,6 +68,37 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--max-workers", type=int, default=6, help="Max workers for snapshot building.")
     run_parser.add_argument("--signature", default="", help="Optional trade signature for holdings guardrail.")
     run_parser.add_argument("--cache-only", action="store_true", help="Use local caches only and skip missing snapshot refresh.")
+
+    news_parser = subparsers.add_parser("run-news", help="Run the standalone news acquisition/dedup/enrichment pipeline.")
+    news_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    news_parser.add_argument("--model", default="deepseek-v3.2-exp", help="Dedup model name.")
+    news_parser.add_argument("--batch-size", type=int, default=20, help="Batch size for LLM dedup.")
+
+    market_parser = subparsers.add_parser(
+        "run-signals",
+        aliases=["run-market-signals"],
+        help="Run standalone board-change and stock-heat ingestion.",
+    )
+    market_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    market_parser.add_argument("--board-limit", type=int, default=60, help="Max board items to keep.")
+    market_parser.add_argument(
+        "--stock-limit",
+        "--stock-heat-limit",
+        dest="stock_limit",
+        type=int,
+        default=100,
+        help="Max stock heat items to keep.",
+    )
+
+    hot_input_parser = subparsers.add_parser(
+        "render-hot-input",
+        help="Render markdown input for the future hot_news_state skill.",
+    )
+    hot_input_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    hot_input_parser.add_argument("--news-limit", type=int, default=40, help="Max news items to render.")
+    hot_input_parser.add_argument("--board-limit", type=int, default=12, help="Max board items to render.")
+    hot_input_parser.add_argument("--universe-heat-limit", type=int, default=30, help="Max universe-hit hot stocks.")
+    hot_input_parser.add_argument("--outside-heat-limit", type=int, default=15, help="Max outside-universe hot stocks.")
     return parser
 
 
@@ -133,6 +164,64 @@ def _handle_run_daily(
     return 0
 
 
+def _handle_run_news(
+    base_dir: str,
+    run_date: str,
+    model: str,
+    batch_size: int,
+) -> int:
+    from services.selection_system.news_curation import run_news_curation_pipeline
+
+    outputs = run_news_curation_pipeline(
+        run_date,
+        base_dir=base_dir,
+        model=model,
+        batch_size=batch_size,
+    )
+    LOGGER.info("news curation 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_run_market_signals(
+    base_dir: str,
+    run_date: str,
+    board_limit: int,
+    stock_limit: int,
+) -> int:
+    from services.selection_system.market_signals import run_market_signals_pipeline
+
+    outputs = run_market_signals_pipeline(
+        run_date,
+        base_dir=base_dir,
+        board_limit=board_limit,
+        stock_limit=stock_limit,
+    )
+    LOGGER.info("market signals 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_render_hot_input(
+    base_dir: str,
+    run_date: str,
+    news_limit: int,
+    board_limit: int,
+    universe_heat_limit: int,
+    outside_heat_limit: int,
+) -> int:
+    from services.selection_system.hot_state_input import render_hot_state_input
+
+    output_path = render_hot_state_input(
+        run_date,
+        base_dir=base_dir,
+        news_limit=news_limit,
+        board_limit=board_limit,
+        universe_heat_limit=universe_heat_limit,
+        outside_heat_limit=outside_heat_limit,
+    )
+    LOGGER.info("hot state input 完成: %s", output_path)
+    return 0
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -153,6 +242,29 @@ def main() -> int:
             args.max_workers,
             args.signature,
             args.cache_only,
+        )
+    if args.command == "run-news":
+        return _handle_run_news(
+            args.base_dir,
+            args.date,
+            args.model,
+            args.batch_size,
+        )
+    if args.command in {"run-signals", "run-market-signals"}:
+        return _handle_run_market_signals(
+            args.base_dir,
+            args.date,
+            args.board_limit,
+            args.stock_limit,
+        )
+    if args.command == "render-hot-input":
+        return _handle_render_hot_input(
+            args.base_dir,
+            args.date,
+            args.news_limit,
+            args.board_limit,
+            args.universe_heat_limit,
+            args.outside_heat_limit,
         )
 
     parser.error(f"未知命令: {args.command}")
