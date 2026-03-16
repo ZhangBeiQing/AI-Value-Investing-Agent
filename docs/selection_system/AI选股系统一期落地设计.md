@@ -6,63 +6,54 @@
 
 ### 0.1 已完成
 
-1. `master_universe` 基础设施已落地。
-2. 已新增选股系统初始化脚本：
+1. `master_universe` 基础设施已落地，当前人工维护样例池为 `110` 只股票。
+2. 选股系统独立入口已落地：
    - `scripts/manage_selection_system.py`
-3. 已建立基础目录骨架：
+3. 已建立并实际使用以下目录：
    - `data/universe/`
-   - `data/market_state/`
+   - `data/market_state/raw_news/`
+   - `data/market_state/board_signals/`
+   - `data/market_state/stock_heat/`
    - `data/symbol_memory/`
    - `data/selection_runs/`
-4. `master_universe` 已由人工扩充到 `110` 只股票，当前可作为一期样例池继续开发。
-5. 当前基线已提交本地 git：
-   - commit: `af38215`
-6. 已落地第一版可运行日跑链路：
-   - `raw_news_item`
-   - `news_item`
-   - `simplified_snapshot`
-   - `theme_state`
-   - `symbol_hot_state`
-   - `candidate_selector`
-   - `symbol_memory`
-7. 已支持第一版日跑模式：
-   - 默认启用高质量 AkShare 快讯源
-   - `--cache-only`
-   - `--no-live-feeds`
-8. 已验证 AkShare 实时快讯可正常访问。
+4. 独立新闻链已落地并跑通：
+   - `01_news_candidates.json`
+   - `02_news_dedup_decisions.json`
+   - `02_news_deduped.json`
+   - `03_news_enriched.json`
+5. 独立市场信号链已落地：
+   - `04_board_signals.json`
+   - `05_stock_heat_signals.json`
+6. 面向后续强模型的 markdown 输入层已落地：
+   - `06_hot_state_input.md`
+7. 旧 `run-daily` 规则链仍保留，但已不再作为新闻/热点主设计目标。
 
 ### 0.2 正在实施中的一期方案
 
-本轮开始，文档从“纯讨论稿”切换为“实施设计稿”。后续代码以这套方案为主推进。
+本轮实施基线已经明确切换为三段式：
 
-当前选择的第一版落地方案：
-
-1. 不直接做重型 LLM 驱动的全自动深研链。
-2. 先做一条“规则可跑通、产物可检查、后续可插入强模型”的轻量流水线。
-3. `hot_news_state` 第一版采用：
-   - `raw_news_item`
-   - `news_item`
-   - `theme_state`
-   - `symbol_hot_state`
-4. 第一版输入优先级已经修正为：
-   - 高质量 AkShare 市场快讯源为主输入
-   - 公告/新闻审计产物为个股催化辅助输入
-   - `basic_info_cache`
-   - `trade_summary`
-5. 第一版候选筛选采用“规则打分 + 可解释 reasons”，不给系统一上来塞黑盒决策器。
+1. 新闻链只负责：
+   - 候选采集
+   - LLM 去重筛噪
+   - 正文增强
+2. 市场信号链只负责：
+   - 板块异动抓取
+   - 个股热度抓取
+   - 保留结构化事实，不做规则归因
+3. `hot_news_state` 暂不直接落地为规则状态机，而是先输出 `06_hot_state_input.md`，交给后续强模型 skill 增量融合。
 
 ### 0.3 当前实施顺序
 
 1. 完善 `master_universe`
    - 已完成基础文件与校验
-2. 落地 `selection_runs/{date}` 运行目录和每日产物
-3. 落地 `raw_news_item` 采集与标准化
-4. 落地 `news_item` 高保真结构化提取
-5. 落地 `theme_state` / `symbol_hot_state` 聚合
-6. 落地 `candidate_selector`
-7. 落地 `symbol_memory`
-8. 补强文档、日志、验证样例
-9. 后续再引入强模型增量融合和更好的主题归并
+2. 落地独立新闻链
+   - 已完成
+3. 落地独立板块异动 / 个股热度链
+   - 已完成第一版
+4. 落地 `hot_state_input.md` 渲染层
+   - 已完成第一版
+5. 后续引入强模型 `hot_news_state` 增量融合
+6. 再向下游接 `candidate_selector` / `symbol_memory`
 
 ### 0.4 当前代码落地结果
 
@@ -72,11 +63,38 @@
 python scripts/manage_selection_system.py --base-dir data init
 python scripts/manage_selection_system.py --base-dir data validate-universe
 python scripts/manage_selection_system.py --base-dir data show-universe --limit 10
+python scripts/manage_selection_system.py --base-dir data run-news --date YYYY-MM-DD --model deepseek-v3.2-exp --batch-size 20
+python scripts/manage_selection_system.py --base-dir data run-signals --date YYYY-MM-DD --board-limit 60 --stock-heat-limit 100
+python scripts/manage_selection_system.py --base-dir data render-hot-input --date YYYY-MM-DD
 python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only
-python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only --no-live-feeds
 ```
 
-当前 `run-daily` 产物：
+当前推荐使用的独立热点输入产物：
+
+```text
+data/selection_runs/YYYY-MM-DD/
+  01_news_candidates.json
+  02_news_dedup_decisions.json
+  02_news_deduped.json
+  03_news_enriched.json
+  04_board_signals.json
+  05_stock_heat_signals.json
+  06_hot_state_input.md
+```
+
+同时会回写长期状态：
+
+```text
+data/market_state/raw_news/YYYY-MM-DD.json
+data/market_state/raw_news/raw_news_manifest.json
+data/market_state/board_signals/YYYY-MM-DD.json
+data/market_state/board_signals/manifest.json
+data/market_state/stock_heat/YYYY-MM-DD.json
+data/market_state/stock_heat/manifest.json
+data/symbol_memory/index.json
+```
+
+旧 `run-daily` 仍会继续生成：
 
 ```text
 data/selection_runs/YYYY-MM-DD/
@@ -91,48 +109,33 @@ data/selection_runs/YYYY-MM-DD/
   run_manifest.json
 ```
 
-同时会回写长期状态：
-
-```text
-data/market_state/raw_news/YYYY-MM-DD.json
-data/market_state/raw_news/raw_news_manifest.json
-data/market_state/theme_state.json
-data/market_state/symbol_hot_state.json
-data/market_state/runtime_hot_pool.json
-data/market_state/runtime_core_pool.json
-data/market_state/runtime_holdings_guardrail.json
-data/symbol_memory/index.json
-data/symbol_memory/{symbol}.json
-```
-
 ### 0.5 最新验证记录
 
 已完成的验证：
 
 1. `master_universe` 校验通过，当前股票数 `110`。
-2. `cache-only` 模式下，`2026-03-15` 选股链路已完整跑通。
-3. 默认启用 AkShare 高质量快讯源的模式下，`2026-03-16` 选股链路已完整跑通。
-4. `em_breakfast` 已增强为“摘要 + 正文 HTML + 环球市场图片 OCR 提取”三段式内容，并已写入 `01_raw_news_items.json`。
-4. 最新一次默认新闻主链运行中：
-   - `raw_news_items`: `167`
-   - `themes`: `14+`
-   - `symbol_hot_state`: `110`
-   - `hot_candidates`: `12`
-   - `core_candidates`: `12`
-   - `symbol_memory`: `14`
+2. 独立新闻链在 `2026-03-16` 已实跑：
+   - 候选新闻 `97`
+   - 去重后 `46`
+   - 正文增强后 `46`
+3. `render-hot-input` 已能基于现有产物输出 `06_hot_state_input.md`。
+4. 独立市场信号链在当前环境已验证“失败可落盘”：
+   - `04_board_signals.json` 已生成
+   - `05_stock_heat_signals.json` 已生成
+   - `board_signals/manifest.json` 与 `stock_heat/manifest.json` 已生成
+5. 当前环境对东财/雪球相关域名存在 DNS 解析失败，导致本轮 `run-signals` 产物为空，但错误现场已完整写入产物和 manifest。
 
 ### 0.6 当前已知限制
 
-1. `basic_info_cache` 覆盖率仍不足，当前 `cache-only` 只能命中一部分股票；未命中的股票仍可进入热点链，但基本面打分会偏弱。
-2. 当前宏观输入仍来自本地 `data/macro_economy/`，如果该目录没有新文件，命中的可能是旧宏观总结。
-3. `theme_state` 第一版仍是规则聚合，尚未引入你设想中的“强模型渐进式融合 skill”。
-4. `board_state` 仍未落地，一期继续维持 `theme_state -> symbol_hot_state` 两层。
-5. `core_candidates` 当前仍是规则打分，不代表最终投资决策，只是为后续深挖缩小范围。
-6. 搜索 API 补充层尚未接入，当前仍主要依赖 AkShare 高质量快讯源和短窗口公告辅助。
+1. `hot_news_state` 的“强模型渐进式融合”尚未正式落地，目前只做到 `06_hot_state_input.md`。
+2. `run-daily` 里的 `theme_state / symbol_hot_state` 仍是旧规则链，不能视为最终热点主链。
+3. `run-signals` 依赖的东财 / 雪球接口只提供“当前快照”，不提供严格历史回放；`run_date` 目前主要用于归档。
+4. 当前这台环境对 `push2ex.eastmoney.com`、`emappdata.eastmoney.com`、`xueqiu.com` 存在 DNS 解析失败，需要后续单独处理网络问题。
+5. 搜索 API 补充层、U 深搜 / U 深研触发层尚未接入。
 
 ### 0.7 东方财富财经早餐增强已落地
 
-当前 `raw_news_item` 中的 `em_breakfast` 已按以下方式增强：
+当前新闻链中的 `em_breakfast` 已按以下方式增强：
 
 1. 先读取 `stock_info_cjzc_em` 返回的标题、摘要、链接。
 2. 进入东财文章页，抓取 `div#ContentBody` 正文。
@@ -154,9 +157,38 @@ data/market_state/raw_news_assets/breakfast/{article_id}_global_market.json
 
 当前落地原则：
 
-1. `01_raw_news_items.json` 追求高保真，不在这一层压缩早餐正文。
-2. 图片 OCR 结果也保留在原始新闻层，后续 `news_item` / `theme_state` 再决定如何压缩。
-3. 如果东财正文或图片提取失败，则降级保留 AkShare 摘要，不阻断整条日跑。
+1. 候选层尽可能高保真，不在这一层压缩早餐正文。
+2. 图片 OCR 结果会进入后续新闻增强内容。
+3. 如果东财正文或图片提取失败，则降级保留 AkShare 摘要，不阻断整条新闻链。
+
+### 0.8 新闻模块设计已切换
+
+从本次讨论开始，新闻模块的设计基线切换为：
+
+1. 新闻模块只负责：
+   - 候选新闻采集
+   - LLM 去重与筛噪
+   - 去重后打开链接并提取正文
+2. 新闻模块暂不负责：
+   - 板块轮动分析
+   - 热点股票判断
+   - 新闻到股票的规则绑定
+3. `stock_board_change_em`、行业板块排行、个股热度榜与新闻模块解耦，后续作为独立输入模块接入 `hot_news_state`。
+4. 新闻模块第一版使用精简 JSON，不使用大而全 schema，也不与板块/热度数据混存。
+5. 旧的 `raw_news_item -> news_item -> theme_state` 规则方案仅保留为已实现过渡方案，不再作为新闻主链的最终设计目标。
+
+### 0.9 市场信号模块设计已切换
+
+从当前代码开始，板块异动和个股热度不再混进新闻链，而是走独立结构化输入层：
+
+1. `04_board_signals.json`
+   - 当前主要来源：`stock_board_change_em`
+2. `05_stock_heat_signals.json`
+   - 当前主要来源：`stock_hot_rank_em`
+   - 当前补充来源：雪球讨论 / 关注 / 交易热度
+3. `06_hot_state_input.md`
+   - 将 `03 + 04 + 05` 渲染为后续强模型可直接阅读的 markdown
+4. 这层仍不做“规则绑定到股票”或“机械主题归因”，只做高质量输入准备。
 
 ## 1. 背景与目标
 
@@ -352,27 +384,42 @@ graph TD
 
 ### 4.2.3 输入源建议
 
-一期建议把输入源分成三层：
+`hot_news_state` 的最终输入会包含新闻、板块、热度、公告等多种模块，但新闻模块第一版先单独定稿，不与板块和热度模块耦合。
 
-1. 稳定 feed：
-   - 东方财富财经早餐
-   - 东方财富全球快讯
-   - 同花顺全球财经直播
-   - 财联社电报
-   - 个股新闻 feed
-   - 巨潮/交易所公告
-   - 现有公告链路
-2. 定向检索：
-   - Tavily / Anspire
-3. 高成本深度研究：
-   - U 深搜
-   - U 深研
-3. 未来扩展：
-   - 行业研报摘要
-   - 龙虎榜/资金流
-   - 社交舆情
+当前新闻模块的一期保留源如下：
 
-一期建议优先先把“稳定 feed + 定向检索”串起来，不先做复杂舆情爬虫，也不把高成本深研接口纳入每日常规主链。
+1. `stock_info_cjzc_em`
+   - 保留
+   - 作为每日市场背景长文
+   - 进入正文增强链路
+2. `stock_info_global_cls(symbol="重点")`
+   - 保留
+   - 作为高质量重点电报主源
+3. `stock_info_global_ths`
+   - 保留
+   - 作为重点快讯补充源
+4. `stock_info_global_futu`
+   - 保留
+   - 作为中等规模快讯补充源
+5. `stock_info_global_em`
+   - 第一版去掉
+   - 原因：单次返回 200 条，噪声过大，容易淹没主要信息
+
+本轮明确不纳入新闻模块主链的输入：
+
+1. `stock_board_change_em`
+2. 行业板块排行 / 概念板块排行
+3. `stock_hot_rank_em`
+4. `stock_hot_tweet_xq`
+
+以上模块后续会独立存储，并在 `hot_news_state` 融合阶段再进入模型，不与新闻正文筛选与增强流程混用。
+
+新闻模块的核心流程定为：
+
+1. 先采集候选新闻，不打开链接。
+2. 将精简字段交给 DeepSeek 做去重与筛噪。
+3. 对保留新闻再打开链接提取正文。
+4. 形成最终高质量新闻正文集，供后续 `hot_news_state` 或板块分析模块使用。
 
 ### 4.2.4 状态模型
 
@@ -437,6 +484,190 @@ graph TD
 1. `content` 尽量详细，不做主动缩写
 2. 原始链接、来源、作者、频道、原始标签等尽量保留
 3. 这一层只做抓取和标准落盘，不做高层语义判断
+
+### 4.2.6A 新闻模块一期定稿：三文件规范
+
+从当前讨论开始，新闻模块的一期标准不再追求“大而全的统一新闻 schema”，而是采用三文件精简链路：
+
+1. `01_news_candidates.json`
+2. `02_news_deduped.json`
+3. `03_news_enriched.json`
+
+设计原则：
+
+1. 字段尽量少，只保留对去重、筛噪、回源抓正文真正有用的字段。
+2. 第一阶段不打开链接，先做去重和筛噪，避免浪费请求与上下文。
+3. 第二阶段只对保留下来的新闻打开链接、抓正文、做正文增强。
+4. 板块异动、个股热度、概念排行不进入这三文件链路。
+
+### 4.2.6B `01_news_candidates.json`
+
+作用：
+
+1. 作为原始候选新闻池。
+2. 保存“尚未打开链接”的候选新闻。
+3. 作为 DeepSeek 去重与筛噪的输入来源。
+
+建议字段：
+
+```json
+{
+  "schema_version": 1,
+  "run_date": "2026-03-16",
+  "items": [
+    {
+      "news_id": "ths_20260316_abcd1234",
+      "title": "工业和信息化部：全力巩固工业经济稳中向好态势",
+      "published_at": "2026-03-16T17:15:41+08:00",
+      "source": "ths_global",
+      "preview": "3月16日，工业和信息化部召开干部大会……",
+      "url": "https://news.10jqka.com.cn/..."
+    }
+  ]
+}
+```
+
+字段说明：
+
+1. `news_id`
+   - 程序内部唯一标识
+   - 用于去重后回写与回源抓正文
+2. `title`
+   - 新闻标题
+3. `published_at`
+   - 发布时间
+4. `source`
+   - 新闻来源
+5. `preview`
+   - 简短内容
+   - 用于 DeepSeek 去重与筛噪
+6. `url`
+   - 原始链接
+   - 不一定喂给模型，但程序必须保留
+
+`preview` 的生成规则：
+
+1. `stock_info_cjzc_em` 使用摘要
+2. `stock_info_global_cls` 使用内容
+3. `stock_info_global_ths` 使用内容
+4. `stock_info_global_futu` 使用内容
+
+### 4.2.6C `02_news_deduped.json`
+
+作用：
+
+1. 保存 DeepSeek 去重与筛噪后的新闻集合。
+2. 控制后续打开链接的数量。
+3. 作为正文增强模块的直接输入。
+
+字段与 `01_news_candidates.json` 保持一致：
+
+```json
+{
+  "schema_version": 1,
+  "run_date": "2026-03-16",
+  "items": [
+    {
+      "news_id": "cls_20260316_efgh5678",
+      "title": "金能科技：丙烯、聚丙烯、甲醇价格均有所上涨",
+      "published_at": "2026-03-16T17:01:26+08:00",
+      "source": "cls_key",
+      "preview": "财联社3月16日电，有投资者问……",
+      "url": ""
+    }
+  ]
+}
+```
+
+DeepSeek 在这一步的职责：
+
+1. 去掉明显重复新闻
+2. 合并同一事件的多源重复播报
+3. 去掉明显噪声与低价值快讯
+4. 保留当天市场真正重要的新闻集合
+
+DeepSeek 在这一步不负责：
+
+1. 板块轮动分析
+2. 主题归因
+3. 股票受益判断
+4. 长文总结
+
+### 4.2.6D `03_news_enriched.json`
+
+作用：
+
+1. 对 `02_news_deduped.json` 中保留的新闻逐条打开链接。
+2. 提取正文。
+3. 将正文增强为后续模型可直接使用的高质量新闻集合。
+
+建议字段：
+
+```json
+{
+  "schema_version": 1,
+  "run_date": "2026-03-16",
+  "items": [
+    {
+      "news_id": "cjzc_20260316_0001",
+      "title": "东方财富财经早餐 3月16日周一",
+      "published_at": "2026-03-16T06:00:40+08:00",
+      "source": "em_breakfast",
+      "content": "完整正文，尽量保留原文细节",
+      "url": "http://finance.eastmoney.com/a/..."
+    }
+  ]
+}
+```
+
+最终喂给后续模型时，核心只看四个主字段：
+
+1. `title`
+2. `published_at`
+3. `source`
+4. `content`
+
+但程序内部仍保留：
+
+1. `news_id`
+2. `url`
+
+这样既能保持模型输入简洁，也不会丢掉程序回溯能力。
+
+### 4.2.6E 新闻模块处理流程
+
+Step 1. 抓取候选新闻
+
+1. 仅抓取标题、发布时间、来源、简短内容、链接。
+2. 暂不打开链接。
+3. 输出 `01_news_candidates.json`。
+
+Step 2. DeepSeek 去重与筛噪
+
+1. 将 `title / published_at / source / preview` 作为主要模型输入。
+2. 去掉重复与低价值新闻。
+3. 输出 `02_news_deduped.json`。
+
+Step 3. 打开链接并提取正文
+
+1. 对 `02` 保留的新闻逐条访问链接。
+2. 抓取正文。
+3. 早餐类长文走增强链路，补全文和图片 OCR。
+4. 输出 `03_news_enriched.json`。
+
+Step 4. 提供给后续模块
+
+1. `03_news_enriched.json` 作为后续 `hot_news_state`、板块深度分析、选股 AI 的新闻输入。
+2. 新闻模块到此结束，不在本模块内做主题归因或股票映射。
+
+### 4.2.6F 为什么这一阶段不用 Markdown First
+
+虽然最终本地 AI 很适合读取 Markdown，但新闻模块这一阶段更适合先使用精简 JSON，原因如下：
+
+1. 需要先做“去重后再打开链接”，程序需要稳定的 `news_id` 与 `url` 映射。
+2. 候选新闻与去重新闻都属于“短结构化列表”，JSON 足够轻量。
+3. 这一阶段字段已经被压到最小，不再保留作者、频道、标签等无用字段，额外 token 可控。
+4. 真正需要面向模型做长上下文阅读时，可以从 `03_news_enriched.json` 再渲染生成 `llm.md`，而不是在采集阶段就强制转 Markdown。
 
 ### 4.2.7 `news_item` 设计建议
 
