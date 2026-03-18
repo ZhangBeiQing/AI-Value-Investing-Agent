@@ -19,6 +19,7 @@ from services.selection_system import (
     initialize_selection_system,
     load_master_universe,
 )
+from services.selection_system.master_universe import BootstrapMode
 
 
 LOGGER = init_component_logger(
@@ -90,6 +91,52 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Max stock heat items to keep.",
     )
 
+    board_heat_parser = subparsers.add_parser(
+        "build-board-heat-state",
+        help="Build board heat candidates and DeepSeek board research output.",
+    )
+    board_heat_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    board_heat_parser.add_argument("--top-n", type=int, default=3, help="Top rising/falling boards to keep.")
+    board_heat_parser.add_argument(
+        "--stocks-per-board",
+        type=int,
+        default=3,
+        help="How many stock hints to attach per board.",
+    )
+    board_heat_parser.add_argument(
+        "--model",
+        default="deepseek-v3.2-exp",
+        help="Deep research model name.",
+    )
+
+    hot_news_parser = subparsers.add_parser(
+        "build-hot-news-state",
+        aliases=["merge-hot-news-state"],
+        help="Build incremental hot-news state from daily news and historical theme state.",
+    )
+    hot_news_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    hot_news_parser.add_argument(
+        "--model",
+        default="deepseek-v3.2-exp",
+        help="Theme extraction and theme-op planning model name.",
+    )
+    hot_news_parser.add_argument(
+        "--embedding-model",
+        default="text-embedding-v4",
+        help="Embedding model used for theme retrieval.",
+    )
+    hot_news_parser.add_argument(
+        "--candidate-limit",
+        type=int,
+        default=8,
+        help="Max theme candidates extracted from today's news.",
+    )
+    hot_news_parser.add_argument(
+        "--force-rebuild",
+        action="store_true",
+        help="Rollback the same run_date from SQLite state before rebuilding.",
+    )
+
     hot_input_parser = subparsers.add_parser(
         "render-hot-input",
         help="Render markdown input for the future hot_news_state skill.",
@@ -107,9 +154,10 @@ def _selection_paths(base_dir: str) -> SelectionSystemPaths:
 
 
 def _handle_init(base_dir: str, bootstrap: str, force: bool) -> int:
+    bootstrap_mode: BootstrapMode = "empty" if bootstrap == "empty" else "stock_pool"
     paths = initialize_selection_system(
         _selection_paths(base_dir),
-        bootstrap_mode=bootstrap,
+        bootstrap_mode=bootstrap_mode,
         force=force,
     )
     LOGGER.info("selection system 初始化完成")
@@ -222,6 +270,48 @@ def _handle_render_hot_input(
     return 0
 
 
+def _handle_build_board_heat_state(
+    base_dir: str,
+    run_date: str,
+    top_n: int,
+    stocks_per_board: int,
+    model: str,
+) -> int:
+    from services.selection_system.board_heat import build_board_heat_state
+
+    outputs = build_board_heat_state(
+        run_date,
+        base_dir=base_dir,
+        top_n=top_n,
+        stocks_per_board=stocks_per_board,
+        model=model,
+    )
+    LOGGER.info("board heat state 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_build_hot_news_state(
+    base_dir: str,
+    run_date: str,
+    model: str,
+    embedding_model: str,
+    candidate_limit: int,
+    force_rebuild: bool,
+) -> int:
+    from services.selection_system.hot_news_state import build_hot_news_state
+
+    outputs = build_hot_news_state(
+        run_date,
+        base_dir=base_dir,
+        model=model,
+        embedding_model=embedding_model,
+        candidate_limit=candidate_limit,
+        force_rebuild=force_rebuild,
+    )
+    LOGGER.info("hot news state 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -256,6 +346,23 @@ def main() -> int:
             args.date,
             args.board_limit,
             args.stock_limit,
+        )
+    if args.command == "build-board-heat-state":
+        return _handle_build_board_heat_state(
+            args.base_dir,
+            args.date,
+            args.top_n,
+            args.stocks_per_board,
+            args.model,
+        )
+    if args.command in {"build-hot-news-state", "merge-hot-news-state"}:
+        return _handle_build_hot_news_state(
+            args.base_dir,
+            args.date,
+            args.model,
+            args.embedding_model,
+            args.candidate_limit,
+            args.force_rebuild,
         )
     if args.command == "render-hot-input":
         return _handle_render_hot_input(

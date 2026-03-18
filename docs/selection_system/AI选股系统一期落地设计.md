@@ -1,291 +1,116 @@
 # AI选股系统一期落地设计
 
-更新日期：2026-03-16
+更新日期：2026-03-17
 
-## 0. 当前实施状态
+说明：
 
-### 0.1 已完成
+1. 本文件只保留“一期设计思路与目标架构”，不再混入已完成事项与历史实施记录。
+2. 已完成项目记录、阶段性验证与历史设计切换，统一放到 `docs/selection_system/AI选股系统一期项目记录.md`。
 
-1. `master_universe` 基础设施已落地，当前人工维护样例池为 `110` 只股票。
-2. 选股系统独立入口已落地：
-   - `scripts/manage_selection_system.py`
-3. 已建立并实际使用以下目录：
-   - `data/universe/`
-   - `data/market_state/raw_news/`
-   - `data/market_state/board_signals/`
-   - `data/market_state/stock_heat/`
-   - `data/symbol_memory/`
-   - `data/selection_runs/`
-4. 独立新闻链已落地并跑通：
-   - `01_news_candidates.json`
-   - `02_news_dedup_decisions.json`
-   - `02_news_deduped.json`
-   - `03_news_enriched.json`
-5. 独立市场信号链已落地：
-   - `04_board_signals.json`
-   - `05_stock_heat_signals.json`
-6. 面向后续强模型的 markdown 输入层已落地：
-   - `06_hot_state_input.md`
-7. 旧 `run-daily` 规则链仍保留，但已不再作为新闻/热点主设计目标。
+## 0. 最新设计结论
 
-### 0.2 正在实施中的一期方案
+当前一期的设计基线已经明确切换为以下结构：
 
-本轮实施基线已经明确切换为三段式：
+1. 保留一个共享研究底座：`master_universe`、新闻链、`hot_news_state`、`board_heat_state`。
+2. 不再采用“先规则打分筛出 `hot_candidates` / `core_candidates`，再让模型做边界判断”的旧主方案。
+3. 最终决策层不再是单一 `selection_skill`，而是拆成两个不同 mandate 的策略决策头：
+   - `select-hot-book`
+   - `select-core-book`
+4. 这两个策略簿共享输入，但持有周期、调仓逻辑、风险容忍度、输出状态不同。
+5. 顶层再加一个轻量 `portfolio_orchestrator`，负责汇总两套结果、检查冲突、管理资金分配。
+6. 板块层当前以 `test/test_akshare.py` 中已经验证的同花顺行业板块排行抓取逻辑为准，而不是旧文档中写过的“板块异动接口”。
 
-1. 新闻链只负责：
-   - 候选采集
-   - LLM 去重筛噪
-   - 正文增强
-2. 市场信号链只负责：
-   - 板块异动抓取
-   - 个股热度抓取
-   - 保留结构化事实，不做规则归因
-3. `hot_news_state` 暂不直接落地为规则状态机，而是先输出 `06_hot_state_input.md`，交给后续强模型 skill 增量融合。
+换句话说，一期的主轴是：
 
-### 0.3 当前实施顺序
-
-1. 完善 `master_universe`
-   - 已完成基础文件与校验
-2. 落地独立新闻链
-   - 已完成
-3. 落地独立板块异动 / 个股热度链
-   - 已完成第一版
-4. 落地 `hot_state_input.md` 渲染层
-   - 已完成第一版
-5. 后续引入强模型 `hot_news_state` 增量融合
-6. 再向下游接 `candidate_selector` / `symbol_memory`
-
-### 0.4 当前代码落地结果
-
-当前已实现的主命令：
-
-```bash
-python scripts/manage_selection_system.py --base-dir data init
-python scripts/manage_selection_system.py --base-dir data validate-universe
-python scripts/manage_selection_system.py --base-dir data show-universe --limit 10
-python scripts/manage_selection_system.py --base-dir data run-news --date YYYY-MM-DD --model deepseek-v3.2-exp --batch-size 20
-python scripts/manage_selection_system.py --base-dir data run-signals --date YYYY-MM-DD --board-limit 12 --stock-limit 80
-python scripts/manage_selection_system.py --base-dir data render-hot-input --date YYYY-MM-DD
-python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only
-```
-
-当前推荐使用的独立热点输入产物：
-
-```text
-data/selection_runs/YYYY-MM-DD/
-  01_news_candidates.json
-  02_news_dedup_decisions.json
-  02_news_deduped.json
-  03_news_enriched.json
-  04_board_signals.json
-  05_stock_heat_signals.json
-  06_hot_state_input.md
-```
-
-同时会回写长期状态：
-
-```text
-data/market_state/raw_news/YYYY-MM-DD.json
-data/market_state/raw_news/raw_news_manifest.json
-data/market_state/board_signals/YYYY-MM-DD.json
-data/market_state/board_signals/manifest.json
-data/market_state/stock_heat/YYYY-MM-DD.json
-data/market_state/stock_heat/manifest.json
-data/symbol_memory/index.json
-```
-
-旧 `run-daily` 仍会继续生成：
-
-```text
-data/selection_runs/YYYY-MM-DD/
-  01_raw_news_items.json
-  02_news_items.json
-  03_simplified_snapshot.json
-  04_theme_state.json
-  05_symbol_hot_state.json
-  06_hot_candidates.json
-  07_core_candidates.json
-  08_symbol_memory.json
-  run_manifest.json
-```
-
-### 0.5 最新验证记录
-
-已完成的验证：
-
-1. `master_universe` 校验通过，当前股票数 `110`。
-2. 独立新闻链在 `2026-03-16` 已实跑：
-   - 候选新闻 `97`
-   - 去重后 `46`
-   - 正文增强后 `46`
-3. `render-hot-input` 已能基于现有产物输出 `06_hot_state_input.md`。
-4. 独立市场信号链在当前环境已验证“失败可落盘”：
-   - `04_board_signals.json` 已生成
-   - `05_stock_heat_signals.json` 已生成
-   - `board_signals/manifest.json` 与 `stock_heat/manifest.json` 已生成
-5. 当前环境对东财/雪球相关域名存在 DNS 解析失败，导致本轮 `run-signals` 产物为空，但错误现场已完整写入产物和 manifest。
-
-### 0.6 当前已知限制
-
-1. `hot_news_state` 的“强模型渐进式融合”尚未正式落地，目前只做到 `06_hot_state_input.md`。
-2. `run-daily` 里的 `theme_state / symbol_hot_state` 仍是旧规则链，不能视为最终热点主链。
-3. `run-signals` 依赖的东财 / 雪球接口只提供“当前快照”，不提供严格历史回放；`run_date` 目前主要用于归档。
-4. 当前这台环境对 `push2ex.eastmoney.com`、`emappdata.eastmoney.com`、`xueqiu.com` 存在 DNS 解析失败，需要后续单独处理网络问题。
-5. 搜索 API 补充层、U 深搜 / U 深研触发层尚未接入。
-
-### 0.7 东方财富财经早餐增强已落地
-
-当前新闻链中的 `em_breakfast` 已按以下方式增强：
-
-1. 先读取 `stock_info_cjzc_em` 返回的标题、摘要、链接。
-2. 进入东财文章页，抓取 `div#ContentBody` 正文。
-3. 识别 `环球市场` 小节中的图片资源，并下载原图到本地缓存目录。
-4. 调用 `qwen-doc-turbo` 对该图片做结构化提取。
-5. 将以下内容合并回早餐候选与正文增强链：
-   - 早餐标题
-   - AkShare 摘要
-   - 全文正文
-   - 环球市场图片提取结果
-
-当前缓存位置：
-
-```text
-data/market_state/raw_news_assets/breakfast/{article_id}.html
-data/market_state/raw_news_assets/breakfast/{article_id}_global_market.png
-data/market_state/raw_news_assets/breakfast/{article_id}_global_market.json
-```
-
-当前落地原则：
-
-1. 候选层尽可能高保真，不在这一层压缩早餐正文。
-2. 图片 OCR 结果会进入后续新闻增强内容。
-3. 如果东财正文或图片提取失败，则降级保留 AkShare 摘要，不阻断整条新闻链。
-
-### 0.8 新闻模块设计已切换
-
-从本次讨论开始，新闻模块的设计基线切换为：
-
-1. 新闻模块只负责：
-   - 候选新闻采集
-   - LLM 去重与筛噪
-   - 去重后打开链接并提取正文
-2. 新闻模块暂不负责：
-   - 板块轮动分析
-   - 热点股票判断
-   - 新闻到股票的规则绑定
-3. `stock_board_change_em`、行业板块排行、个股热度榜与新闻模块解耦，后续作为独立输入模块接入 `hot_news_state`。
-4. 新闻模块第一版使用精简 JSON，不使用大而全 schema，也不与板块/热度数据混存。
-5. 旧的 `raw_news_item -> news_item -> theme_state` 规则方案仅保留为已实现过渡方案，不再作为新闻主链的最终设计目标。
-
-### 0.9 市场信号模块设计已切换
-
-从当前代码开始，板块异动和个股热度不再混进新闻链，而是走独立结构化输入层：
-
-1. `04_board_signals.json`
-   - 当前主要来源：`stock_board_change_em`
-2. `05_stock_heat_signals.json`
-   - 当前主要来源：`stock_hot_rank_em`
-   - 当前补充来源：雪球讨论 / 关注 / 交易热度
-3. `06_hot_state_input.md`
-   - 将 `03 + 04 + 05` 渲染为后续强模型可直接阅读的 markdown
-4. 这层仍不做“规则绑定到股票”或“机械主题归因”，只做高质量输入准备。
+1. 先构建高质量输入层。
+2. 再做新闻渐进式状态更新。
+3. 再做板块级深度研究。
+4. 再分别为 `hot_book` 与 `core_book` 做策略决策。
+5. 最后由组合编排层输出统一的投资建议与后续执行输入。
 
 ## 1. 背景与目标
 
-当前主系统以固定股票池、单套 prompt flow、单日 `skill_runs` 输入为核心，适合对少量股票做较重的深度研究，但不适合以下新场景：
+当前主系统更适合对少量固定股票做重分析，不适合以下新场景：
 
-1. 在 300-400 只备选股中动态筛选机会。
-2. 同时维护“热点快进快出”和“长期基本面配置”两类策略。
-3. 每日低成本更新市场热点状态，而不是每天重算全量长上下文。
-4. 为单只股票维护可复用的历史分析记忆，而不是将所有历史堆入 `03_agent_input.md`。
+1. 每天低成本维护市场热点，而不是重算全量长上下文。
+2. 把盘面板块热度和新闻叙事结合起来，而不是只做单日新闻摘要。
+3. 同时管理两类资金：
+   - 短期追热点资金
+   - 长期持有资金
+4. 在既有股票宇宙不足时，让强模型主动联网扩充研究范围。
+5. 为未来接入真实交易和更高频的行情数据预留结构边界。
 
-一期目标不是直接上线实盘，也不是一次性完成全自动深度研究系统，而是先搭建一条可持续扩展的“候选筛选与记忆基座”。
+一期目标不是直接做全自动实盘，而是先建立一条可持续扩展的选股研究链路。
 
-一期只落地四个模块：
+一期最重要的能力是：
 
 1. `master_universe`：主股票宇宙。
-2. `hot_news_state`：渐进式热点状态库。
-3. `candidate_selector`：候选股筛选器。
-4. `symbol_memory`：个股轻量记忆包。
+2. `hot_news_state`：由本地代码服务维护的渐进式热点状态。
+3. `board_heat_state`：由板块抓取 + DeepSeek 深研得到的板块热度层。
+4. `hot_book_state`：短周期热点策略簿状态。
+5. `core_book_state`：中长期配置策略簿状态。
+6. `portfolio_orchestrator`：统一编排两套策略簿的组合层。
 
-## 2. 一期边界
+`symbol_memory` 仍然有价值，但在当前阶段不再是一期主链路最优先的焦点。它可以作为后续增强层接回。
 
-### 2.1 一期必须完成
+## 2. 总体架构
 
-1. 能维护一份 300-400 只股票的主股票宇宙。
-2. 能每日收盘后更新市场、行业、个股相关新闻与公告的结构化状态。
-3. 能从主股票宇宙中筛出两类候选：
-   - 热点候选 `hot_candidates_topN`
-   - 长线候选 `core_candidates_topN`
-4. 能为候选股票生成轻量记忆包，供后续 agent 深挖。
-5. 新链路与现有 `skill-only` 主链路并存，不破坏当前 `manage_daily_data -> run_daily_pipeline -> run_post_trade`。
-
-### 2.2 一期明确不做
-
-1. 不接入真实券商交易接口。
-2. 不做分钟级或 tick 级实时交易执行。
-3. 不直接替换现有 `configs/prompt_flow/skill_flow.json` 主链路。
-4. 不上来就做 20 个并发子 agent 的全自动调度器。
-5. 不把 BettaFish 整套流程直接搬入主仓库。
-
-## 3. 总体架构
-
-一期建议采用“共享数据底座 + 双策略候选头 + 个股记忆包”的轻量架构。
+一期建议采用“共享研究底座 + 双策略决策头 + 组合编排层”的结构。
 
 ```mermaid
 graph TD
-    A[Master Universe] --> B[Daily Data Refresh]
-    B --> C[Hot News State Updater]
-    B --> D[Basic Snapshot Builder]
-    C --> E[Candidate Selector]
-    D --> E
-    E --> F[Hot Candidates]
-    E --> G[Core Candidates]
-    F --> H[Symbol Memory Builder]
-    G --> H
-    H --> I[Future Deep Analysis Agents]
+    A[Master Universe] --> B[Run News Chain]
+    B --> C[03_news_enriched.json]
+    D[Yesterday hot_news_state] --> E[Local Service: merge hot news state]
+    C --> E
+    E --> F[New hot_news_state]
+    G[THS Board Ranking] --> H[DeepSeek Board Research]
+    H --> I[board_heat_state]
+    A --> J[Shared Selection Bundle]
+    F --> J
+    I --> J
+    C --> J
+    J --> K[Local Skill: select-hot-book]
+    J --> L[Local Skill: select-core-book]
+    K --> M[hot_book_state]
+    L --> N[core_book_state]
+    M --> O[portfolio_orchestrator]
+    N --> O
+    O --> P[Unified Investment Decisions]
+    O --> Q[Universe Expansion Suggestions]
 ```
 
 核心原则：
 
-1. 共享上游数据，不共享超长 prompt。
-2. 先结构化筛选，再对少量候选做深挖。
-3. 历史记忆按股票拆分，不走全局拼接。
-4. 热点策略和长线策略共享输入层，只在候选规则和决策逻辑处分叉。
+1. 共享研究底座，不共享失控的超长 prompt。
+2. 新闻链负责保真清洗，不负责最终策略裁决。
+3. `hot_news_state` 负责“昨天到今天”的渐进式更新，而不是每天重写世界观。
+4. 板块层单独深研，因为盘面板块强弱对短期选股往往比新闻摘要更重要。
+5. `hot_book` 与 `core_book` 使用同一套世界事实，但采取不同的决策视角。
+6. 两套策略簿必须维护各自独立的持仓状态、换仓理由与风险约束。
+7. 顶层组合编排层负责处理资金分配、冲突消解与统一输出。
 
-## 4. 模块设计
+## 3. 模块设计
 
-## 4.1 `master_universe`
+## 3.1 `master_universe`
 
-### 4.1.1 职责
+### 3.1.1 职责
 
-维护整个系统关注的股票宇宙，作为所有筛选与分析的上游输入。
+维护整个系统长期关注的股票范围，作为所有研究与选股的上游输入。
 
-它不是“今日交易股池”，而是“长期观察范围”。
+它不是“今日候选结果”，而是“长期观察范围 + 可扩展研究底座”。
 
-### 4.1.2 设计要求
+### 3.1.2 设计要求
 
 1. 规模目标：`300-400` 只 A 股。
 2. 包含：
    - 行业龙头
-   - 细分赛道前 1-2 名
+   - 细分赛道前排公司
    - 关键 ETF 或对冲标的
    - 少量观察型新方向标的
-3. 静态底表尽量保持精简，动态标签与运行状态不放在这一层维护。
+3. 保持底表精简，不在这一层写入运行时热点分数。
 
-### 4.1.3 推荐存储位置
-
-新增目录：
-
-- `data/universe/master_universe.json`
-
-不建议直接把这一层继续塞进 [configs/stock_pool.py](/home/zhangbeiqing/programer/AI-Value-Investing-Agent/configs/stock_pool.py)，因为当前主链路很多模块默认把 `TRACKED_A_STOCKS` 视作“今日主分析池”，直接扩成 300-400 只会显著放大现有开销。
-
-### 4.1.4 数据结构建议
-
-一期建议把 `master_universe` 设计成“极简静态底表”，只存低频变化、适合人工维护的基础字段。
-
-每只股票默认只包含：
+### 3.1.3 建议字段
 
 ```json
 {
@@ -296,1235 +121,708 @@ graph TD
 }
 ```
 
-字段说明：
+### 3.1.4 当前定位
 
-1. `symbol`
-   唯一标识，必须人工确认准确。
-2. `name`
-   股票简称，便于人工核对。
-3. `sector`
-   一级行业或大类板块。
-4. `industry`
-   更细一级的行业归属。
+1. `master_universe` 仍然是选股系统的主输入。
+2. 但它不再被视为封闭集合。
+3. 最终策略 skill 在必要时可以通过联网研究发现新的潜在标的。
+4. 新标的应先进入“待审核扩展池”或由人工确认后回写 `master_universe`。
 
-### 4.1.5 字段维护原则
+## 3.2 新闻链：`01 -> 02 -> 03`
 
-`master_universe` 不应承担运行时状态和主观分析职责。
+### 3.2.1 目标
 
-因此以下字段一期不放入 `master_universe`：
+新闻链只负责把当天新闻处理成高质量、可供后续模型直接使用的正文集合。
 
-1. `strategy_tags`
-2. `theme_tags`
-3. `priority`
-4. `is_active`
-5. `note`
-6. 各类热点分数、候选标记、持仓状态
-
-这些字段应分别进入：
-
-1. 运行时产物：
-   - `runtime_hot_pool`
-   - `runtime_core_pool`
-   - 候选打分结果
-2. 个股记忆层：
-   - `symbol_memory`
-   - `thesis_state`
-   - `decision_history`
-
-### 4.1.6 录入方式建议
-
-`symbol` 和 `name` 通常由你自己确定。
-
-`sector` 和 `industry` 不要求你手工逐个填写。更合适的方式是：
-
-1. 先由一个单独的 AI/脚本根据股票代码自动补全 `sector` 和 `industry`
-2. 再由你做一次人工抽查和修正
-
-也就是说，`master_universe` 的推荐维护流程是：
+### 3.2.2 当前固定产物
 
 ```text
-你先给出 symbol/name
-    -> 辅助 AI 自动补全 sector/industry
-    -> 你人工检查
-    -> 固化为 master_universe
+data/selection_runs/YYYY-MM-DD/
+  01_news_candidates.json
+  02_news_dedup_decisions.json
+  02_news_deduped.json
+  03_news_enriched.json
 ```
 
-这样可以减少 300-400 只股票的手工录入负担，同时保留最终配置的人工可控性。
+### 3.2.3 职责边界
 
-### 4.1.7 衍生池
+新闻链负责：
 
-一期不直接改主股票池，而是在运行期生成：
+1. 候选新闻采集。
+2. DeepSeek 去重与筛噪。
+3. 对保留新闻打开链接，提取正文并增强。
 
-1. `runtime_hot_pool.json`
-2. `runtime_core_pool.json`
-3. `runtime_holdings_guardrail.json`
+新闻链不负责：
 
-其中：
+1. 最终主题状态更新。
+2. 板块轮动研究。
+3. 直接给出最终选股结论。
 
-- `runtime_hot_pool`：热点候选池，日更。
-- `runtime_core_pool`：长线候选池，周更为主，重大事件触发增量更新。
-- `runtime_holdings_guardrail`：确保当前持仓股票强制保留在候选分析范围内。
+### 3.2.4 当前价值
 
-## 4.2 `hot_news_state`
+`03_news_enriched.json` 是后续多个模块的共同输入：
 
-### 4.2.1 职责
+1. `hot_news_state` 渐进式更新。
+2. `select-hot-book` 与 `select-core-book` 的新闻事实底稿。
+3. 必要时作为板块深研的辅助证据来源。
 
-把每日新增的宏观、行业、个股、公告、资金面信息，维护成一个“渐进式热点状态库”。
+## 3.3 `hot_news_state`
 
-这层不是简单做“每日新闻摘要”，而是要维护一套可增量更新、可追踪强化或衰减的主题状态与个股映射状态。
+### 3.3.1 当前定位
 
-### 4.2.2 为什么不能继续只用 `03_agent_input.md`
+`hot_news_state` 不再走旧的规则候选评分路线，也不建议做成纯 prompt 驱动的本地 skill。
 
-如果把近 2 个月热点新闻都塞进 `03_agent_input.md`：
+当前更合适的方向是：
 
-1. 上下文会快速膨胀。
-2. 每天都要让模型重复阅读大量旧内容。
-3. 无法对单个主题做衰减、去重、归并。
-4. 无法支持热点策略的快速增量更新。
+1. 由本地代码服务维护渐进式主题状态。
+2. workflow / skill 只保留薄编排外壳。
 
-### 4.2.3 输入源建议
+它的本质不是“今天新闻摘要”，而是“昨天的市场叙事状态，在今天新增新闻作用下，变成了什么新状态”。
 
-`hot_news_state` 的最终输入会包含新闻、板块、热度、公告等多种模块，但新闻模块第一版先单独定稿，不与板块和热度模块耦合。
+### 3.3.2 输入
 
-当前新闻模块的一期保留源如下：
+每个交易日更新 `hot_news_state` 时，主输入为：
 
-1. `stock_info_cjzc_em`
-   - 保留
-   - 作为每日市场背景长文
-   - 进入正文增强链路
-2. `stock_info_global_cls(symbol="重点")`
-   - 保留
-   - 作为高质量重点电报主源
-3. `stock_info_global_ths`
-   - 保留
-   - 作为重点快讯补充源
-4. `stock_info_global_futu`
-   - 保留
-   - 作为中等规模快讯补充源
-5. `stock_info_global_em`
-   - 第一版去掉
-   - 原因：单次返回 200 条，噪声过大，容易淹没主要信息
+1. 昨日 `hot_news_state`。
+2. 今日 `03_news_enriched.json`。
+3. 可选的历史辅助材料：
+   - 最近若干日 `03_news_enriched.json`
+   - 旧主题证据引用
+   - 当前持仓摘要
 
-本轮明确不纳入新闻模块主链的输入：
+### 3.3.3 输出目标
 
-1. `stock_board_change_em`
-2. 行业板块排行 / 概念板块排行
-3. `stock_hot_rank_em`
-4. `stock_hot_tweet_xq`
+输出的新状态应回答以下问题：
 
-以上模块后续会独立存储，并在 `hot_news_state` 融合阶段再进入模型，不与新闻正文筛选与增强流程混用。
+1. 昨天在交易哪些主题。
+2. 今天哪些主题被强化。
+3. 哪些主题进入衰减。
+4. 是否出现了新的重要主题。
+5. 哪些主题只是噪声，不能升级为持续热点。
 
-新闻模块的核心流程定为：
+### 3.3.4 推荐状态结构
 
-1. 先采集候选新闻，不打开链接。
-2. 将精简字段交给 DeepSeek 做去重与筛噪。
-3. 对保留新闻再打开链接提取正文。
-4. 形成最终高质量新闻正文集，供后续 `hot_news_state` 或板块分析模块使用。
-
-### 4.2.4 状态模型
-
-一期建议将新闻相关状态拆成四层：
-
-1. `raw_news_item`
-   - 原始新闻层，尽可能详细保留原始内容与来源字段
-2. `news_item`
-   - 高保真结构化提取层，不是简单摘要层
-3. `theme_state`
-   - 主题压缩层，维护热点主题的当前状态
-4. `symbol_hot_state`
-   - 个股热点映射层，维护主题到股票的落点
-
-其中：
-
-1. `raw_news_item` 和 `news_item` 主要由抓取、清洗、抽取流程生成
-2. `theme_state` 和 `symbol_hot_state` 主要由强 GPT agent skill 增量融合生成
-
-### 4.2.5 分层原则
-
-`hot_news_state` 的关键不是“尽早压缩”，而是“在正确的层级压缩”。
-
-一期建议遵循以下原则：
-
-1. `raw_news_item` 不压缩，尽可能保真
-2. `news_item` 只做结构化提纯，不做过度摘要
-3. `theme_state` 才是真正压缩后的主题状态
-4. `symbol_hot_state` 是交易层需要的个股映射状态
-
-换句话说：
-
-- 搜索 API 和 AkShare 负责“取数”
-- 规则和抽取层负责“高保真结构化”
-- 强 GPT skill 负责“增量语义融合”
-
-### 4.2.6 `raw_news_item` 设计建议
-
-`raw_news_item` 是原始事实仓，目标是尽量保留细节，不提前丢失信息熵。
-
-建议字段：
+当前推荐把 `hot_news_state` 维护成“主题列表 + 状态摘要”的形式，而不是复杂的规则分数字典。
 
 ```json
 {
-  "raw_id": "cls_2026-03-15_000123",
-  "source": "cls",
-  "source_type": "telegraph",
-  "collected_at": "2026-03-15T21:05:11+08:00",
-  "published_at": "2026-03-15T20:58:00+08:00",
-  "title": "稀土板块盘后再迎政策催化",
-  "content": "完整正文，尽量保留原文细节",
-  "url": "https://...",
-  "author": "",
-  "channel": "",
-  "raw_tags": [],
-  "extra": {}
-}
-```
-
-要求：
-
-1. `content` 尽量详细，不做主动缩写
-2. 原始链接、来源、作者、频道、原始标签等尽量保留
-3. 这一层只做抓取和标准落盘，不做高层语义判断
-
-### 4.2.6A 新闻模块一期定稿：三文件规范
-
-从当前讨论开始，新闻模块的一期标准不再追求“大而全的统一新闻 schema”，而是采用三文件精简链路：
-
-1. `01_news_candidates.json`
-2. `02_news_deduped.json`
-3. `03_news_enriched.json`
-
-设计原则：
-
-1. 字段尽量少，只保留对去重、筛噪、回源抓正文真正有用的字段。
-2. 第一阶段不打开链接，先做去重和筛噪，避免浪费请求与上下文。
-3. 第二阶段只对保留下来的新闻打开链接、抓正文、做正文增强。
-4. 板块异动、个股热度、概念排行不进入这三文件链路。
-
-### 4.2.6B `01_news_candidates.json`
-
-作用：
-
-1. 作为原始候选新闻池。
-2. 保存“尚未打开链接”的候选新闻。
-3. 作为 DeepSeek 去重与筛噪的输入来源。
-
-建议字段：
-
-```json
-{
-  "schema_version": 1,
-  "run_date": "2026-03-16",
-  "items": [
-    {
-      "news_id": "T001",
-      "title": "工业和信息化部：全力巩固工业经济稳中向好态势",
-      "published_at": "2026-03-16T17:15:41+08:00",
-      "source": "ths_global",
-      "preview": "3月16日，工业和信息化部召开干部大会……",
-      "url": "https://news.10jqka.com.cn/..."
-    }
-  ]
-}
-```
-
-字段说明：
-
-1. `news_id`
-   - 程序内部唯一标识
-   - 用于去重后回写与回源抓正文
-   - 当前实际实现使用短 id，例如 `B001`、`T017`、`C002`
-2. `title`
-   - 新闻标题
-3. `published_at`
-   - 发布时间
-4. `source`
-   - 新闻来源
-5. `preview`
-   - 简短内容
-   - 用于 DeepSeek 去重与筛噪
-6. `url`
-   - 原始链接
-   - 不一定喂给模型，但程序必须保留
-
-`preview` 的生成规则：
-
-1. `stock_info_cjzc_em` 使用摘要
-2. `stock_info_global_cls` 使用内容
-3. `stock_info_global_ths` 使用内容
-4. `stock_info_global_futu` 使用内容
-
-### 4.2.6C `02_news_deduped.json`
-
-作用：
-
-1. 保存 DeepSeek 去重与筛噪后的新闻集合。
-2. 控制后续打开链接的数量。
-3. 作为正文增强模块的直接输入。
-
-字段与 `01_news_candidates.json` 保持一致：
-
-```json
-{
-  "schema_version": 1,
-  "run_date": "2026-03-16",
-  "items": [
-    {
-      "news_id": "C001",
-      "title": "金能科技：丙烯、聚丙烯、甲醇价格均有所上涨",
-      "published_at": "2026-03-16T17:01:26+08:00",
-      "source": "cls_key",
-      "preview": "财联社3月16日电，有投资者问……",
-      "url": ""
-    }
-  ]
-}
-```
-
-DeepSeek 在这一步的职责：
-
-1. 去掉明显重复新闻
-2. 合并同一事件的多源重复播报
-3. 去掉明显噪声与低价值快讯
-4. 保留当天市场真正重要的新闻集合
-
-DeepSeek 在这一步不负责：
-
-1. 板块轮动分析
-2. 主题归因
-3. 股票受益判断
-4. 长文总结
-
-### 4.2.6D `03_news_enriched.json`
-
-作用：
-
-1. 对 `02_news_deduped.json` 中保留的新闻逐条打开链接。
-2. 提取正文。
-3. 将正文增强为后续模型可直接使用的高质量新闻集合。
-
-建议字段：
-
-```json
-{
-  "schema_version": 1,
-  "run_date": "2026-03-16",
-  "items": [
-    {
-      "news_id": "B001",
-      "title": "东方财富财经早餐 3月16日周一",
-      "published_at": "2026-03-16T06:00:40+08:00",
-      "source": "em_breakfast",
-      "content": "完整正文，尽量保留原文细节",
-      "url": "http://finance.eastmoney.com/a/..."
-    }
-  ]
-}
-```
-
-最终喂给后续模型时，核心只看四个主字段：
-
-1. `title`
-2. `published_at`
-3. `source`
-4. `content`
-
-但程序内部仍保留：
-
-1. `news_id`
-2. `url`
-
-这样既能保持模型输入简洁，也不会丢掉程序回溯能力。
-
-### 4.2.6E 新闻模块处理流程
-
-Step 1. 抓取候选新闻
-
-1. 仅抓取标题、发布时间、来源、简短内容、链接。
-2. 暂不打开链接。
-3. 输出 `01_news_candidates.json`。
-
-Step 2. DeepSeek 去重与筛噪
-
-1. 将 `title / published_at / source / preview` 作为主要模型输入。
-2. 去掉重复与低价值新闻。
-3. 输出 `02_news_deduped.json`。
-
-Step 3. 打开链接并提取正文
-
-1. 对 `02` 保留的新闻逐条访问链接。
-2. 抓取正文。
-3. 早餐类长文走增强链路，补全文和图片 OCR。
-4. 输出 `03_news_enriched.json`。
-
-Step 4. 提供给后续模块
-
-1. `03_news_enriched.json` 作为后续 `hot_news_state`、板块深度分析、选股 AI 的新闻输入。
-2. 新闻模块到此结束，不在本模块内做主题归因或股票映射。
-
-### 4.2.6F 为什么这一阶段不用 Markdown First
-
-虽然最终本地 AI 很适合读取 Markdown，但新闻模块这一阶段更适合先使用精简 JSON，原因如下：
-
-1. 需要先做“去重后再打开链接”，程序需要稳定的 `news_id` 与 `url` 映射。
-2. 候选新闻与去重新闻都属于“短结构化列表”，JSON 足够轻量。
-3. 这一阶段字段已经被压到最小，不再保留作者、频道、标签等无用字段，额外 token 可控。
-4. 真正需要面向模型做长上下文阅读时，可以从 `03_news_enriched.json` 再渲染生成 `llm.md`，而不是在采集阶段就强制转 Markdown。
-
-### 4.2.7 `news_item` 设计建议
-
-`news_item` 不是“新闻摘要层”，而是“高保真结构化提取层”。
-
-目标不是把新闻压成一两句，而是把对后续融合真正有用的信息抽出来，并尽量不丢失关键数字、时间、主体和约束条件。
-
-建议字段：
-
-```json
-{
-  "item_id": "news_20260315_cls_abcd1234",
-  "raw_id": "cls_2026-03-15_000123",
-  "source": "cls",
-  "source_type": "telegraph",
-  "published_at": "2026-03-15T20:58:00+08:00",
-  "title": "稀土板块盘后再迎政策催化",
-  "url": "https://...",
-  "event_type": "policy_industry_catalyst",
-  "scope": "industry",
-  "raw_facts": "保留高保真的事实整理文本，不追求短，要求把时间、主体、动作、数字、约束条件讲清楚",
-  "key_points": [
-    "政策层面对稀土出口与供给约束释放新信号",
-    "市场解读为龙头议价能力增强",
-    "短期可能强化板块热度"
-  ],
-  "quantitative_data": {},
-  "entities": {
-    "symbols": ["600111.SH", "000831.SZ"],
-    "companies": ["北方稀土"],
-    "sectors": ["有色金属"],
-    "themes": ["稀土", "资源品", "出口管制"],
-    "people": [],
-    "institutions": []
-  },
-  "bull_points": [
-    "政策催化提升板块辨识度",
-    "行业供给约束逻辑强化"
-  ],
-  "bear_points": [
-    "短期情绪交易成分可能偏高",
-    "业绩兑现仍需后续验证"
-  ],
-  "time_sensitivity": "high",
-  "importance_hint": 0.84,
-  "novelty_hint": 0.72,
-  "sentiment_hint": "bullish",
-  "dedupe_hash": "abcd1234"
-}
-```
-
-重点说明：
-
-1. `raw_facts`
-   类似公告链路中的 `raw_facts`，必须尽可能保留关键事实
-2. `quantitative_data`
-   重要数字单独剥离，供后续规则层和 agent 调用
-3. `entities`
-   必须显式抽取股票、行业、主题映射
-4. `bull_points` / `bear_points`
-   是对后续主题融合有帮助的结构化线索，不是最终结论
-
-### 4.2.8 `theme_state` 设计建议
-
-`theme_state` 是真正的“渐进式主题状态”。
-
-建议字段：
-
-```json
-{
-  "theme_id": "theme_rare_earth",
-  "theme_name": "稀土",
-  "theme_type": "industry",
-  "status": "active",
-  "first_seen_at": "2026-03-03T09:20:00+08:00",
-  "last_seen_at": "2026-03-15T20:58:00+08:00",
-  "last_merged_at": "2026-03-15T21:15:00+08:00",
-  "one_line_summary": "稀土主题近期因政策催化与供给约束预期持续升温，市场聚焦龙头议价能力和后续业绩兑现。",
-  "thesis_summary": "当前主逻辑是政策强化供给约束、价格中枢上移预期、龙头公司景气与盈利弹性改善，但短期已有部分交易拥挤。",
-  "today_delta": "今日新增政策催化类消息，强化了供给约束与价格上行预期，主题热度继续上升。",
-  "bull_case": [
-    "政策催化持续强化供给侧逻辑",
-    "龙头公司具备价格传导与盈利弹性",
-    "主题辨识度高，容易形成板块共振"
-  ],
-  "bear_case": [
-    "短期交易拥挤，可能高开低走",
-    "政策落地到业绩存在时滞",
-    "若商品价格未兑现，题材持续性会下降"
-  ],
-  "open_questions": [
-    "后续是否有价格数据或公司订单验证",
-    "龙头和跟风股如何区分"
-  ],
-  "heat_score": 0.88,
-  "importance_score": 0.82,
-  "novelty_score": 0.43,
-  "persistence_score": 0.77,
-  "crowdedness_score": 0.64,
-  "confidence_score": 0.74,
-  "trend": "strengthening",
-  "decay_days": 3,
-  "archive_after_days": 60,
-  "linked_symbols": ["600111.SH", "000831.SZ"],
-  "leader_candidates": ["600111.SH"],
-  "related_sectors": ["有色金属"],
-  "evidence_item_ids_recent": [
-    "news_20260315_cls_abcd1234",
-    "news_20260314_ths_efgh5678"
-  ]
-}
-```
-
-这一层才允许明显压缩，因为它的职责是维护“主题当前状态”，不是保留全部事实细节。
-
-### 4.2.9 `symbol_hot_state` 设计建议
-
-`symbol_hot_state` 是从主题层落到交易层的中间态。
-
-建议字段：
-
-```json
-{
-  "symbol": "600111.SH",
-  "name": "北方稀土",
-  "last_updated_at": "2026-03-15T21:16:00+08:00",
-  "hot_themes": [
+  "run_date": "2026-03-17",
+  "themes": [
     {
       "theme_id": "theme_rare_earth",
       "theme_name": "稀土",
-      "relevance_score": 0.92,
-      "role": "leader"
+      "status": "active",
+      "first_seen_at": "2026-03-10T09:30:00+08:00",
+      "last_seen_at": "2026-03-17T21:00:00+08:00",
+      "summary": "稀土主题近几日持续获得政策与价格逻辑强化，当前仍处于活跃状态。",
+      "today_delta": "今日新增政策与价格相关信息，主题强度继续提升。",
+      "strength": "strengthening",
+      "persistence_view": "已持续4个交易日，短期仍可能反复活跃，但需警惕高位分歧。",
+      "bull_case": [
+        "政策催化仍在强化",
+        "行业价格逻辑得到验证"
+      ],
+      "bear_case": [
+        "短线交易拥挤",
+        "后续若无新增验证，可能快速退潮"
+      ],
+      "key_evidence_news_ids": ["C001", "T014"],
+      "linked_boards": ["有色金属"],
+      "linked_symbols": ["600111.SH", "000831.SZ"]
     }
   ],
-  "hot_thesis_summary": "公司是稀土主线高辨识度龙头，当前受益于政策催化与景气预期抬升，适合纳入热点观察池。",
-  "today_news_delta": "今日稀土主题新增政策催化，进一步强化公司作为龙头映射标的的市场关注度。",
-  "short_term_risks": [
-    "短线涨幅过快可能导致次日分歧",
-    "板块内跟风股过多会稀释资金"
-  ],
-  "hotness_score": 0.91,
-  "actionability_score": 0.78,
-  "leader_score": 0.95,
-  "must_track_today": true
+  "market_regime_note": "今日热点更偏资源与防御，成长方向分化加大。"
 }
 ```
 
-### 4.2.10 更新机制
+### 3.3.5 设计原则
 
-一期建议采用“抓取增量 -> 标准化 -> 去重 -> 事件归并 -> 主题衰减”的状态机：
+1. 重点维护主题演化，不追求每条新闻都结构化到极致。
+2. 重点描述“强化 / 延续 / 分化 / 衰减 / 证伪”。
+3. 明确主题持续时间与可能持续时间，而不是只给一句摘要。
+4. 保留证据链接，便于后续回溯到新闻来源。
+5. 不在这一步强行产出最终股票池。
 
-```text
-Step 1. 拉取当日 feed
-Step 2. 标准化成 raw_news_item
-Step 3. 提取成 news_item
-Step 4. 去重
-Step 5. 融合到 theme_state
-Step 6. 融合到 symbol_hot_state
-Step 7. 更新热度与衰减
-Step 8. 归档低热度旧主题
-```
+### 3.3.6 实现建议
 
-### 4.2.11 强模型与 skill 的职责划分
+本地 `merge-hot-news-state` 更建议做成“代码服务为主、workflow 为辅”的结构。
 
-一期建议将“搜索取数”和“语义融合”彻底拆开：
+核心服务职责建议固定为：
 
-1. AkShare / 搜索 API
-   - 只负责原始数据获取和增量更新
-2. 规则与抽取层
-   - 负责 `raw_news_item -> news_item`
-3. 强 GPT agent skill
-   - 负责 `news_item + 旧状态 -> 新状态`
+1. 读取旧状态。
+2. 从今天 `03_news_enriched.json` 抽取主题候选。
+3. 召回相关旧主题。
+4. 通过 `ADD / UPDATE / MERGE / ARCHIVE / DROP` 等操作生成新状态。
+5. 落盘新的 `hot_news_state` 与操作日志。
 
-### 4.2.12 Skill 设计建议
+详细设计见：
 
-建议拆成两个 skill，而不是一个超级 skill：
+- [`热点新闻渐进式总结系统设计.md`](/home/zhangbeiqing/programer/AI-Value-Investing-Agent/docs/selection_system/热点新闻渐进式总结系统设计.md)
 
-#### Skill A: `merge-hot-news-state`
+### 3.3.7 当前结论
 
-职责：
+当前已经明确的方向是：
 
-1. 输入：
-   - 今日新增 `news_item`
-   - 旧的 `theme_state`
-2. 输出：
-   - 更新后的 `theme_state`
+1. 不让模型直接重写整份 `hot_news_state`。
+2. 采用“规则 + embedding + LLM裁决”的混合匹配。
+3. 默认倾向归档与遗忘，而不是默认保留全部旧主题。
+4. 通过内部状态库维护主题生命周期，对外继续产出 JSON 文件。
 
-核心任务：
+仍待后续迭代的主要是阈值、字段与测试口径，而不是总体方向。
 
-1. 判断新增新闻属于哪些已有主题
-2. 是否需要创建新主题
-3. 每个主题今天是强化、稳定、减弱还是证伪
-4. 更新 `today_delta`、`one_line_summary`、`heat_score`、`linked_symbols`
+## 3.4 板块热度层：`board_heat_state`
 
-#### Skill B: `derive-symbol-hot-state`
+### 3.4.1 当前定位
 
-职责：
+板块热度层是一期里非常重要的一层，甚至在短期交易视角下比单纯新闻总结更重要。
 
-1. 输入：
-   - 更新后的 `theme_state`
-   - 今日个股相关 `news_item`
-   - 简化 snapshot
-   - 当前持仓
-2. 输出：
-   - 更新后的 `symbol_hot_state`
+原因是：
 
-核心任务：
+1. 板块是盘面真实资金偏好的直接体现。
+2. 板块强弱常常比单条新闻更接近交易语言。
+3. 板块层可以帮助策略 skill 判断“新闻逻辑是否真正被市场交易”。
 
-1. 将主题热度映射到具体股票
-2. 识别龙头、跟风、低相关映射
-3. 输出个股级热点状态，供后续热点候选筛选使用
+### 3.4.2 数据源修正
 
-### 4.2.13 与公告链路的一致性
+这里正式修正文档中的旧说法：
 
-这一设计刻意与现有公告链路保持一致：
+1. 不再以“板块异动接口”作为当前主方案。
+2. 当前以 `test/test_akshare.py` 中已经验证的同花顺行业板块抓取逻辑为准。
+3. 也就是先抓行业板块涨跌幅排行，再准备可选的板块相关股票线索。
 
-1. 原始公告 / PDF / Markdown
-2. `news.json` 做高保真事实提取
-3. `news_audited.json` 做进一步审计与融合
+### 3.4.3 当前建议流程
 
-同理，热点新闻链路建议走：
+每日收盘后：
 
-1. `raw_news_item`
-2. `news_item`
-3. `theme_state`
-4. `symbol_hot_state`
+1. 抓取行业板块全表。
+2. 选出涨幅前三板块。
+3. 选出跌幅前三板块。
+4. 全量维护行业板块历史指数序列，并生成当日板块量化快照。
+5. 为每个板块准备可选的股票线索，或完全交给 DeepSeek 在研究后反向推荐代表股。
+6. 将板块表现、量化快照、相关新闻线索以及可选的股票辅助信息一起送给 DeepSeek 做深度研究。
+7. 生成当日 `board_heat_state`。
 
-### 4.2.14 一期实现原则
+### 3.4.4 板块相关股票线索
 
-一期不追求完美自动聚类，也不追求一步到位的全自动热点裁判。
+当前已确认：
 
-一期重点是：
+1. DeepSeek 研究的对象是“板块”，不是“逐只个股深挖”。
+2. 股票在这一层只是辅助线索，用来帮助模型理解板块内部结构。
+3. 这些股票不等于最终一定会被选中。
 
-1. 保住原始信息
-2. 明确分层
-3. 让强模型只处理真正困难的融合任务
-4. 为后续热点选股提供稳定、可复用的状态输入
+当前未完全确定：
 
-### 4.2.15 与公告链路的关系
+1. 是否需要在送入 DeepSeek 之前预先带 `3` 只还是更多股票线索。
+2. 如果预先带股票，优先选成交额更大的容量核心。
+3. 还是优先选涨幅更大的前排情绪股。
+4. 或者采用混合方案，例如：
+   - `1` 只容量核心
+   - `1` 只当日最强前排
+   - `1` 只中军或补涨标的
+5. 另一种可行方案是：不预选股票，只让 DeepSeek 先研究板块，再反向推荐应重点关注的股票。
 
-热点新闻链路可以借鉴现有公告链路的“保真分层”思想，但不应机械照搬其字段和流程。
+在当前阶段，推荐先以 `test/test_akshare.py` 中的“板块内成交额前三股票”作为默认辅助线索实现，因为它更稳、更容易复盘；但要明确，这些股票只是板块研究输入的辅助信息，不是 DeepSeek 的主分析对象。
 
-原因：
+### 3.4.5 板块深度研究目标
 
-1. 公告更偏公司级硬事实。
-2. 热点新闻更偏叙事、资金、扩散路径和板块联动。
-3. 公告审计关注“真伪、实质风险、财务影响”。
-4. 热点状态关注“主题是否强化、是否扩散、是否具备交易持续性”。
+每个板块送给 DeepSeek 后，希望模型回答：
 
-因此建议：
+1. 当天涨跌的直接原因是什么。
+2. 背后对应的政策、产业、价格或市场风格驱动是什么。
+3. 这个逻辑已经持续了多久。
+4. 未来大概率还会持续多久。
+5. 板块内部是集中于龙头，还是在扩散，还是已经开始分化。
+6. 如果需要，当前板块最值得跟踪的几只股票是谁，以及它们各自扮演什么角色。
 
-1. 借鉴公告链路中的“原始层 -> 结构化提取层 -> 审计/融合层”。
-2. 不要求新闻链路与 [disclosures_builder.py](/home/zhangbeiqing/programer/AI-Value-Investing-Agent/news/disclosures_builder.py) 的输出字段保持一致。
-3. 新闻链路按“事件 -> 主题 -> 板块 -> 个股”的交易视角重新设计。
+### 3.4.5A 板块量化快照
 
-### 4.2.16 关于 `theme`、`board` 与“板块轮动”
-
-在热点系统中，需要区分以下四种概念：
-
-1. `event`
-   - 单条事件，如某政策、某价格变动、某公司订单、某行业事故。
-2. `theme`
-   - 可研究、可追踪的叙事主题，如“稀土”“算力”“创新药”“低空经济”。
-3. `sector/industry`
-   - 静态行业分类，如“有色金属”“计算机应用”“化学制药”。
-4. `board_cluster`
-   - 盘面实际联动出来的交易簇，即通常意义上“热点板块轮动”的对象。
-
-重要说明：
-
-1. `theme` 不完全等于静态行业。
-2. `theme` 也不完全等于盘面热点板块。
-3. 盘面“板块轮动”往往是：
-   - 一个 theme 的直接交易映射
-   - 多个 theme 的叠加
-   - 行业 + 概念 + 资金风格共同形成的交易簇
-
-因此，一期系统的设计目标不应只盯住静态行业，而应尽量兼容“新闻叙事层”和“盘面板块层”。
-
-### 4.2.17 可选方案总览
-
-围绕 `hot_news_state`，当前可接受的方案至少有三套。
-
-#### 方案 A：轻量双层方案
-
-结构：
-
-1. `raw_news_item`
-2. `theme_state`
-
-思路：
-
-1. 原始新闻先抓回来。
-2. 强 GPT agent 直接把原始新闻融合进主题状态。
-
-优点：
-
-1. 结构最简单。
-2. 上线最快。
-3. 文档和文件数量最少。
-
-缺点：
-
-1. 强模型输入过杂。
-2. 没有中间结构化层，难以审计和复跑。
-3. 一旦融合效果不好，难定位问题是抓取问题还是语义融合问题。
-4. 不利于后续扩展到个股级热点映射。
-
-适用场景：
-
-1. 只想快速验证“能不能大致识别当天热点主题”。
-
-结论：
-
-1. 可作为非常早期 PoC。
-2. 不建议作为一期正式方案。
-
-#### 方案 B：三层主题方案
-
-结构：
-
-1. `raw_news_item`
-2. `news_item` 或 `event_item`
-3. `theme_state`
-
-思路：
-
-1. 先把原始新闻做成高保真结构化事件。
-2. 再由强 GPT skill 把事件增量融合进主题状态。
-
-优点：
-
-1. 保真与压缩边界清晰。
-2. 容易复盘和局部重跑。
-3. 更容易控制模型上下文长度。
-4. 比方案 A 稳定很多。
-
-缺点：
-
-1. 对“板块轮动”的表达仍停留在主题层。
-2. 最终选股时还要临时做“主题 -> 股票”映射。
-
-适用场景：
-
-1. 以“热点主题识别”为主，个股选择还没完全独立成层。
-
-结论：
-
-1. 这是一个合格的一期基础版。
-2. 如果资源有限，可以先从这里起步。
-
-#### 方案 C：四层交易映射方案
-
-结构：
-
-1. `raw_news_item`
-2. `news_item` 或 `event_item`
-3. `theme_state`
-4. `symbol_hot_state`
-
-思路：
-
-1. 原始新闻保真。
-2. 结构化提取成事件。
-3. 强 GPT skill 把事件融合成主题状态。
-4. 再由第二个 skill 把主题状态映射成个股热点状态。
-
-优点：
-
-1. 既保留事件细节，又能服务最终选股。
-2. 非常适合“热点主题 -> 龙头股/前排股/跟风股”的交易逻辑。
-3. 比直接从主题层选股更稳。
-4. 与你当前“先融合，再选热点股票”的目标高度一致。
-
-缺点：
-
-1. 比方案 B 多一层状态管理。
-2. 需要第二个 skill 维护个股映射状态。
-
-适用场景：
-
-1. 既要做热点总结，又要真正服务盘后选股。
-
-结论：
-
-1. 这是当前最推荐的一期正式方案。
-
-#### 方案 D：五层板块轮动方案
-
-结构：
-
-1. `raw_news_item`
-2. `event_item`
-3. `theme_state`
-4. `board_state`
-5. `symbol_hot_state`
-
-思路：
-
-1. 把“研究主题”和“盘面板块”进一步拆开。
-2. 增加一个 `board_state`，专门描述市场实际在交易什么板块簇。
-
-优点：
-
-1. 最接近“板块轮动”的交易语言。
-2. 更容易分析主题扩散、资金抱团、前排切换。
-3. 对盘面交易理解最强。
-
-缺点：
-
-1. 设计复杂度显著提高。
-2. `board_state` 与 `theme_state` 的边界需要较多试验才能稳定。
-3. 一期上来就做，风险偏高。
-
-适用场景：
-
-1. 二期或一期后半段，当你确认主题层已经跑稳之后。
-
-结论：
-
-1. 这是最强版本，但不建议一开始就作为唯一主实现。
-
-### 4.2.18 一期推荐主方案
-
-当前推荐采用：
-
-#### 主方案：方案 C
-
-即：
-
-1. `raw_news_item`
-2. `news_item` 或 `event_item`
-3. `theme_state`
-4. `symbol_hot_state`
-
-原因：
-
-1. 比方案 B 更贴近最终选股目标。
-2. 又不像方案 D 那样一开始就过于复杂。
-3. 与“拆成两个 skill”的思路天然匹配。
-
-### 4.2.19 一期保留的备选增强方案
-
-在不推翻主方案 C 的前提下，后续允许逐步尝试：
-
-1. 从 `news_item` 重命名为 `event_item`
-   - 如果后续发现“news_item”这个名字容易让人误解成摘要层，可以在实现中直接使用 `event_item` 命名。
-2. 为方案 C 增加轻量 `board_state`
-   - 如果后续测试发现“主题状态无法准确刻画板块轮动”，则在二期增加 `board_state`。
-3. 增加“热点主题 -> 热点板块 -> 个股映射”的两段式逻辑
-   - 适合后续扩展成更强的轮动系统。
-
-### 4.2.20 `news_item` 与 `event_item` 的命名建议
-
-从语义准确性来看，`event_item` 其实比 `news_item` 更合适。
-
-原因：
-
-1. 输入不只来自新闻，也来自公告、快讯、搜索结果。
-2. 结构化后它表达的是“事件”，不是“媒体文本”。
-3. 后续做主题归并时，归并的是事件，不是新闻文章。
-
-因此，一期文档中保留 `news_item` 这一称呼以降低理解成本，但实现时允许直接使用 `event_item` 作为正式名称。
-
-### 4.2.21 强模型 Skill 的推荐职责
-
-不论最终采用 B、C 还是 D，强模型都不应负责抓取原始数据。
-
-推荐的强模型职责只有两类：
-
-1. 增量主题融合
-2. 增量个股热点映射
-
-对应 skill：
-
-1. `merge-hot-news-state`
-2. `derive-symbol-hot-state`
-
-如未来引入 `board_state`，再增加第三个 skill：
-
-3. `derive-board-state`
-
-### 4.2.22 推荐实施顺序
-
-建议按以下顺序推进，而不是一步到位：
-
-#### 阶段 1
-
-1. 实现 `raw_news_item`
-2. 实现 `news_item/event_item`
-3. 实现 `theme_state`
-
-#### 阶段 2
-
-1. 实现 `symbol_hot_state`
-2. 将其接入 `candidate_selector`
-
-#### 阶段 3
-
-1. 观察实际盘面效果
-2. 若发现“主题层不足以表达板块轮动”，再补 `board_state`
-
-### 4.2.23 效果评估标准
-
-后续不同方案优劣，不以“摘要写得是否好看”为主要标准，而以交易实用性为准。
-
-建议重点评估：
-
-1. 当天最热的 3 个主题或板块，系统能否识别出来。
-2. 旧热点退潮时，状态是否能正确衰减。
-3. 新热点发酵时，系统能否识别出对应龙头和前排股票。
-4. 候选池里是否漏掉当天核心热点股。
-5. 是否出现大量由无效新闻触发的伪热点。
-
-## 4.3 `candidate_selector`
-
-### 4.3.1 职责
-
-从 `master_universe` 中筛出：
-
-1. 当日热点候选 `hot_candidates_topN`
-2. 当期长线候选 `core_candidates_topN`
-
-### 4.3.2 设计原则
-
-这一步应尽量轻量、规则化、可控。
-
-不建议一期就把 300-400 只股票全部交给 LLM 排序。更合理的方式是先做规则打分，再只让 LLM 参与少量边界判断。
-
-### 4.3.3 输入
-
-1. `master_universe`
-2. `market_hot_state`
-3. `symbol_event_state`
-4. 简化基本面快照
-5. 当前持仓与最近交易摘要
-
-### 4.3.4 输出
-
-建议生成：
-
-- `data/runtime_pools/hot_candidates_top15.json`
-- `data/runtime_pools/core_candidates_top15.json`
-- `data/runtime_pools/candidate_selection_summary.md`
-
-### 4.3.5 热点候选打分建议
-
-热点策略重点看：
-
-1. 当日/近 3 日主题强度
-2. 个股与主题匹配度
-3. 量价与成交额活跃度
-4. 公告/事件催化
-5. 是否已有持仓或观察仓
-
-建议评分公式先走规则版：
-
-```text
-hot_score =
-0.30 * theme_heat +
-0.20 * symbol_theme_relevance +
-0.20 * short_term_price_volume_signal +
-0.15 * event_catalyst_score +
-0.15 * holdings_guardrail_bonus
-```
-
-### 4.3.6 长线候选打分建议
-
-长线策略重点看：
-
-1. 基本面稳定性
-2. 估值与安全边际
-3. 行业中长期景气
-4. 重大基本面拐点或政策变化
-5. 当前持仓替代价值
-
-建议评分公式先走规则版：
-
-```text
-core_score =
-0.25 * quality_score +
-0.25 * valuation_margin_score +
-0.20 * industry_outlook_score +
-0.15 * expectation_revision_score +
-0.15 * portfolio_replace_score
-```
-
-### 4.3.7 候选筛选约束
-
-必须增加以下硬约束：
-
-1. 当前持仓股票必须强制进入对应候选分析范围。
-2. 热点池和长线池允许重叠，但最终要标注主策略归属。
-3. 单日新进入热点池的股票数量应限制上限，避免池子振荡过大。
-4. 长线池默认周更，不随单日热点剧烈摆动。
-
-### 4.3.8 一期输出格式建议
+为了让板块层不仅能回答“今天为什么涨跌”，还可以回答“这波已经持续多久、强度是否在加速或衰减”，板块层需要先生成一份全量行业板块量化快照。
+
+当前建议至少包含：
+
+1. 区间收益率：`3/5/10/20/60/120/180` 交易日。
+2. 区间排名：上述窗口在全体行业板块中的横截面排名。
+3. 波动率：`20/60` 日年化波动率。
+4. 最大回撤：`20/60/120` 日。
+5. 夏普：`20/60/120` 日。
+6. 连续性指标：
+   - 最近 `5/10/20` 天上涨天数
+   - 最近连续上涨/下跌天数
+   - 最近 `10/20` 天进入涨幅前十次数
+7. 宽度指标：
+   - 当天上涨家数占比
+   - 板块内成交额前三股票占比
+   - 龙头涨幅和板块平均涨幅的偏离
+8. 阶段指标：
+   - 距 `20/60` 日高点回撤
+   - 是否刚突破近 `20/60` 日新高
+   - `5` 日收益率减 `20` 日收益率
+
+这一层应优先由本地程序确定性计算，而不是让模型纯靠搜索或文本推断。
+
+### 3.4.6 推荐输出结构
 
 ```json
 {
-  "run_date": "2026-03-15",
-  "strategy": "hot",
-  "candidates": [
+  "run_date": "2026-03-17",
+  "boards": [
     {
-      "symbol": "002594.SZ",
-      "name": "比亚迪",
-      "score": 0.84,
+      "board_name": "稀土永磁",
+      "direction": "up",
       "rank": 1,
-      "reasons": [
-        "新能源车链条热度回升",
-        "销量数据强化景气预期",
-        "量价信号改善"
+      "change_pct": 4.82,
+      "related_stock_hints": [
+        {"symbol": "600111.SH", "name": "北方稀土", "role_hint": "容量核心"},
+        {"symbol": "000831.SZ", "name": "中国稀土", "role_hint": "弹性前排"},
+        {"symbol": "600392.SH", "name": "盛和资源", "role_hint": "中军补充"}
       ],
-      "must_keep": true
+      "research_summary": "板块上涨主要受政策与价格预期共振驱动。",
+      "driver_analysis": "今日上涨的直接催化是...",
+      "persistence_analysis": "本轮逻辑已持续4个交易日，短期仍可能延续1-3日，但高位分歧风险上升。",
+      "structure_view": "资金更集中在容量核心与高辨识度龙头，跟风扩散仍有限。",
+      "recommended_watch_stocks": [
+        {"symbol": "600111.SH", "name": "北方稀土", "reason": "容量核心，最能代表板块强度"},
+        {"symbol": "000831.SZ", "name": "中国稀土", "reason": "弹性更强，适合观察情绪延续"}
+      ],
+      "risk_points": [
+        "如果后续无新增政策验证，持续性可能下降",
+        "前排个股短线涨幅较大"
+      ]
     }
   ]
 }
 ```
 
-## 4.4 `symbol_memory`
+## 3.5 共享输入包：`selection_bundle`
 
-### 4.4.1 职责
+### 3.5.1 当前定位
 
-为每只股票维护一份轻量、可增量更新的“历史记忆包”，供后续子 agent 深挖时按需读取。
+`selection_bundle` 是共享研究底座汇总后的统一输入包，供两个策略决策头复用。
 
-### 4.4.2 设计原则
+### 3.5.2 主要内容
 
-1. 一只股票一套独立记忆。
-2. 默认只读取短记忆，不读取全历史。
-3. 详细深度研究按日期归档。
-4. 组合级上下文与个股级上下文分离。
+建议至少包含：
 
-### 4.4.3 目录建议
+1. `master_universe`
+2. 最新 `hot_news_state`
+3. 最新 `board_heat_state`
+4. 今日 `03_news_enriched.json`
+5. 可选的当前持仓、交易摘要、基础快照
+6. 组合层配置：资金总额、策略资金配比、单票上限等
 
-新增：
+### 3.5.3 设计目的
 
-- `data/symbol_memory/<symbol>/profile.md`
-- `data/symbol_memory/<symbol>/thesis_state.json`
-- `data/symbol_memory/<symbol>/event_timeline.jsonl`
-- `data/symbol_memory/<symbol>/decision_history.jsonl`
-- `data/symbol_memory/<symbol>/deep_research/YYYY-MM-DD.md`
+1. 避免 `hot_book` 与 `core_book` 读取不同世界事实。
+2. 降低 prompt 维护成本。
+3. 让后续接入真实交易、风控和分时数据时有明确总入口。
 
-### 4.4.4 文件职责
+## 3.6 `hot_book_state`
 
-#### `profile.md`
+### 3.6.1 职责
 
-低频更新，记录公司简介、主营业务、行业定位、关注理由。
+`hot_book_state` 描述短周期热点策略簿的当前持仓、候选观察、换仓逻辑与风险约束。
 
-#### `thesis_state.json`
+它不是一个简单的股票列表，而是“短线策略当前怎么看、持有什么、为什么持有、什么时候退出”的状态容器。
 
-当前投资主线状态。建议包含：
+### 3.6.2 策略定位
+
+1. 资金规模相对较小，例如 `15w`。
+2. 持有周期以几天到几周为主，少数情况可到一个月。
+3. 更关注热点持续性、板块强度、情绪与催化。
+4. 未来接入分时线后，它会是最先使用高频数据的一层。
+
+### 3.6.3 决策逻辑重点
+
+`select-hot-book` 更关心：
+
+1. 板块是否正在被市场真实交易。
+2. 催化是刚出现、继续强化，还是已经衰减。
+3. 龙头是否清晰。
+4. 板块内部是扩散、抱团，还是已经分化。
+5. 未来几天到几周还有没有交易价值。
+
+### 3.6.4 推荐状态结构
 
 ```json
 {
-  "symbol": "600036.SH",
-  "long_term_thesis": "零售银行龙头，资产质量稳健，高ROE",
-  "hot_thesis": "",
-  "valuation_anchor": {
-    "method": "PB+ROE",
-    "fair_range": "1.1-1.4x PB"
-  },
-  "key_risks": [
-    "息差下行",
-    "地产风险暴露"
+  "run_date": "2026-03-17",
+  "capital_limit": 150000,
+  "style": "hot",
+  "book_summary": "当前热点集中在资源与高辨识度板块，追高风险上升，宜聚焦少量前排。",
+  "positions": [
+    {
+      "symbol": "600111.SH",
+      "name": "北方稀土",
+      "role": "leader",
+      "entry_thesis": "稀土板块为当前核心热点，容量核心辨识度高。",
+      "holding_horizon": "days_to_weeks",
+      "expected_driver_window": "1-2周",
+      "exit_triggers": [
+        "板块热度明显衰减",
+        "龙头地位丧失",
+        "高位放量分歧后无法修复"
+      ],
+      "risk_notes": [
+        "短线涨幅已大，追高风险高"
+      ]
+    }
   ],
-  "next_checkpoints": [
-    "一季报净息差",
-    "资产质量变化"
+  "watchlist": [
+    {
+      "symbol": "000831.SZ",
+      "name": "中国稀土",
+      "watch_reason": "弹性更强，适合观察板块情绪延续"
+    }
   ],
-  "last_updated": "2026-03-15"
+  "dropped_candidates": [
+    {
+      "symbol": "600000.SH",
+      "name": "示例股票",
+      "drop_reason": "原热点已明显退潮"
+    }
+  ],
+  "risk_budget_note": "总仓位不宜过满，单一热点集中度需受限。"
 }
 ```
 
-#### `event_timeline.jsonl`
+### 3.6.5 退出逻辑
 
-记录近 2-6 个月重要事件，不存长篇全文，只存结构化摘要。
+`hot_book` 的核心不是“买多久”，而是“何时失效”。
 
-#### `decision_history.jsonl`
+建议优先围绕以下条件退出：
 
-记录最近若干次买卖或继续持有的裁决结论，便于后续引用“历史锚点”。
+1. 催化衰减。
+2. 板块掉队。
+3. 龙头地位丧失。
+4. 资金结构恶化。
+5. 更强的新热点出现。
 
-#### `deep_research/YYYY-MM-DD.md`
+## 3.7 `core_book_state`
 
-仅在真正做深挖时生成详细研究，避免所有股票都堆成长文。
+### 3.7.1 职责
 
-### 4.4.5 读取策略
+`core_book_state` 描述中长期配置策略簿的当前持仓、替换逻辑、长期 thesis 与观察对象。
 
-未来子 agent 默认只读：
+它也不是一个简单的长期股票列表，而是“当前最值得长期持有的组合结构与替换判断”。
 
-1. `profile.md`
-2. `thesis_state.json`
-3. `event_timeline` 最近 10-20 条
-4. `decision_history` 最近 1-3 条
+### 3.7.2 策略定位
 
-只有在需要复核历史深度研究时，才按股票单独追加读取 `deep_research`。
+1. 资金规模相对更大。
+2. 持有周期以几个月到一年为主，必要时更长。
+3. 更关注行业中长期景气、公司质量、长期预期差与估值。
+4. 不会因为短期波动频繁调仓，但也不是永远不动。
 
-这能显著降低上下文膨胀。
+### 3.7.3 决策逻辑重点
 
-## 5. 一期运行流程
+`select-core-book` 更关心：
 
-建议新增一条独立于现有 `skill-only` 的候选筛选链路：
+1. 长期 thesis 是否被强化。
+2. 是否出现了更好的替代标的。
+3. 当前持仓里谁的中长期预期收益最差。
+4. 替换某只股票后，组合整体赔率是否明显更优。
+5. 是否值得付出换仓成本。
 
-```text
-Step 1. refresh_selection_inputs
-    -> 刷新宏观/行业/公告/价格/快照输入
+### 3.7.4 推荐状态结构
 
-Step 2. update_hot_news_state
-    -> 更新市场主题状态与个股事件状态
-
-Step 3. select_candidates
-    -> 输出 hot/core 两类候选池
-
-Step 4. build_symbol_memory
-    -> 为候选股票生成或更新轻量记忆包
-
-Step 5. export_selection_bundle
-    -> 输出供未来子 agent 使用的标准化 bundle
+```json
+{
+  "run_date": "2026-03-17",
+  "capital_limit": 850000,
+  "style": "core",
+  "book_summary": "长期池继续以行业景气和高质量资产为主，保留低换手风格。",
+  "positions": [
+    {
+      "symbol": "600036.SH",
+      "name": "招商银行",
+      "long_term_thesis": "零售银行龙头，资产质量稳健，高ROE。",
+      "holding_horizon": "months_to_years",
+      "expected_driver_window": "6-12个月",
+      "keep_reason": "当前 thesis 未被证伪，估值与确定性仍具吸引力。",
+      "replace_triggers": [
+        "行业逻辑转弱",
+        "基本面显著恶化",
+        "出现明显更优替代标的"
+      ]
+    }
+  ],
+  "watchlist": [
+    {
+      "symbol": "300999.SZ",
+      "name": "示例股票",
+      "watch_reason": "长期景气与公司竞争力改善，可能成为替代标的"
+    }
+  ],
+  "replacement_candidates": [
+    {
+      "incoming_symbol": "300999.SZ",
+      "incoming_name": "示例股票",
+      "outgoing_symbol": "600000.SH",
+      "outgoing_name": "示例旧持仓",
+      "replacement_reason": "新标的长期赔率更高，旧持仓 thesis 边际变弱"
+    }
+  ],
+  "turnover_note": "长期池以低换手为原则，只在 thesis 变化或明显更优替代出现时调整。"
+}
 ```
 
-建议输出目录：
+### 3.7.5 替换逻辑
 
-- `data/selection_runs/YYYY-MM-DD/`
+`core_book` 的关键不是“永远持有”，而是“低频但高质量地替换”。
 
-包含：
+建议优先围绕以下条件替换：
 
-1. `01_market_hot_state.json`
-2. `02_hot_candidates_top15.json`
-3. `03_core_candidates_top15.json`
-4. `04_symbol_memory_index.json`
-5. `run_manifest.json`
+1. 旧持仓 thesis 被削弱或证伪。
+2. 新标的中长期赔率明显更高。
+3. 替换后组合整体更优。
+4. 换仓收益足以覆盖交易成本和新的研究成本。
 
-这样可以与当前 `data/skill_runs/YYYY-MM-DD/` 并行存在。
+## 3.8 组合编排层：`portfolio_orchestrator`
 
-## 6. 与现有系统的关系
+### 3.8.1 职责
 
-### 6.1 保留的现有能力
+顶层编排层负责把 `hot_book_state` 与 `core_book_state` 汇总成统一组合决策。
 
-一期建议继续复用：
+### 3.8.2 主要任务
 
-1. `shared_data_access` 统一数据访问方式
-2. `basic_snapshot` 现有快照生成链路
-3. `trade_summary` 的历史操作压缩经验
-4. `services/` 和 `core/` 的日志与脚本分层模式
+1. 维护策略资金配比。
+2. 检查两套策略簿是否出现冲突。
+3. 处理股票重叠问题。
+4. 输出当日统一建议与后续执行输入。
+5. 为未来接入真实交易接口做准备。
 
-### 6.2 不建议直接复用的路径
+### 3.8.3 当前建议
 
-一期不建议直接把以下内容搬为主链：
+一期建议默认采用较保守规则：
 
-1. BettaFish 的重型 `ForumEngine + ReportEngine`
-2. 当前 `skill_flow.json` 里“面向固定股票池的长 prompt 全量裁判”
-3. 每只股票都走一遍完整 SOTP 深度分析
+1. `hot_book` 与 `core_book` 默认不重仓同一只股票。
+2. 若两边都高度看好同一股票，优先进入 `core_book`，或标记为人工审核。
+3. 明确记录资金占用、策略归属和调仓来源，避免未来接实盘后混账。
 
-### 6.3 与现有 `TRACKED_A_STOCKS` 的关系
+## 3.9 `symbol_memory`
 
-当前 [configs/stock_pool.py](/home/zhangbeiqing/programer/AI-Value-Investing-Agent/configs/stock_pool.py) 仍作为旧主链路分析池保留。
+### 3.9.1 当前定位
 
-一期新增的 `master_universe` 不替代它，而是作为新系统的上游输入。
+`symbol_memory` 仍然是有价值的，但在最新方案中，它属于策略决策之后的增强层，而不是当前一期最核心的前置条件。
 
-换句话说：
+### 3.9.2 当前建议
 
-1. 旧链路继续可跑。
-2. 新链路在 `selection_runs` 下独立验证。
-3. 等新链路稳定后，再决定是否逐步替换 `TRACKED_A_STOCKS` 驱动模式。
+1. 先把共享研究底座、双策略决策头和组合编排层跑顺。
+2. 再把最终入选股票或重点观察股票写入 `symbol_memory`。
+3. 不急着在当前阶段为全部股票建立完整记忆包。
 
-## 7. 一期推荐目录结构
+## 4. 一期主流程
+
+建议将一期主流程定义为：
 
 ```text
-docs/
-  selection_system/
-    AI选股系统一期落地设计.md
+Step 1. run-news
+    -> 生成 01/02/03 新闻链产物
 
+Step 2. merge-hot-news-state
+    -> 输入: 昨天 hot_news_state + 今天 03_news_enriched.json
+    -> 输出: 今天新的 hot_news_state
+
+Step 3. build-board-heat-state
+    -> 抓取涨幅前三/跌幅前三板块
+    -> 准备可选的板块相关股票线索
+    -> 调用 DeepSeek 做板块深度研究
+    -> 输出 board_heat_state
+
+Step 4. build-selection-bundle
+    -> 汇总 master_universe + hot_news_state + board_heat_state + 03_news_enriched.json
+
+Step 5. run-select-hot-book
+    -> 输出 hot_book_state
+
+Step 6. run-select-core-book
+    -> 输出 core_book_state
+
+Step 7. run-portfolio-orchestrator
+    -> 汇总 hot_book_state + core_book_state
+    -> 输出统一投资建议与扩展候选
+
+Step 8. optional symbol-memory update
+    -> 为最终入选或重点观察股票更新记忆
+```
+
+## 5. 推荐目录与产物
+
+### 5.1 每日运行目录
+
+```text
+data/selection_runs/YYYY-MM-DD/
+  01_news_candidates.json
+  02_news_dedup_decisions.json
+  02_news_deduped.json
+  03_news_enriched.json
+  04_board_candidates.json
+  05_board_heat_state.json
+  06_hot_news_state.json
+  07_selection_bundle.md
+  08_hot_book_state.json
+  09_core_book_state.json
+  10_portfolio_orchestrator.json
+  10_portfolio_orchestrator.md
+  11_universe_expansion_candidates.json
+  run_manifest.json
+```
+
+说明：
+
+1. `04_board_candidates.json` 保存板块排行与辅助股票线索原始材料。
+2. `05_board_heat_state.json` 保存 DeepSeek 输出的板块研究结果。
+3. `06_hot_news_state.json` 保存当天新的热点状态。
+4. `07_selection_bundle.md` 是给本地强模型看的共享输入层。
+5. `08` 和 `09` 分别是两套策略簿的状态输出。
+6. `10` 是组合编排层产物。
+7. `11` 记录策略认为值得纳入股票宇宙的新标的。
+
+### 5.2 长期状态目录
+
+```text
 data/
   universe/
     master_universe.json
-  runtime_pools/
-    hot_candidates_top15.json
-    core_candidates_top15.json
   market_state/
-    market_hot_state.json
-    archive/
-  symbol_event_state/
-    600036.SH.json
+    hot_news_state/
+      latest.json
+      YYYY-MM-DD.json
+    board_heat_state/
+      latest.json
+      YYYY-MM-DD.json
+  global_cache/
+    board_history_ths/
+      universe.csv
+      histories/<board_code>.csv
+    board_metrics_ths/
+      latest.json
+      daily_snapshots/YYYY-MM-DD.json
+      market_snapshots/YYYY-MM-DD.json
+    raw_news/
+      YYYY-MM-DD.json
+  portfolio_state/
+    hot_book/
+      latest.json
+      YYYY-MM-DD.json
+    core_book/
+      latest.json
+      YYYY-MM-DD.json
   symbol_memory/
-    600036.SH/
+    <symbol>/
       profile.md
       thesis_state.json
       event_timeline.jsonl
       decision_history.jsonl
-      deep_research/
-        2026-03-15.md
-  selection_runs/
-    2026-03-15/
-      01_market_hot_state.json
-      02_hot_candidates_top15.json
-      03_core_candidates_top15.json
-      04_symbol_memory_index.json
-      run_manifest.json
 ```
 
-## 8. 一期实施顺序
+## 6. 与现有系统的关系
 
-建议严格按以下顺序推进：
+### 6.1 继续复用的能力
 
-### 阶段 A：静态底座
+一期继续复用：
 
-1. 定义 `master_universe` 数据结构。
-2. 整理首批 300-400 只股票宇宙。
-3. 明确行业、主题、策略标签。
+1. `shared_data_access` 的统一数据访问思想。
+2. `services/` 与 `core/` 的脚本分层与日志模式。
+3. 现有新闻抓取与正文增强能力。
+4. 本地 skill-only 工作方式。
 
-### 阶段 B：热点状态层
+### 6.2 不再作为主线的旧设计
 
-1. 统一新闻输入源格式。
-2. 实现新闻去重与主题归并。
-3. 实现 `market_hot_state` 与个股事件状态更新。
+以下内容不再作为一期主方案：
 
-### 阶段 C：候选筛选层
+1. 规则打分版 `candidate_selector`。
+2. 以 `stock_board_change_em` 为主的旧板块设计表述。
+3. 把新闻链、板块链、个股热度链混成一个规则状态机的做法。
+4. 期望先定义一套稳定规则分数，再由模型做少量边界修正的方案。
 
-1. 实现热点候选打分。
-2. 实现长线候选打分。
-3. 实现“持仓强制保留”和“池子更新节奏控制”。
+### 6.3 与旧主链路的关系
 
-### 阶段 D：个股记忆层
+1. 当前 `manage_daily_data -> run_daily_pipeline -> run_post_trade` 主链路继续保留。
+2. 新选股系统链路在 `selection_runs` 下独立验证。
+3. 新链路稳定后，再考虑与旧主链路如何衔接。
 
-1. 设计 `symbol_memory` 目录与文件格式。
-2. 为候选股票自动生成首版记忆包。
-3. 实现增量更新，而不是全量重写。
+## 7. 一期实施顺序
 
-## 9. 一期验收标准
+建议按以下顺序推进：
 
-完成一期后，应至少满足以下验收标准：
+### 阶段 A：新闻链稳定化
 
-1. 能生成一份规模在 300-400 只之间的 `master_universe`。
-2. 能每天生成 `market_hot_state.json`。
-3. 能每天生成 `hot_candidates_top15.json` 和 `core_candidates_top15.json`。
-4. 候选结果中始终包含当前持仓股票。
-5. 候选股票均能生成独立的 `symbol_memory`。
-6. 新链路运行后不会污染当前 `skill_runs` 主链路。
+1. 持续稳定 `01 -> 02 -> 03` 新闻链。
+2. 保证 `03_news_enriched.json` 质量足够高。
 
-## 10. 当前已知开放问题
+### 阶段 B：`hot_news_state` 渐进式服务落地
 
-以下问题在一期设计中先保留为开放项，后续逐个细化：
+1. 明确输入格式。
+2. 固化状态结构、操作类型与落盘格式。
+3. 实现“候选抽取 -> 主题召回 -> 操作计划 -> 应用落盘”的代码链路。
 
-1. 热点状态归并是偏规则优先，还是引入 embedding 聚类。
-2. 长线候选中“替换当前非持仓股票”的阈值如何定义。
-3. 基本面快照中哪些字段要进入候选筛选，哪些只在深挖阶段读取。
-4. `symbol_memory` 中哪些字段由规则写入，哪些字段允许 LLM 生成。
-5. 热点池是否需要盘中轻量更新，以及更新频率是每小时还是仅收盘后。
-6. 二期是否引入并行子 agent 裁判，以及如何调度预算与上下文上限。
+### 阶段 C：板块热度层落地
 
-## 11. 结论
+1. 按 `test/test_akshare.py` 跑通板块排行抓取。
+2. 明确板块辅助股票线索方案，或明确改为由 DeepSeek 反向推荐关注股。
+3. 接 DeepSeek 做板块深度研究。
 
-一期的核心不是让系统“直接选出最终买卖结果”，而是先把以下四层能力搭好：
+### 阶段 D：双策略决策头落地
 
-1. 主股票宇宙
-2. 渐进式热点状态
-3. 双策略候选池
-4. 个股独立记忆包
+1. 设计共享 `selection_bundle`。
+2. 实现 `select-hot-book` 与 `select-core-book`。
+3. 固化 `hot_book_state` 与 `core_book_state` 的状态结构。
 
-只要这四层搭好，后续无论是接简化版 QueryEngine、并行子 agent、财报自动化，还是未来接入真实交易接口，都会有清晰且可扩展的落脚点。
+### 阶段 E：组合编排层落地
+
+1. 汇总两套策略簿结果。
+2. 设计资金配比与冲突处理规则。
+3. 输出统一投资建议和股票宇宙扩展建议。
+
+### 阶段 F：记忆层增强
+
+1. 为最终入选股票生成或更新 `symbol_memory`。
+2. 逐步把历史决策结论沉淀为长期可复用记忆。
+
+## 8. 一期验收标准
+
+完成一期后，至少应满足：
+
+1. 能稳定生成 `03_news_enriched.json`。
+2. 能基于“昨日状态 + 今日新闻”生成新的 `hot_news_state`。
+3. 能每天稳定生成涨幅前三和跌幅前三板块的研究结果。
+4. 能生成共享 `selection_bundle`。
+5. 能分别输出 `hot_book_state` 与 `core_book_state`。
+6. 能由组合编排层输出统一的投资建议。
+7. 当股票宇宙不足时，系统能够提出新的股票扩充建议。
+8. 新链路运行后不会污染现有 `skill_runs` 主链路。
+
+## 9. 当前开放问题
+
+当前最关键的开放问题如下：
+
+1. `hot_news_state` 的状态字段应该精简到什么程度，才能既稳定又有交易价值。
+2. 相似主题匹配和 `MERGE_THEME` 的阈值应如何验证与调优。
+3. 板块辅助股票线索到底是优先选成交额大票、涨幅前排票，还是混合方案。
+4. 板块深度研究输出中，哪些字段最值得长期保留进 `board_heat_state`。
+5. `hot_book` 与 `core_book` 是否允许同时持有同一只股票，以及允许到什么程度。
+6. 最终策略扩充股票宇宙时，是直接写入 `master_universe`，还是先进入待审核池。
+7. 未来接真实交易后，分时数据应主要服务于 `hot_book`，还是部分服务 `core_book` 的择时。
+8. `symbol_memory` 在一期中做到什么深度最合适。
+
+## 10. 结论
+
+你当前最新的一期设计，核心已经很明确：
+
+1. 新闻链负责把当天新闻清洗成高质量输入。
+2. `hot_news_state` 由本地代码服务做渐进式更新，并由模型只负责少数高语义判断。
+3. 板块热度层通过同花顺行业板块排行 + DeepSeek 深研来构建。
+4. 最终决策不再是单一 skill，而是共享底座上的双策略簿：
+   - `hot_book`
+   - `core_book`
+5. 顶层再由 `portfolio_orchestrator` 统一管理资金分配、冲突处理与输出。
+6. 当现有股票宇宙不足时，策略层可以联网补充研究并扩展股票宇宙。
+
+因此，一期真正的主轴不再是“规则筛选”，而是：
+
+1. 渐进式热点状态维护。
+2. 板块热度深度研究。
+3. 双策略决策头。
+4. 顶层组合编排。
+
+只要这四层跑顺，你的选股系统就已经具备了持续演化成更强本地选股 agent、并向真实交易系统过渡的基础。

@@ -214,6 +214,10 @@ class CacheKind(str, Enum):
     BASIC_INFO = "basic_info_cache"
     DISCLOSURES = "disclosures"
     SHARE_INFO = "share_info"
+    CN_PROFIT_FORECAST = "cn_profit_forecast"
+    HK_PROFIT_FORECAST = "hk_profit_forecast"
+    BOARD_HISTORY_THS = "board_history_ths"
+    BOARD_METRICS_THS = "board_metrics_ths"
 
 
 @dataclass(frozen=True)
@@ -286,6 +290,44 @@ BASE_REGISTRY: Dict[CacheKind, CacheSpec] = {
         description="股本和流通股本数据 CSV 缓存",
         ttl_days=7,
     ),
+    CacheKind.CN_PROFIT_FORECAST: CacheSpec(
+        kind=CacheKind.CN_PROFIT_FORECAST,
+        subdir="profit_forecast",
+        description="A股机构一致预期（同花顺）CSV 缓存",
+        ttl_days=1,
+        required_files=(
+            "profit_forecast.csv",
+        ),
+    ),
+    CacheKind.HK_PROFIT_FORECAST: CacheSpec(
+        kind=CacheKind.HK_PROFIT_FORECAST,
+        subdir="profit_forecast",
+        description="港股盈利预测（经济通）CSV 缓存",
+        ttl_days=1,
+        required_files=(
+            "profit_forecast.csv",
+        ),
+    ),
+    CacheKind.BOARD_HISTORY_THS: CacheSpec(
+        kind=CacheKind.BOARD_HISTORY_THS,
+        subdir="global_cache/board_history_ths",
+        description="同花顺行业板块历史指数与板块 universe 缓存",
+        ttl_days=1,
+        required_files=(
+            "universe.csv",
+        ),
+        per_stock=False,
+    ),
+    CacheKind.BOARD_METRICS_THS: CacheSpec(
+        kind=CacheKind.BOARD_METRICS_THS,
+        subdir="global_cache/board_metrics_ths",
+        description="同花顺行业板块日度量化指标快照缓存",
+        ttl_days=1,
+        required_files=(
+            "latest.json",
+        ),
+        per_stock=False,
+    ),
 }
 
 
@@ -337,6 +379,22 @@ def build_cache_dir(
         target = root / spec.subdir
     else:
         target = base / spec.subdir
+    if ensure:
+        target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def build_global_cache_dir(
+    kind: CacheKind,
+    *,
+    base_dir: str | Path | None = None,
+    ensure: bool = True,
+) -> Path:
+    spec = get_cache_spec(kind)
+    if spec.per_stock:
+        raise ValueError(f"Cache kind {kind} is stock-scoped and cannot use build_global_cache_dir")
+    base = resolve_base_dir(base_dir)
+    target = base / spec.subdir
     if ensure:
         target.mkdir(parents=True, exist_ok=True)
     return target
@@ -478,6 +536,109 @@ def should_refresh(cache_dir: Path, kind: CacheKind, force: bool = False) -> boo
         return True
     status = check_cache(cache_dir, kind)
     return bool(status.missing_files) or status.stale
+
+
+def _read_cached_dataframe(csv_path: Path) -> pd.DataFrame:
+    if not csv_path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(csv_path)
+    except Exception:
+        return pd.DataFrame()
+
+
+def update_cn_profit_forecast_cached(
+    symbolInfo: SymbolInfo,
+    base_data_dir: str | Path = "data",
+    force_refresh: bool = False,
+    logger: logging.Logger | None = None,
+) -> pd.DataFrame:
+    """获取A股机构一致预期（同花顺）并缓存。"""
+
+    if logger is None:
+        logger = get_logger("CacheRegistry")
+
+    is_index = symbolInfo.market == "CN_INDEX"
+    is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(("51", "58", "15", "16", "50", "53"))
+    if not symbolInfo.is_cn_market() or is_index or is_etf:
+        return pd.DataFrame()
+
+    cache_dir = build_cache_dir(
+        symbolInfo,
+        CacheKind.CN_PROFIT_FORECAST,
+        base_dir=base_data_dir,
+        ensure=True,
+    )
+    csv_path = cache_dir / "profit_forecast.csv"
+
+    if not should_refresh(cache_dir, CacheKind.CN_PROFIT_FORECAST, force_refresh):
+        return _read_cached_dataframe(csv_path)
+
+    try:
+        logger.info("正在获取%s %s A股机构一致预期...", symbolInfo.stock_name, symbolInfo.symbol)
+        df = api_call_with_delay(
+            ak.stock_profit_forecast_ths,
+            symbol=symbolInfo.code,
+            indicator="业绩预测详表-详细指标预测",
+            logger=logger,
+        )
+        if df is None or df.empty:
+            logger.warning("%s %s A股机构一致预期为空", symbolInfo.stock_name, symbolInfo.symbol)
+            return _read_cached_dataframe(csv_path)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(csv_path, index=False, encoding="utf-8")
+        record_cache_refresh(cache_dir)
+        logger.info("已缓存%s %s A股机构一致预期到 %s", symbolInfo.stock_name, symbolInfo.symbol, csv_path)
+        return df
+    except Exception as exc:
+        logger.error("获取%s %s A股机构一致预期失败: %s", symbolInfo.stock_name, symbolInfo.symbol, exc)
+        return _read_cached_dataframe(csv_path)
+
+
+def update_hk_profit_forecast_cached(
+    symbolInfo: SymbolInfo,
+    base_data_dir: str | Path = "data",
+    force_refresh: bool = False,
+    logger: logging.Logger | None = None,
+) -> pd.DataFrame:
+    """获取港股盈利预测（经济通）并缓存。"""
+
+    if logger is None:
+        logger = get_logger("CacheRegistry")
+
+    if not symbolInfo.is_hk_market():
+        return pd.DataFrame()
+
+    cache_dir = build_cache_dir(
+        symbolInfo,
+        CacheKind.HK_PROFIT_FORECAST,
+        base_dir=base_data_dir,
+        ensure=True,
+    )
+    csv_path = cache_dir / "profit_forecast.csv"
+
+    if not should_refresh(cache_dir, CacheKind.HK_PROFIT_FORECAST, force_refresh):
+        return _read_cached_dataframe(csv_path)
+
+    try:
+        logger.info("正在获取%s %s 港股盈利预测...", symbolInfo.stock_name, symbolInfo.symbol)
+        df = api_call_with_delay(
+            ak.stock_hk_profit_forecast_et,
+            symbol=symbolInfo.code.zfill(5),
+            indicator="盈利预测概览",
+            logger=logger,
+        )
+        if df is None or df.empty:
+            logger.warning("%s %s 港股盈利预测为空", symbolInfo.stock_name, symbolInfo.symbol)
+            return _read_cached_dataframe(csv_path)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(csv_path, index=False, encoding="utf-8")
+        record_cache_refresh(cache_dir)
+        logger.info("已缓存%s %s 港股盈利预测到 %s", symbolInfo.stock_name, symbolInfo.symbol, csv_path)
+        return df
+    except Exception as exc:
+        logger.error("获取%s %s 港股盈利预测失败: %s", symbolInfo.stock_name, symbolInfo.symbol, exc)
+        return _read_cached_dataframe(csv_path)
 
 def update_financial_data_cached(
     symbolInfo: SymbolInfo,
@@ -1146,10 +1307,13 @@ __all__ = [
     "CacheKind",
     "CacheSpec",
     "build_cache_dir",
+    "build_global_cache_dir",
     "check_cache",
     "iter_cache_dirs",
     "should_refresh",
     "record_cache_refresh",
+    "update_cn_profit_forecast_cached",
+    "update_hk_profit_forecast_cached",
     "update_financial_data_cached",
     "update_share_info_cached",
     "update_disclosures_cached",
