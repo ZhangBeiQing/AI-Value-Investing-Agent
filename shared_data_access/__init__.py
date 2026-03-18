@@ -14,5 +14,14 @@ inside individual tools.
 
 from .data_access import SharedDataAccess
 from .indicator_library import IndicatorLibrary
+from .cache_registry import update_cn_profit_forecast_cached, update_hk_profit_forecast_cached
+from .board_metrics import build_board_quant_snapshot, update_board_history_ths_cached
 
-__all__ = ["SharedDataAccess", "IndicatorLibrary"]
+__all__ = [
+    "SharedDataAccess",
+    "IndicatorLibrary",
+    "build_board_quant_snapshot",
+    "update_board_history_ths_cached",
+    "update_cn_profit_forecast_cached",
+    "update_hk_profit_forecast_cached",
+]

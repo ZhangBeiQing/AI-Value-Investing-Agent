@@ -70,6 +70,55 @@ def initialize_selection_system(
         force=force,
     )
     _write_json_if_needed(
+        resolved_paths.board_heat_state_manifest_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "items": [],
+        },
+        force=force,
+    )
+    _write_json_if_needed(
+        resolved_paths.board_heat_state_latest_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "run_date": "",
+            "boards": [],
+            "summary": {
+                "top_up_count": 0,
+                "top_down_count": 0,
+            },
+        },
+        force=force,
+    )
+    _write_json_if_needed(
+        resolved_paths.hot_news_state_manifest_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "items": [],
+        },
+        force=force,
+    )
+    _write_json_if_needed(
+        resolved_paths.hot_news_state_latest_path,
+        {
+            "schema_version": 1,
+            "updated_at": now,
+            "run_date": "",
+            "market_regime_note": "",
+            "themes": [],
+            "summary": {
+                "theme_count": 0,
+                "active_count": 0,
+                "cooling_count": 0,
+                "archived_count": 0,
+            },
+        },
+        force=force,
+    )
+    _write_json_if_needed(
         resolved_paths.symbol_hot_state_path,
         {
             "schema_version": 1,

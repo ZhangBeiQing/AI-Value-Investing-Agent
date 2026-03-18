@@ -148,7 +148,7 @@ def run_news_curation_pipeline(
 def collect_news_candidates(
     run_date: str,
     *,
-    recent_hours: int = 36,
+    recent_hours: int = 24,
     max_items_per_source: Dict[str, int] | None = None,
 ) -> List[Dict[str, Any]]:
     run_day = str(run_date).strip()[:10]
