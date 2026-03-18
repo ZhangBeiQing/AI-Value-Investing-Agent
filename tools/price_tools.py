@@ -3,21 +3,125 @@ from dotenv import load_dotenv
 load_dotenv()
 import json
 from datetime import datetime, timedelta, date
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import sys
+
+import pandas as pd
 
 # 将项目根目录加入 Python 路径，便于从子目录直接运行本文件
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 from core.logging import get_logger
+from shared_data_access.paths import price_cache_dir
 from tools.general_tools import get_config_value
 from configs.stock_pool import TRACKED_SYMBOLS
-from utlity.stock_utils import get_latest_trading_day
+from utlity.stock_utils import get_latest_trading_day, parse_symbol
 
 TRACKED_SYMBOLS_LIST = TRACKED_SYMBOLS
 LOGGER = get_logger("PriceTools")
+
+
+def _load_position_records(position_file: Path) -> List[Dict]:
+    records: List[Dict] = []
+    if not position_file.exists():
+        return records
+
+    with position_file.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                doc = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(doc, dict):
+                continue
+            date_str = doc.get("date")
+            positions = doc.get("positions")
+            if not isinstance(date_str, str) or not isinstance(positions, dict):
+                continue
+            try:
+                record_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            record_id = doc.get("id", -1)
+            try:
+                record_id = int(record_id)
+            except Exception:
+                record_id = -1
+            records.append(
+                {
+                    "date": date_str,
+                    "_parsed_date": record_date,
+                    "id": record_id,
+                    "positions": positions,
+                    "raw": doc,
+                }
+            )
+    return records
+
+
+def _pick_latest_record_on_or_before(
+    records: List[Dict],
+    target_date: str,
+    *,
+    preferred_dates: Optional[List[str]] = None,
+) -> Optional[Dict]:
+    preferred_dates = preferred_dates or []
+    for preferred_date in preferred_dates:
+        exact_matches = [record for record in records if record["date"] == preferred_date]
+        if exact_matches:
+            return max(exact_matches, key=lambda record: (record["_parsed_date"], record["id"]))
+
+    try:
+        target = datetime.strptime(target_date, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+    candidates = [record for record in records if record["_parsed_date"] <= target]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda record: (record["_parsed_date"], record["id"]))
+
+
+@lru_cache(maxsize=256)
+def _load_price_frame(symbol: str) -> pd.DataFrame:
+    symbol_info = parse_symbol(symbol)
+    price_dir = price_cache_dir(symbol_info, base_dir=Path(project_root) / "data")
+    price_file = price_dir / "price.csv"
+    if not price_file.exists():
+        LOGGER.warning("Price cache file %s does not exist", price_file)
+        return pd.DataFrame()
+
+    frame = pd.read_csv(price_file)
+    if "日期" not in frame.columns:
+        LOGGER.warning("Price cache file missing 日期 column: %s", price_file)
+        return pd.DataFrame()
+
+    frame["日期"] = pd.to_datetime(frame["日期"], errors="coerce")
+    frame = frame.dropna(subset=["日期"]).sort_values("日期").reset_index(drop=True)
+    for column in ("开盘", "收盘", "最高", "最低", "成交量", "成交额", "换手率"):
+        if column in frame.columns:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    return frame
+
+
+def _price_row_on_or_before(symbol: str, target_date: str) -> Optional[pd.Series]:
+    try:
+        target_dt = pd.Timestamp(target_date)
+    except Exception:
+        return None
+
+    frame = _load_price_frame(symbol)
+    if frame.empty:
+        return None
+    subset = frame.loc[frame["日期"] <= target_dt]
+    if subset.empty:
+        return None
+    return subset.iloc[-1]
 
 def get_yesterday_date(today_date: str, calendar_market: str = "CN") -> str:
     """
@@ -37,50 +141,27 @@ def get_yesterday_date(today_date: str, calendar_market: str = "CN") -> str:
     return prev_trading_day.strftime("%Y-%m-%d")
 
 def get_open_prices(today_date: str, symbols: List[str], merged_path: Optional[str] = None) -> Dict[str, Optional[float]]:
-    """从 data/merged.jsonl 中读取指定日期与标的的开盘价。
+    """从标准价格缓存读取指定日期与标的的开盘价。
 
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD。
         symbols: 需要查询的股票代码列表。
-        merged_path: 可选，自定义 merged.jsonl 路径；默认读取项目根目录下 data/merged.jsonl。
+        merged_path: 兼容旧接口保留，已弃用，不再使用。
 
     Returns:
         {symbol_price: open_price 或 None} 的字典；若未找到对应日期或标的，则值为 None。
     """
-    wanted = set(symbols)
     results: Dict[str, Optional[float]] = {}
+    if merged_path is not None:
+        LOGGER.warning("get_open_prices 已不再使用 merged_path 参数: %s", merged_path)
 
-    if merged_path is None:
-        base_dir = Path(__file__).resolve().parents[1]
-        merged_file = base_dir / "data" / "merged.jsonl"
-    else:
-        merged_file = Path(merged_path)
-
-    if not merged_file.exists():
-        return results
-
-    with merged_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-            except Exception:
-                continue
-            meta = doc.get("Meta Data", {}) if isinstance(doc, dict) else {}
-            sym = meta.get("2. Symbol")
-            if sym not in wanted:
-                continue
-            series = doc.get("Time Series (Daily)", {})
-            if not isinstance(series, dict):
-                continue
-            bar = series.get(today_date)
-            if isinstance(bar, dict):
-                open_val = bar.get("1. buy price")
-                try:
-                    results[f'{sym}_price'] = float(open_val) if open_val is not None else None
-                except Exception:
-                    results[f'{sym}_price'] = None
+    for sym in symbols:
+        row = _price_row_on_or_before(sym, today_date)
+        if row is None:
+            results[f"{sym}_price"] = None
+            continue
+        open_val = row.get("开盘")
+        results[f"{sym}_price"] = float(open_val) if pd.notna(open_val) else None
 
     return results
 
@@ -90,100 +171,39 @@ def get_prev_close_prices(today_date: str, symbols: List[str], merged_path: Opti
     return close_prices
 
 def get_yesterday_open_and_close_price(today_date: str, symbols: List[str], merged_path: Optional[str] = None) -> tuple[Dict[str, Optional[float]], Dict[str, Optional[float]]]:
-    """从 data/merged.jsonl 中读取指定日期与股票的昨日买入价和卖出价。
+    """从标准价格缓存读取指定日期与股票的上一交易日开盘价和收盘价。
 
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD，代表今天日期。
         symbols: 需要查询的股票代码列表。
-        merged_path: 可选，自定义 merged.jsonl 路径；默认读取项目根目录下 data/merged.jsonl。
+        merged_path: 兼容旧接口保留，已弃用，不再使用。
 
     Returns:
         (买入价字典, 卖出价字典) 的元组；若未找到对应日期或标的，则值为 None。
     """
-    wanted = set(symbols)
     buy_results: Dict[str, Optional[float]] = {}
     sell_results: Dict[str, Optional[float]] = {}
-
-    if merged_path is None:
-        base_dir = Path(__file__).resolve().parents[1]
-        merged_file = base_dir / "data" / "merged.jsonl"
-    else:
-        merged_file = Path(merged_path)
-
-    if not merged_file.exists():
-        return buy_results, sell_results
+    if merged_path is not None:
+        LOGGER.warning("get_yesterday_open_and_close_price 已不再使用 merged_path 参数: %s", merged_path)
 
     yesterday_date = get_yesterday_date(today_date)
-
-    with merged_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-            except Exception:
-                continue
-            meta = doc.get("Meta Data", {}) if isinstance(doc, dict) else {}
-            sym = meta.get("2. Symbol")
-            if sym not in wanted:
-                continue
-            series = doc.get("Time Series (Daily)", {})
-            if not isinstance(series, dict):
-                continue
-            
-            # 尝试获取昨日买入价和卖出价
-            bar = series.get(yesterday_date)
-            if isinstance(bar, dict):
-                buy_val = bar.get("1. buy price")  # 买入价字段
-                sell_val = bar.get("4. sell price")  # 卖出价字段
-                
-                try:
-                    buy_price = float(buy_val) if buy_val is not None else None
-                    sell_price = float(sell_val) if sell_val is not None else None
-                    buy_results[f'{sym}_price'] = buy_price
-                    sell_results[f'{sym}_price'] = sell_price
-                except Exception:
-                    buy_results[f'{sym}_price'] = None
-                    sell_results[f'{sym}_price'] = None
-            else:
-                # 如果昨日没有数据，使用交易日历向前查找最近的交易日（最多5次）
-                found_data = False
-                # 从昨日参考点继续向前
-                current_ref = datetime.strptime(yesterday_date, "%Y-%m-%d").date() - timedelta(days=1)
-                for _ in range(5):
-                    try:
-                        prev_trade = get_latest_trading_day(current_ref, "CN")
-                    except Exception:
-                        # 回退工作日近似
-                        while current_ref.weekday() >= 5:
-                            current_ref -= timedelta(days=1)
-                        prev_trade = current_ref
-                    check_date = prev_trade.strftime("%Y-%m-%d")
-                    bar = series.get(check_date)
-                    if isinstance(bar, dict):
-                        buy_val = bar.get("1. buy price")
-                        sell_val = bar.get("4. sell price")
-                        try:
-                            buy_price = float(buy_val) if buy_val is not None else None
-                            sell_price = float(sell_val) if sell_val is not None else None
-                            buy_results[f'{sym}_price'] = buy_price
-                            sell_results[f'{sym}_price'] = sell_price
-                            found_data = True
-                            break
-                        except Exception:
-                            pass
-                    # 继续向前一天
-                    current_ref = prev_trade - timedelta(days=1)
-                if not found_data:
-                    buy_results[f'{sym}_price'] = None
-                    sell_results[f'{sym}_price'] = None
+    for sym in symbols:
+        row = _price_row_on_or_before(sym, yesterday_date)
+        if row is None:
+            buy_results[f"{sym}_price"] = None
+            sell_results[f"{sym}_price"] = None
+            continue
+        open_val = row.get("开盘")
+        close_val = row.get("收盘")
+        buy_results[f"{sym}_price"] = float(open_val) if pd.notna(open_val) else None
+        sell_results[f"{sym}_price"] = float(close_val) if pd.notna(close_val) else None
 
     return buy_results, sell_results
 
 def get_today_init_position(today_date: str, modelname: str) -> Dict[str, float]:
     """
-    获取今日开盘时的初始持仓（即文件中上一个交易日代表的持仓）。从../data/agent_data/{modelname}/position/position.jsonl中读取。
-    如果同一日期有多条记录，选择id最大的记录作为初始持仓。
+    获取今日开盘时的初始持仓（即文件中上一个交易日代表的持仓）。
+    若上一个交易日没有记录，则回退到更早的最近一条持仓记录。
     
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD，代表今天日期。
@@ -198,26 +218,13 @@ def get_today_init_position(today_date: str, modelname: str) -> Dict[str, float]
     if not position_file.exists():
         LOGGER.warning("Position file %s does not exist", position_file)
         return {}
-    
+
+    records = _load_position_records(position_file)
     yesterday_date = get_yesterday_date(today_date)
-    max_id = -1
-    latest_positions = {}
-  
-    with position_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-                if doc.get("date") == yesterday_date:
-                    current_id = doc.get("id", 0)
-                    if current_id > max_id:
-                        max_id = current_id
-                        latest_positions = doc.get("positions", {})
-            except Exception:
-                continue
-    
-    return latest_positions
+    latest_record = _pick_latest_record_on_or_before(records, yesterday_date, preferred_dates=[yesterday_date])
+    if latest_record is None:
+        return {}
+    return latest_record["positions"]
 
 
 def compute_total_value(today_date: str, positions: Dict[str, float]) -> float:
@@ -279,36 +286,13 @@ def get_prev_trading_day_total_value(today_date: str, modelname: str) -> Optiona
         return None
 
     prev_date = get_yesterday_date(today_date)
-    max_id = -1
-    latest_record: Optional[Dict[str, object]] = None
-
-    max_any_id = -1
-    fallback_record: Optional[Dict[str, object]] = None
-
-    with position_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-            except Exception:
-                continue
-            current_id = doc.get("id", -1)
-            if current_id > max_any_id:
-                max_any_id = current_id
-                fallback_record = doc
-            if doc.get("date") != prev_date:
-                continue
-            if current_id > max_id:
-                max_id = current_id
-                latest_record = doc
-
-    if latest_record is None:
-        latest_record = fallback_record
+    records = _load_position_records(position_file)
+    latest_record = _pick_latest_record_on_or_before(records, prev_date, preferred_dates=[prev_date])
     if latest_record is None:
         return None
 
-    total_value = latest_record.get("total_value")
+    raw_record = latest_record["raw"]
+    total_value = raw_record.get("total_value")
     if isinstance(total_value, (int, float)):
         return float(total_value)
 
@@ -326,7 +310,8 @@ def get_latest_position(today_date: str, modelname: str) -> Dict[str, float]:
     """
     获取最新持仓。从 ../data/agent_data/{modelname}/position/position.jsonl 中读取。
     优先选择当天 (today_date) 中 id 最大的记录；
-    若当天无记录，则回退到上一个交易日，选择该日中 id 最大的记录。
+    若当天无记录，则回退到上一个交易日；
+    若上一个交易日也无记录，则继续回退到早于 today_date 的最近一条记录。
 
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD，代表今天日期。
@@ -342,48 +327,17 @@ def get_latest_position(today_date: str, modelname: str) -> Dict[str, float]:
 
     if not position_file.exists():
         return {}, -1
-    
-    # 先尝试读取当天记录
-    max_id_today = -1
-    latest_positions_today: Dict[str, float] = {}
-    
-    with position_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-                if doc.get("date") == today_date:
-                    current_id = doc.get("id", -1)
-                    if current_id > max_id_today:
-                        max_id_today = current_id
-                        latest_positions_today = doc.get("positions", {})
-            except Exception:
-                continue
-    
-    if max_id_today >= 0:
-        return latest_positions_today, max_id_today
 
-    # 当天没有记录，则回退到上一个交易日
+    records = _load_position_records(position_file)
     prev_date = get_yesterday_date(today_date)
-    max_id_prev = -1
-    latest_positions_prev: Dict[str, float] = {}
-
-    with position_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-                if doc.get("date") == prev_date:
-                    current_id = doc.get("id", -1)
-                    if current_id > max_id_prev:
-                        max_id_prev = current_id
-                        latest_positions_prev = doc.get("positions", {})
-            except Exception:
-                continue
-
-    return latest_positions_prev, max_id_prev
+    latest_record = _pick_latest_record_on_or_before(
+        records,
+        today_date,
+        preferred_dates=[today_date, prev_date],
+    )
+    if latest_record is None:
+        return {}, -1
+    return latest_record["positions"], latest_record["id"]
 
 def add_no_trade_record(today_date: str, modelname: str):
     """

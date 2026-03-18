@@ -1,6 +1,6 @@
 ---
 name: review-skill-run
-description: Review one local skill run by checking manifest, outputs, logs, decision artifacts, and post-trade files for completeness and consistency. Invoke with /review-skill-run YYYY-MM-DD [--base-dir data] [--signature xxx] [--post-trade].
+description: Review one local skill run by checking outputs, logs, decision artifacts, and post-trade files for completeness and consistency. Invoke with /review-skill-run YYYY-MM-DD [--base-dir data] [--signature xxx] [--post-trade].
 ---
 
 # Review Skill Run
@@ -33,11 +33,10 @@ description: Review one local skill run by checking manifest, outputs, logs, dec
 
 输出一份结构化审查结论，回答以下问题：
 
-1. `run_manifest.json` 是否存在，状态是否合理
-2. `01-04` 文件是否齐全，内容是否明显缺失或格式错误
-3. 如果存在 `05_decision.json`，其关键字段是否完整、能否解析
-4. 如果要求检查 post-trade，`06-08` 是否齐全，交易汇总文件是否同步更新
-5. 是否存在明显 warning / failed 痕迹
+1. `01-04` 文件是否齐全，内容是否明显缺失或格式错误
+2. 如果存在 `05_decision.json`，其关键字段是否完整、能否解析
+3. 如果要求检查 post-trade，`06-08` 是否齐全，交易汇总文件是否同步更新
+4. 是否存在明显 warning / failed 痕迹
 
 ## Workflow
 
@@ -46,7 +45,6 @@ description: Review one local skill run by checking manifest, outputs, logs, dec
 根据参数先解析：
 
 - `run_dir = <base-dir>/skill_runs/YYYY-MM-DD`
-- `manifest = <run_dir>/run_manifest.json`
 - `global_context = <run_dir>/01_global_context.md`
 - `snapshot = <run_dir>/02_basic_snapshot_payload.json`
 - `agent_input = <run_dir>/03_agent_input.md`
@@ -58,19 +56,7 @@ description: Review one local skill run by checking manifest, outputs, logs, dec
 
 如果 `run_dir` 不存在，直接停止并报告。
 
-### Step 2：检查 manifest
-
-读取 `run_manifest.json` 并检查：
-
-- 文件是否存在
-- 顶层 `status` 是否为 `done` / `warning` / `failed`
-- `steps` 是否齐全
-- 是否有步骤仍停留在 `running`
-- 是否有 `failed` 或带 `error` 的步骤
-
-如果 manifest 缺失，不立刻终止，但要把它标为高优先级问题。
-
-### Step 3：检查 `01-04`
+### Step 2：检查 `01-04`
 
 #### `01_global_context.md`
 
@@ -99,7 +85,7 @@ description: Review one local skill run by checking manifest, outputs, logs, dec
   - 非空
   - 结构上应包含研究文本，而不是空模板
 
-### Step 4：检查 `05_decision.json`
+### Step 3：检查 `05_decision.json`
 
 如果文件存在，检查：
 
@@ -118,7 +104,7 @@ description: Review one local skill run by checking manifest, outputs, logs, dec
 
 如果不存在，不把它直接判为失败，只说明“本次运行可能还停留在 agent 决策前”。
 
-### Step 5：检查 post-trade
+### Step 4：检查 post-trade
 
 仅当满足以下任一条件时执行：
 
@@ -139,7 +125,7 @@ description: Review one local skill run by checking manifest, outputs, logs, dec
 
 如果这些文件缺失，要指出是“交易汇总未落地”还是“缺少 signature 无法继续判断”。
 
-### Step 6：检查日志与警告
+### Step 5：检查日志与警告
 
 优先寻找：
 
@@ -172,7 +158,6 @@ description: Review one local skill run by checking manifest, outputs, logs, dec
 
 ## Status
 - Overall: PASS | WARNING | FAIL
-- Manifest: ...
 - Decision: ...
 - Post Trade: ...
 
@@ -193,7 +178,6 @@ description: Review one local skill run by checking manifest, outputs, logs, dec
 ## Severity Rules
 
 - `FAIL`
-  - manifest 缺失或为 `failed`
   - `01-04` 关键文件缺失
   - `05_decision.json` 存在但不可解析
   - `06-08` 存在但结构损坏

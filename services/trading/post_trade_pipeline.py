@@ -28,23 +28,6 @@ def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def update_manifest(output_dir: Path, step_name: str, status: str, extra: dict | None = None) -> None:
-    manifest_path = output_dir / "run_manifest.json"
-    if not manifest_path.exists():
-        return
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except Exception:
-        return
-    steps = manifest.setdefault("steps", {})
-    step_info = steps.get(step_name, {})
-    step_info.update({"status": status, "ended_at": datetime.now().isoformat()})
-    if extra:
-        step_info.update(extra)
-    steps[step_name] = step_info
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 def ensure_runtime_env(output_dir: Path, signature: str, today_date: str) -> Path:
     runtime_path_str = os.environ.get("RUNTIME_ENV_PATH", "").strip()
     runtime_path = Path(runtime_path_str) if runtime_path_str else output_dir / "runtime_env.json"
@@ -224,7 +207,6 @@ def execute_trade_from_decision(
         validation_errors = validate_decision_json(decision)
         if validation_errors:
             msg = "决策 JSON 校验失败：\n- " + "\n- ".join(validation_errors)
-            update_manifest(resolved_output_dir, "execute_trade_from_decision", "failed", {"error": msg})
             raise SystemExit(msg)
     summary_date = decision.get("summary_date") or run_date
 
@@ -262,13 +244,11 @@ def execute_trade_from_decision(
             write_config_value("IF_TRADE", False)
     except Exception as exc:
         execution_log["error"] = str(exc)
-        update_manifest(resolved_output_dir, "execute_trade_from_decision", "failed", {"error": str(exc)})
         raise
 
     resolved_output_dir.mkdir(parents=True, exist_ok=True)
     log_path = resolved_output_dir / "06_execution_log.json"
     log_path.write_text(json.dumps(execution_log, ensure_ascii=False, indent=2), encoding="utf-8")
-    update_manifest(resolved_output_dir, "execute_trade_from_decision", "done", {"log": str(log_path)})
     return log_path
 
 
@@ -313,7 +293,6 @@ def merge_trade_summary(
     }
     history_path = resolved_output_dir / "08_history_merge.json"
     history_path.write_text(json.dumps(history_merge, ensure_ascii=False, indent=2), encoding="utf-8")
-    update_manifest(resolved_output_dir, "merge_trade_summary", "done", {"history_file": str(history_path)})
     return daily_summary_path, history_path
 
 

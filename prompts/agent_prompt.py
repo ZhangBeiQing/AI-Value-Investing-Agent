@@ -371,8 +371,8 @@ def get_agent_system_prompt(today_date: str, signature: str) -> str:
     try:
         # 延迟导入，避免循环依赖
         from trade_summary import get_portfolio_historical_context
-        # 读取股票池最近N次（默认3）合并后的操作摘要
-        portfolio_hist = get_portfolio_historical_context(signature, [s.symbol for s in TRACKED_A_STOCKS], n=2)
+        # 读取股票池最近N次（默认1）合并后的操作摘要
+        portfolio_hist = get_portfolio_historical_context(signature, [s.symbol for s in TRACKED_A_STOCKS], n=1)
         historical_summary_value = json.dumps(portfolio_hist, ensure_ascii=False, indent=2)
     except Exception:
         historical_summary_value = SUMMARY_PLACEHOLDER

@@ -15,4 +15,7 @@
 
 - `financial_reports/`：人工维护或外部整理后的财报 Markdown。
 - `forecast/`：人工维护的未来预期 Markdown。
+- `profit_forecast/`：通过 AkShare 拉取的机构一致预期缓存目录，文件名固定为 `profit_forecast.csv`。
+  - A 股来源：`ak.stock_profit_forecast_ths(..., indicator="业绩预测详表-详细指标预测")`
+  - 港股来源：`ak.stock_hk_profit_forecast_et(..., indicator="盈利预测概览")`
 - `services/research/financial_report.py`：读取最近财报、forecast 与一致预期并组装研究结果。

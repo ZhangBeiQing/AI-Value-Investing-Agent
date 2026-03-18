@@ -52,7 +52,6 @@ Compatibility Notes:
 
 - 扩字段优先于改字段名
 - 扩步骤优先于打乱已有顺序
-- 修改 `run_manifest.json` 时保持现有风格
 
 如果是交易后处理：
 
@@ -80,7 +79,6 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 至少检查：
 
-- `run_manifest.json`
 - 目标文件是否生成
 - 关键 JSON 是否可解析
 
@@ -89,5 +87,4 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 只改 prompt，不改产物契约说明
 - 把复杂逻辑写进 `scripts/`
 - 改文件名导致本地 Agent 读不到
-- 忘记同步 `run_manifest.json`
 - 验证时污染正式 `data/skill_runs/`

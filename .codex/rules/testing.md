@@ -15,7 +15,6 @@ paths:
 
 - 不要只凭静态阅读判断主链路是否正确，尽量给出运行证据。
 - 出 bug 时先找证据，再猜原因。常见证据包括：
-  - `run_manifest.json`
   - `logs/` 下的组件日志
   - `latest_status.json`
   - 失败步骤的输入输出文件
@@ -41,7 +40,6 @@ paths:
 - 至少验证：
   - `python scripts/run_daily_pipeline.py --date YYYY-MM-DD --base-dir data/tmp_<name>`
 - 检查：
-  - `run_manifest.json` 状态
   - 目标输出文件是否生成
 
 ### 改交易后处理
@@ -65,4 +63,3 @@ paths:
 - 不要把运行产生的临时数据误提交为源码改动
 - 不要因为验证慢就完全跳过验证，至少给一个更小范围的证据
 - 不要把“代码能 import”当成“功能已正确”的替代
-

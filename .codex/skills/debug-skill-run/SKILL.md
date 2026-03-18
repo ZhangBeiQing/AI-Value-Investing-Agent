@@ -20,7 +20,6 @@ description: Guide for debugging failures in manage_daily_data, run_daily_pipeli
 
 - `logs/` 组件日志
 - `logs/main_scripts/*/latest_status.json`
-- `data/skill_runs/{date}/run_manifest.json`
 - `06_execution_log.json`
 
 先回答：
@@ -34,7 +33,6 @@ description: Guide for debugging failures in manage_daily_data, run_daily_pipeli
 
 - 失败堆栈
 - 失败步骤前后的输入输出文件
-- `run_manifest.json` 中的 `failed` / `warning`
 - 某个 symbol 的局部数据目录
 
 不要在没有证据时直接大改代码。
@@ -71,7 +69,5 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 ## Common Mistakes
 
 - 一上来全量跑，结果日志被淹没
-- 不看 `run_manifest.json` 就猜问题
 - 看到异常就直接 try/except 吞掉
 - 没有最小复现就开始大重构
-
