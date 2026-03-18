@@ -56,7 +56,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 改代码前先读相关文件，不要凭印象改结构
 - 新业务逻辑优先写到 `services/`、`shared_data_access/`、`core/`
 - 任何外部行情、财报、股本、公告抓取都优先走 `shared_data_access`
-- 改主链路后至少给出对应验证证据：日志、`run_manifest.json`、输出文件或失败现场
+- 改主链路后至少给出对应验证证据：日志、输出文件或失败现场
 - 新增或修改核心组件时使用统一日志入口，不要直接散落 `print`
 
 ### Ask First
@@ -83,7 +83,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 | 增加研究/快照字段 | `services/research/`, `services/snapshot/`, `.codex/rules/shared-data-access.md` |
 | 增加外部数据缓存 | `shared_data_access/`, `shared_financial_utils.py`, `.codex/skills/extend-shared-data-access/SKILL.md` |
 | 调整交易后处理 | `scripts/run_post_trade.py`, `services/trading/`, `.codex/rules/skill-pipeline.md` |
-| 排查主链路失败 | `logs/`, `run_manifest.json`, `latest_status.json`, `.codex/rules/testing.md`, `.codex/skills/debug-skill-run/SKILL.md` |
+| 排查主链路失败 | `logs/`, `latest_status.json`, `.codex/rules/testing.md`, `.codex/skills/debug-skill-run/SKILL.md` |
 | 统一日志接入 | `core/logging.py`, `.codex/rules/code-style.md` |
 
 ## 数据与缓存规则
@@ -106,7 +106,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - `pre_commit_rule.md`：git 提交规则
 - `code-style.md`：代码风格与统一日志规范
 - `shared-data-access.md`：缓存、时间截断、SymbolInfo、数据访问统一入口
-- `skill-pipeline.md`：`01-08` 产物契约、脚本分层、manifest 与交易后处理约束
+- `skill-pipeline.md`：`01-08` 产物契约、脚本分层与交易后处理约束
 - `testing.md`：evidence-first 调试、最小复现、主链路验证要求
 
 上述规则以 `.codex/rules/` 为主维护目录；`.claude/rules/` 默认是兼容镜像。
@@ -125,6 +125,6 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 ## Commands
 
-- `review-skill-run`：检查某一天的 `skill` 运行产物、manifest、日志与交易后处理是否完整且一致
+- `review-skill-run`：检查某一天的 `skill` 运行产物、日志与交易后处理是否完整且一致
 
 Commands 位于 `.codex/commands/`，`.claude/commands/` 默认通过软链接复用它们。它不替代 `rules` 或 `skills`，而是把高频动作写成统一入口。

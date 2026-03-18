@@ -18,6 +18,7 @@ import pandas_market_calendars as mcal  # type: ignore
 import akshare as ak  # type: ignore
 from configs.stock_pool import TRACKED_A_STOCKS, StockEntry
 import numpy as np
+from requests import exceptions as requests_exceptions
 
 # 计算仓库根路径：stock_utils.py 位于 <repo>/utlity/，因而上移 1 级即可
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,7 @@ SYMBOL_SUFFIX_INFO: Dict[str, Dict[str, str]] = {
 }
 
 DEFAULT_API_CALL_DELAY = 0.5
+HK_HIST_MAX_RETRIES = 3
 T = TypeVar("T")
 ETF_CODE_PREFIXES = ("51", "58", "15", "16", "50", "53")
 
@@ -884,57 +886,194 @@ def fetch_cn_index_daily(symbol_info: SymbolInfo, logger: logging.Logger = None)
         raise
 
 
+def _resolve_logger(logger: logging.Logger | None) -> logging.Logger:
+    return logger if logger is not None else logging.getLogger(__name__)
+
+
+def _normalize_hk_daily_frame(df: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    frame = df.copy()
+    frame = frame.rename(
+        columns={
+            "date": "日期",
+            "open": "开盘",
+            "high": "最高",
+            "low": "最低",
+            "close": "收盘",
+            "volume": "成交量",
+            "amount": "成交额",
+        }
+    )
+
+    if "日期" not in frame.columns:
+        return pd.DataFrame()
+
+    frame["日期"] = pd.to_datetime(frame["日期"], errors="coerce")
+    frame = frame.dropna(subset=["日期"])
+    if frame.empty:
+        return pd.DataFrame()
+
+    start_dt = pd.to_datetime(start_date, errors="coerce")
+    end_dt = pd.to_datetime(end_date, errors="coerce")
+    if pd.notna(start_dt):
+        frame = frame[frame["日期"] >= start_dt]
+    if pd.notna(end_dt):
+        frame = frame[frame["日期"] <= end_dt]
+    if frame.empty:
+        return pd.DataFrame()
+
+    ordered_columns = [
+        "日期",
+        "开盘",
+        "收盘",
+        "最高",
+        "最低",
+        "成交量",
+        "成交额",
+        "振幅",
+        "涨跌幅",
+        "涨跌额",
+        "换手率",
+        "流通股本",
+    ]
+    for col in ordered_columns[1:]:
+        if col not in frame.columns:
+            frame[col] = np.nan
+        frame[col] = pd.to_numeric(frame[col], errors="coerce")
+
+    frame = frame.sort_values("日期").reset_index(drop=True)
+    extra_columns = [col for col in frame.columns if col not in ordered_columns]
+    frame = frame[ordered_columns + extra_columns]
+    return frame
+
+
+def _fetch_hk_hist_from_eastmoney(
+    symbol_info: SymbolInfo,
+    start_date: str,
+    end_date: str,
+    adjust: str,
+    logger: logging.Logger,
+) -> pd.DataFrame:
+    last_error: Exception | None = None
+    ak_symbol = symbol_info.to_hk_symbol()
+    for attempt in range(1, HK_HIST_MAX_RETRIES + 1):
+        try:
+            df = api_call_with_delay(
+                ak.stock_hk_hist,
+                symbol=ak_symbol,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust,
+                logger=logger,
+            )
+            normalized = _normalize_hk_daily_frame(df, start_date, end_date)
+            if normalized.empty:
+                raise ValueError(f"stock_hk_hist 未返回 {symbol_info.symbol} 数据")
+            return normalized
+        except Exception as exc:
+            last_error = exc
+            retryable = isinstance(
+                exc,
+                (
+                    requests_exceptions.RequestException,
+                    ConnectionError,
+                    TimeoutError,
+                ),
+            )
+            if attempt >= HK_HIST_MAX_RETRIES or not retryable:
+                break
+            backoff_seconds = 1.5 * attempt
+            logger.warning(
+                "stock_hk_hist 获取 %s %s 失败，第 %d/%d 次重试前等待 %.1f 秒: %s",
+                symbol_info.stock_name,
+                symbol_info.symbol,
+                attempt,
+                HK_HIST_MAX_RETRIES,
+                backoff_seconds,
+                exc,
+            )
+            time.sleep(backoff_seconds)
+
+    if last_error is not None:
+        raise last_error
+    return pd.DataFrame()
+
+
+def _fetch_hk_daily_from_sina(
+    symbol_info: SymbolInfo,
+    start_date: str,
+    end_date: str,
+    adjust: str,
+    logger: logging.Logger,
+) -> pd.DataFrame:
+    ak_symbol = symbol_info.to_hk_symbol()
+    df = api_call_with_delay(
+        ak.stock_hk_daily,
+        symbol=ak_symbol,
+        adjust=adjust,
+        logger=logger,
+    )
+    normalized = _normalize_hk_daily_frame(df, start_date, end_date)
+    if normalized.empty:
+        raise ValueError(f"stock_hk_daily 未返回 {symbol_info.symbol} 数据")
+    return normalized
+
+
 def fetch_hk_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end_date: str, adjust: str = "qfq", logger: logging.Logger = None) -> pd.DataFrame:
-    """优先使用 stock_hk_daily 获取港股行情"""
+    """优先使用东财港股历史接口，失败时回退到新浪港股日线接口。"""
     adjust = adjust or ""
+    resolved_logger = _resolve_logger(logger)
     try:
-        ak_symbol = symbol_info.to_hk_symbol()
-        df = api_call_with_delay(
-            ak.stock_hk_hist,
-            symbol=ak_symbol,
+        df = _fetch_hk_hist_from_eastmoney(
+            symbol_info=symbol_info,
+            start_date=start_date,
+            end_date=end_date,
             adjust=adjust,
-            logger=logger,
+            logger=resolved_logger,
         )
-        if df is None or df.empty:
-            raise ValueError(f"stock_hk_daily 未返回 {symbol_info.symbol} 数据")
-        df = df.rename(
-            columns={
-                "date": "日期",
-                "open": "开盘",
-                "high": "最高",
-                "low": "最低",
-                "close": "收盘",
-                "volume": "成交量",
-            }
+        resolved_logger.info(
+            "港股东财历史行情获取成功: %s %s, 区间 %s-%s, %d 条",
+            symbol_info.stock_name,
+            symbol_info.symbol,
+            start_date,
+            end_date,
+            len(df),
         )
-        if "成交额" not in df.columns:
-            df["成交额"] = np.nan
-        if "换手率" not in df.columns:
-            df["换手率"] = np.nan
-        if "流通股本" not in df.columns:
-            df["流通股本"] = np.nan
-        
-        # 使用start_date和end_date进行日期过滤
-        if "日期" in df.columns and not df.empty:
-            # 确保日期列是datetime类型
-            df["日期"] = pd.to_datetime(df["日期"])
-            
-            # 转换start_date和end_date为datetime类型
-            start_dt = pd.to_datetime(start_date)
-            end_dt = pd.to_datetime(end_date)
-            
-            # 过滤日期范围
-            df = df[(df["日期"] >= start_dt) & (df["日期"] <= end_dt)]
-            
-            if logger:
-                logger.info(f"港股数据已过滤日期范围 {start_date} 到 {end_date}, 剩余 {len(df)} 条记录")
-        
         return df
     except Exception as exc:
-        logger.warning(
-            "stock_hk_daily 获取 %s %s 失败: %s",
+        resolved_logger.warning(
+            "stock_hk_hist 获取 %s %s 失败，改用 stock_hk_daily: %s",
             symbol_info.stock_name,
             symbol_info.symbol,
             exc,
         )
-        raise ValueError(f"stock_hk_daily 获取 {symbol_info.stock_name} {symbol_info.symbol} 失败: {exc}")
+        try:
+            df = _fetch_hk_daily_from_sina(
+                symbol_info=symbol_info,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust,
+                logger=resolved_logger,
+            )
+            resolved_logger.info(
+                "港股新浪日线回退成功: %s %s, 区间 %s-%s, %d 条",
+                symbol_info.stock_name,
+                symbol_info.symbol,
+                start_date,
+                end_date,
+                len(df),
+            )
+            return df
+        except Exception as fallback_exc:
+            resolved_logger.error(
+                "stock_hk_daily 获取 %s %s 也失败: %s",
+                symbol_info.stock_name,
+                symbol_info.symbol,
+                fallback_exc,
+            )
+            raise ValueError(
+                f"港股历史行情获取失败: {symbol_info.stock_name} {symbol_info.symbol}; "
+                f"stock_hk_hist={exc}; stock_hk_daily={fallback_exc}"
+            ) from fallback_exc

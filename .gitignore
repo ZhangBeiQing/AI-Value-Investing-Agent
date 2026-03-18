@@ -85,6 +85,10 @@ test/
 *.jpg
 *.jpeg
 data/daily_prices_*.json
+data/basic_info_cache/*.json
+data/merged.jsonl
+data/stock_info/*/analysis/
+data/stock_info/*/pe_pb_analysis/
 
 # ---- 项目运行缓存/生成数据 ----
 **/.cache_registry_meta.json
