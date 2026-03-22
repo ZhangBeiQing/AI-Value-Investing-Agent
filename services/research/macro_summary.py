@@ -10,6 +10,10 @@ from typing import List, Optional, Tuple
 from dotenv import load_dotenv
 
 from core.logging import init_tool_logger
+from shared_data_access import (
+    load_or_build_macro_objective_panel,
+    render_macro_objective_panel_markdown,
+)
 
 
 load_dotenv()
@@ -59,7 +63,7 @@ def pick_macro_file(range_hint: Optional[str], today_dt: Optional[datetime]) -> 
             file_dt = _extract_date_from_name(candidate)
             if file_dt is None:
                 continue
-            if file_dt.date() < today_dt.date():
+            if file_dt.date() <= today_dt.date():
                 dated_candidates.append((file_dt, candidate))
         if dated_candidates:
             dated_candidates.sort(key=lambda pair: pair[0])
@@ -95,7 +99,17 @@ def get_macro_summary(today_time: Optional[str] = None) -> str:
         logger.exception(message)
         return message
 
+    panel_markdown = ""
+    run_date = today_dt.strftime("%Y-%m-%d") if today_dt else datetime.now().strftime("%Y-%m-%d")
+    try:
+        panel_payload = load_or_build_macro_objective_panel(run_date)
+        panel_markdown = render_macro_objective_panel_markdown(panel_payload)
+    except Exception as exc:
+        logger.warning("加载宏观客观数据面板失败: %s", exc)
+
     logger.info("get_macro_summary 命中文件: %s", target)
+    if panel_markdown:
+        return f"{content.rstrip()}\n\n{panel_markdown}\n"
     return content
 
 
@@ -105,4 +119,3 @@ __all__ = [
     "pick_macro_file",
     "read_file",
 ]
-

@@ -218,6 +218,7 @@ class CacheKind(str, Enum):
     HK_PROFIT_FORECAST = "hk_profit_forecast"
     BOARD_HISTORY_THS = "board_history_ths"
     BOARD_METRICS_THS = "board_metrics_ths"
+    MACRO_OBJECTIVE_PANEL = "macro_objective_panel"
 
 
 @dataclass(frozen=True)
@@ -322,6 +323,16 @@ BASE_REGISTRY: Dict[CacheKind, CacheSpec] = {
         kind=CacheKind.BOARD_METRICS_THS,
         subdir="global_cache/board_metrics_ths",
         description="同花顺行业板块日度量化指标快照缓存",
+        ttl_days=1,
+        required_files=(
+            "latest.json",
+        ),
+        per_stock=False,
+    ),
+    CacheKind.MACRO_OBJECTIVE_PANEL: CacheSpec(
+        kind=CacheKind.MACRO_OBJECTIVE_PANEL,
+        subdir="global_cache/macro_objective_panel",
+        description="宏观客观数据面板日度快照缓存",
         ttl_days=1,
         required_files=(
             "latest.json",
