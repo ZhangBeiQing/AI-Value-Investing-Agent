@@ -5878,5 +5878,25 @@
     "audited": true,
     "audit_model": "deepseek-v3.2-exp",
     "audit_timestamp": "2026-03-13T22:22:03.887590"
+  },
+  "1225016013": {
+    "announcement_id": "1225016013",
+    "org_id": "",
+    "stock_code": "603501",
+    "title": "H股公告-董事会召开日期",
+    "date": "2026-03-19",
+    "url": "http://www.cninfo.com.cn/new/disclosure/detail?stockCode=603501&announcementId=1225016013&orgId=9900030772&announcementTime=2026-03-19",
+    "pdf_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/豪威集团_603501.SH/disclosures/pdfs/2026-03-19__603501__1225016013__H股公告_董事会召开日期.pdf",
+    "md_path": null,
+    "file_id": "file-fe-913b6a883d784e39b87e4e97",
+    "downloaded": true,
+    "summarized": true,
+    "summary_json_path": null,
+    "category": "Others",
+    "is_financial_report": false,
+    "dedupe_key": "1225016013",
+    "audited": true,
+    "audit_model": "deepseek-v3.2-exp",
+    "audit_timestamp": "2026-03-19T21:18:26.316652"
   }
 }
