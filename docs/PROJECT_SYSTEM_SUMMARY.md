@@ -1,4 +1,4 @@
-更新日期：2026-03-14
+更新日期：2026-03-20
 
 # AI-Trader 项目系统白皮书
 
@@ -10,6 +10,8 @@
 
 ## 2. Agent 提示词、策略与上下文
 - **提示词生成**（`prompts/agent_prompt.py`）：当前默认 prompt flow 已切换到 `configs/prompt_flow/skill_flow.json`，角色设定、流程、决策约束等由该文件驱动，并自动注入 `{date}`、`{date_1}`、`{positions}`、`{today_buy_price}`、`{position_costs}`、`{position_profit}` 等上下文。
+- **财报风险提示口径**：`skill_flow.json` 中的财报危险期提示只用于提高验证强度与风险权重，不允许在缺乏公司公告、财报数据或高可信证据时，直接把“临近财报”写成“默认业绩不及预期”。
+- **逐股研究包与外部检索规则**：当前 prompt flow 与 auto-trading skill 明确要求 Agent 在分析某只股票前，必须把该股票对应的 `04_stock_research/*_research.md` 从头到尾完整读完；若文件过长，必须分段顺序读到末尾，禁止只看局部摘录、关键词命中或摘要后就下结论。只有在完整读完当前研究包后，才允许按需调用普通搜索/网页读取工具补充最新信息；复杂问题的工具升级顺序为“本地研究包 → 普通搜索/网页读取 → `deep_search` → `deep_research`”，其中 `deep_research` 只用于会实质影响估值和交易决策的高复杂度问题。
 - **历史总结注入**：`trade_summary.get_portfolio_historical_context` 会把 `operation_summary.json` 与最新 `portfolio_daily_summary.json` 中的要点合并成 JSON 块，作为 prompt 的“历史交易总结”输入，解决大模型“记忆断层”问题（详见 `docs/trade_summary/` 下的设计文档）。
 - **投资理念文件**：`AI agent的投资理念.md` 记录了深度投资策略、10 只固定股票池、变化响应机制等文字提示，可作为 prompt flow 的补充。
 - **停止信号与 JSON 提交**：所有 agent 回答必须输出指定结构的 JSON（包含 `stock_operations`、`system_risk_notes` 等字段），`prompts/agent_prompt.extract_json_from_ai_output` 用于在日志中稳健抽取 JSON。
