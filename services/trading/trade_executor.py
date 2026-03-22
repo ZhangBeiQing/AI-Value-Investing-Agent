@@ -9,6 +9,7 @@ from typing import Any, Dict
 from core.logging import init_tool_logger
 from core.runtime_state import get_config_value, write_config_value
 from tools.price_tools import compute_total_value, get_latest_position, get_prev_close_prices
+from utlity.stock_utils import parse_symbol, SymbolFormatError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -34,11 +35,17 @@ def _validate_lot_size(action: str, trades: Dict[str, int], today_date: str) -> 
         if not isinstance(amount, int) or amount <= 0:
             logger.warning("%s 数量非法: %s -> %s", action, symbol, amount)
             return {"error": f"Invalid amount for {symbol}. Must be a positive integer.", "symbol": symbol, "date": today_date}
-        if amount % 100 != 0:
+        try:
+            symbol_info = parse_symbol(symbol)
+        except SymbolFormatError:
+            symbol_info = None
+
+        # A 股买卖仍按 100 股一手校验；港股和其他市场不在这里强制套用该规则。
+        if symbol_info and symbol_info.is_cn_market() and amount % 100 != 0:
             logger.warning("%s 数量非100整数倍: %s -> %s", action, symbol, amount)
             action_cn = "买入" if action == "buy" else "卖出"
             return {
-                "error": f"股票最小交易单位为1手(100股)，{action_cn}数量必须是100的整数倍。你输入的股票列表中，{symbol}{action_cn}数量不是100的整数倍！！ 本次所有股票{action_cn}操作全部无效，请重新{action_cn}",
+                "error": f"A股股票最小交易单位为1手(100股)，{action_cn}数量必须是100的整数倍。你输入的股票列表中，{symbol}{action_cn}数量不是100的整数倍！！ 本次所有股票{action_cn}操作全部无效，请重新{action_cn}",
                 "symbol": symbol,
                 "date": today_date,
             }
