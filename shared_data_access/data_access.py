@@ -26,6 +26,10 @@ from .models import (
     PriceDataBundle,
     ShareInfo,
 )
+from .macro_objective_panel import (
+    load_macro_objective_panel,
+    load_or_build_macro_objective_panel,
+)
 from .paths import financial_cache_dir, global_cache_dir, price_cache_dir, stock_root
 from .validation import normalize_date, normalize_optional_date, normalize_stock_name, normalize_symbol
 
@@ -187,6 +191,31 @@ class SharedDataAccess:
             prices=prices,
             share_info=share_info,
             disclosures=disclosures,
+        )
+
+    def build_macro_objective_panel(
+        self,
+        run_date: str,
+        *,
+        force_refresh: bool = False,
+    ) -> Dict[str, object]:
+        """Build or load the cached macro objective panel for a run date."""
+
+        return load_or_build_macro_objective_panel(
+            run_date,
+            base_dir=self.base_dir,
+            force_refresh=force_refresh,
+        )
+
+    def load_macro_objective_panel(
+        self,
+        run_date: str | None = None,
+    ) -> Dict[str, object]:
+        """Load a cached macro objective panel snapshot."""
+
+        return load_macro_objective_panel(
+            run_date,
+            base_dir=self.base_dir,
         )
 
     # ------------------------------------------------------------------

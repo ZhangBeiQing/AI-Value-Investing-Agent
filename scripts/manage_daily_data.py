@@ -59,13 +59,22 @@ def refresh_shared_data(
         logger=LOGGER,
         price_lookback_days=DEFAULT_PRICE_LOOKBACK_DAYS,
     )
+    macro_panel = sda.build_macro_objective_panel(
+        target_date,
+        force_refresh=force_refresh_prices or force_refresh_financials,
+    )
     skip_financial_refresh = force_refresh_prices and not force_refresh_financials
     force_price_flag = force_refresh_prices or force_refresh_financials
     with log_file.open("a", encoding="utf-8") as log:
-        log.write(f"[shared_data] start {target_date} | symbols={len(symbols)}")
+        log.write(f"[shared_data] start {target_date} | symbols={len(symbols)}\n")
+        log.write(
+            "[shared_data] macro_objective_panel status="
+            f"{len(macro_panel.get('indicators', {}))} indicators, "
+            f"{len(macro_panel.get('central_banks', {}))} central_banks\n"
+        )
         for symbol in symbols:
             info = parse_symbol(symbol)
-            log.write(f"  >> refresh {info.symbol}")
+            log.write(f"  >> refresh {info.symbol}\n")
             sda.prepare_dataset(
                 symbolInfo=info,
                 as_of_date=target_date,
@@ -74,11 +83,15 @@ def refresh_shared_data(
                 force_refresh_financials=force_refresh_financials,
                 skip_financial_refresh=skip_financial_refresh,
             )
-        log.write("[shared_data] done")
+        log.write("[shared_data] done\n")
     return {
         "name": "refresh_shared_data",
         "status": "success",
         "duration_sec": round(time.time() - start, 2),
+        "macro_objective_panel": {
+            "indicator_count": len(macro_panel.get("indicators", {})),
+            "central_bank_count": len(macro_panel.get("central_banks", {})),
+        },
     }
 
 
@@ -226,7 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force-refresh-price",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Force refresh price cache for all target symbols (default: disabled)",
     )
     parser.add_argument("--max-workers", type=int, default=4, help="basic_stock_info max workers")
