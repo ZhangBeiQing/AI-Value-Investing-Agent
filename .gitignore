@@ -99,3 +99,6 @@ data/stock_info/*/pe_pb_analysis/
 
 .env
 *:Zone.Identifier
+
+!/data/macro_economy/*.md
+!/data/skill_runs/**/05_decision.json
