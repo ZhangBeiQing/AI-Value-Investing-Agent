@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from datetime import date
 from pathlib import Path
+import json
 
 import sys
 
@@ -26,7 +27,11 @@ def main() -> None:
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
-    write_stock_research_bundle(args.run_date, output_dir)
+    snapshot_file = output_dir / "02_basic_snapshot_payload.json"
+    snapshot_payload = None
+    if snapshot_file.exists():
+        snapshot_payload = json.loads(snapshot_file.read_text(encoding="utf-8"))
+    write_stock_research_bundle(args.run_date, output_dir, snapshot_payload=snapshot_payload)
 
 
 if __name__ == "__main__":
