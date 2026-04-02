@@ -332,6 +332,14 @@ def _format_metric_dict(raw: Dict[str, float], suffix: str) -> Dict[str, float]:
 def get_agent_system_prompt(today_date: str, signature: str) -> str:
     LOGGER.info("生成 agent prompt: signature=%s, today_date=%s", signature, today_date)
     
+    
+    # 只有当模板仍包含 {historical_summary} 占位符时，才计算历史交易总结。
+    # skill_flow.json 已移除该占位符时，这段计算属于无用开销。
+    config = load_prompt_config()
+    needs_historical_summary = any(
+        "{historical_summary}" in line for line in (config.template_lines or [])
+    )
+    
     # Calculate yesterday's date for search restriction
     today_dt = datetime.strptime(today_date, "%Y-%m-%d")
     yesterday_dt = today_dt - timedelta(days=1)

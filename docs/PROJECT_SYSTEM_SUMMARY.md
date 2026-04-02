@@ -12,9 +12,9 @@
 - **提示词生成**（`prompts/agent_prompt.py`）：当前默认 prompt flow 已切换到 `configs/prompt_flow/skill_flow.json`，角色设定、流程、决策约束等由该文件驱动，并自动注入 `{date}`、`{date_1}`、`{positions}`、`{today_buy_price}`、`{position_costs}`、`{position_profit}` 等上下文。
 - **财报风险提示口径**：`skill_flow.json` 中的财报危险期提示只用于提高验证强度与风险权重，不允许在缺乏公司公告、财报数据或高可信证据时，直接把“临近财报”写成“默认业绩不及预期”。
 - **逐股研究包与外部检索规则**：当前 prompt flow 与 auto-trading skill 明确要求 Agent 在分析某只股票前，必须把该股票对应的 `04_stock_research/*_research.md` 从头到尾完整读完；若文件过长，必须分段顺序读到末尾，禁止只看局部摘录、关键词命中或摘要后就下结论。只有在完整读完当前研究包后，才允许按需调用普通搜索/网页读取工具补充最新信息；复杂问题的工具升级顺序为“本地研究包 → 普通搜索/网页读取 → `deep_search` → `deep_research`”，其中 `deep_research` 只用于会实质影响估值和交易决策的高复杂度问题。
-- **历史总结注入**：`trade_summary.get_portfolio_historical_context` 会把 `operation_summary.json` 与最新 `portfolio_daily_summary.json` 中的要点合并成 JSON 块，作为 prompt 的“历史交易总结”输入，解决大模型“记忆断层”问题（详见 `docs/trade_summary/` 下的设计文档）。
+- **历史总结注入**：`trade_summary.get_portfolio_historical_context` 会把 `decision_summary.json` 与最新 `portfolio_daily_summary.json` 中的要点合并成 JSON 块，作为 prompt 的“历史交易总结”输入，解决大模型“记忆断层”问题（详见 `docs/trade_summary/` 下的设计文档）。
 - **投资理念文件**：`AI agent的投资理念.md` 记录了深度投资策略、10 只固定股票池、变化响应机制等文字提示，可作为 prompt flow 的补充。
-- **停止信号与 JSON 提交**：所有 agent 回答必须输出指定结构的 JSON（包含 `stock_operations`、`system_risk_notes` 等字段），`prompts/agent_prompt.extract_json_from_ai_output` 用于在日志中稳健抽取 JSON。
+- **停止信号与 JSON 提交**：所有 agent 回答必须输出指定结构的 JSON（包含 `stock_decisions`、`system_risk_notes` 等字段），`prompts/agent_prompt.extract_json_from_ai_output` 用于在日志中稳健抽取 JSON。
 
 ## 3. 数据与缓存基座
 - **统一入口**：`shared_data_access.SharedDataAccess.prepare_dataset(symbolInfo, as_of_date, …)` 是**唯一**被允许访问 AkShare/巨潮的路径，负责：① 调用 `ensure_symbol_data` 刷新价格、财报、股本、公告缓存；② 按 `as_of_date` 对 DataFrame 截断；③ 汇总 `FinancialDataBundle`、`PriceDataBundle`、`ShareInfo`、`DisclosureBundle`，并对 ETF/指数自动降级为“仅价格”模式。`docs/share_data_access/README.md` 详细说明了调用姿势、回测因果性与 `include_disclosures` 用法。
@@ -24,7 +24,7 @@
 - **数据落地**：每只股票的数据均存放于 `data/{stock_name}_{symbol}/`（财经缓存、价格、analysis、pe_pb_analysis、news/announcements等），运行日志按组件或工具写入 `logs/` 下的分类目录。
 
 ## 4. 核心分析与研究模块
-- **一期选股系统基座**（`services/selection_system/`, `scripts/manage_selection_system.py`）：新增与现有 `skill-only` 主链路并存的轻量选股框架，当前先落地 `master_universe` 与状态目录骨架。初始化后会在 `data/universe/master_universe.json` 写入主股票宇宙，在 `data/market_state/`、`data/symbol_memory/`、`data/selection_runs/` 建立后续 `hot_news_state`、候选筛选与个股记忆的本地状态目录；目前不会改动 `manage_daily_data -> run_daily_pipeline -> run_post_trade` 的既有行为。
+- **一期选股系统基座**（`services/selection_system/`, `scripts/manage_selection_system.py`）：新增与现有 `skill-only` 主链路并存的轻量选股框架，当前主线已经收敛到 `master_universe`、独立新闻链、`hot_news_state` 与 `board_heat_state`。初始化后会在 `data/universe/master_universe.json` 写入主股票宇宙，并在 `data/market_state/`、`data/symbol_memory/`、`data/selection_runs/` 建立相关状态目录；已废弃的规则候选池 `run-daily` 旧链路已从代码中清理。
 - **基础指标批处理**（`basic_stock_info.py`）：`BasicStockInfoService` 会调用 `SharedDataAccess.prepare_dataset` + `IndicatorLibrary`，输出估值、财报增速、风险、流动性等字段并写入 `data/basic_info_cache/basic_info_{symbol}.json`（含历史快照）；CLI 支持 `--symbols`/`--history-days`。
 - **增强估值分析**（`enhanced_pe_pb_analyzer.py`）：以 `SymbolInfo` 为核心，串联财报/股本/价格缓存、TTM EPS、PEG、相似股比较、Markdown/CSV/JSON 报告写入。重构后通用指标计算迁移至 `indicator_library.calculators`，并通过 `cache_registry` 管理输出目录。
 - **股价动态总结**（`stock_price_dynamics_summarizer.py`）：围绕 `IndicatorLibrary` + `IndicatorBatchRequest` 计算 3/6/12 个月收益、夏普、相关性矩阵、MACD/RSI/MA、行业对比等信息，生成 Markdown + JSON 报告，供 `services/research/stock_analysis.py` 复用。
@@ -40,7 +40,7 @@
 - **统一日志**：兼容包装层和脚本入口统一通过 `core/logging.py` 与 `agent_tools/logging_utils.init_tool_logger()` 获取 `logs/{model}/{tool}/{timestamp}.log` 的结构化日志，满足“工具级独立日志 + logging 分级”规范。
 
 ## 6. 交易总结数据库与上下文
-- **数据文件布局**：`services/trading/trade_summary.py` 以 `data/agent_data/{signature}` 为根，维护 `stock_operations.json`（每日原始 JSON）、`operation_summary.json`（合并后的持有/买卖记录）与 `portfolio_daily_summary.json`（组合级别风险/焦点）。
+- **数据文件布局**：`services/trading/trade_summary.py` 以 `data/agent_data/{signature}` 为根，维护 `stock_decisions.json`（每日原始逐股决策）、`decision_summary.json`（合并后的持有/买卖记录）与 `portfolio_daily_summary.json`（组合级别风险/焦点）。
 - **三步流程**：
   1. `save_daily_operations(signature, ai_output_json)` 在 agent 产生最终 JSON 后写入原始表，并保证同日唯一。
   2. `process_and_merge_operations` 以股票为单位合并连续 HOLD/FLAT 序列（考虑交易日跳变），买卖则逐条保留。

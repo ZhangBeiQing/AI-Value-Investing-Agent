@@ -92,15 +92,15 @@ description: Review one local skill run by checking outputs, logs, decision arti
 - JSON 可解析
 - 顶层字段是否包含：
   - `summary_date`
-  - `stock_operations`
+  - `stock_decisions`
   - `system_risk_notes`
   - `system_focus_items`
-- `stock_operations` 是否为数组
+- `stock_decisions` 是否为数组
 - 每个操作项是否至少包含：
-  - `stock_code`
+  - `symbol`
   - `stock_name`
   - `action_type`
-  - `reason`
+  - `recommended_action`
 
 如果不存在，不把它直接判为失败，只说明“本次运行可能还停留在 agent 决策前”。
 
@@ -119,9 +119,9 @@ description: Review one local skill run by checking outputs, logs, decision arti
 
 如果提供了 `--signature`，继续检查：
 
-- `data/agent_data/{signature}/stock_operations.json`
+- `data/agent_data/{signature}/stock_decisions.json`
 - `data/agent_data/{signature}/portfolio_daily_summary.json`
-- `data/agent_data/{signature}/operation_summary.json`
+- `data/agent_data/{signature}/decision_summary.json`
 
 如果这些文件缺失，要指出是“交易汇总未落地”还是“缺少 signature 无法继续判断”。
 

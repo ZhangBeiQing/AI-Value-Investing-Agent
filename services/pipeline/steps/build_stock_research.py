@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, List
+from typing import Any, Iterable, List, Mapping
 
 from configs.stock_pool import TRACKED_A_STOCKS
 from services.research.financial_report import get_financial_report_summary
@@ -68,9 +68,15 @@ def _format_news_item(item: dict) -> List[str]:
     return lines
 
 
-def build_research_markdown(symbol: str, run_date: str) -> str:
+def build_research_markdown(
+    symbol: str,
+    run_date: str,
+    *,
+    snapshot_payload: Mapping[str, Any] | None = None,
+) -> str:
     symbol_info = parse_symbol(symbol)
     stock_name = symbol_info.stock_name or symbol_info.symbol
+    _ = snapshot_payload
     price_payload = analyze_stock_dynamics_and_valuation(symbol_info.symbol, run_date)
     news_raw = search_stock_news(symbol_info.symbol, run_date)
     financial_payload = get_financial_report_summary(symbol_info.symbol, run_date)
@@ -143,9 +149,10 @@ def write_stock_research_bundle(
     run_date: str,
     output_dir: str | Path,
     symbols: Iterable[str] | None = None,
+    *,
+    snapshot_payload: Mapping[str, Any] | None = None,
 ) -> None:
     target_symbols = list(symbols) if symbols is not None else [entry.symbol for entry in TRACKED_A_STOCKS]
     for symbol in target_symbols:
-        content = build_research_markdown(symbol, run_date)
+        content = build_research_markdown(symbol, run_date, snapshot_payload=snapshot_payload)
         research_output_path(symbol, run_date, output_dir).write_text(content, encoding="utf-8")
-

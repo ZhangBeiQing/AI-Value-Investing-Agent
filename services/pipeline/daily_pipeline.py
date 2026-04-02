@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from services.pipeline.steps.build_agent_input import build_snapshot_payload
 from services.pipeline.steps.build_agent_input import write_agent_input_bundle
 from services.pipeline.steps.build_global_context import write_global_context
 from services.pipeline.steps.build_stock_research import write_stock_research_bundle
@@ -40,12 +41,14 @@ def run_daily_pipeline(
 
     resolved_prompt_config = Path(prompt_config) if prompt_config else SKILL_FLOW_CONFIG
     run_refresh_data(run_date, signature=signature)
+    snapshot_payload = build_snapshot_payload(run_date)
     write_global_context(run_date, output_dir)
-    write_stock_research_bundle(run_date, output_dir)
+    write_stock_research_bundle(run_date, output_dir, snapshot_payload=snapshot_payload)
     write_agent_input_bundle(
         run_date,
         output_dir,
         signature=signature,
         prompt_config=resolved_prompt_config,
+        snapshot_payload=snapshot_payload,
     )
     return output_dir
