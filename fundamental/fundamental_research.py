@@ -219,6 +219,7 @@ PRIMARY_REPORT_KEYWORDS = [
     "三季度报告",
     "第三季度报告",
     "三季报",
+    "年度业绩"
 ]
 EXCLUDED_REPORT_KEYWORDS = [
     "摘要",
