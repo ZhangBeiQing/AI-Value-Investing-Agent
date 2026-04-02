@@ -17,7 +17,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from core.logging import get_logger
-from .news_pipeline import _fetch_breakfast_article_payload
+
+from .breakfast_enrichment import fetch_breakfast_article_payload
 from .paths import SelectionSystemPaths
 from .store import save_json_file
 
@@ -484,7 +485,7 @@ def _expand_breakfast_candidates(
         if content is None:
             raise ValueError("早餐正文容器不存在")
         items = _split_breakfast_items(content, published_at=published_at, url=url)
-        global_market_text = _fetch_breakfast_article_payload(url).get("global_market_text", "").strip()
+        global_market_text = fetch_breakfast_article_payload(url).get("global_market_text", "").strip()
         if global_market_text:
             items.append(
                 {
