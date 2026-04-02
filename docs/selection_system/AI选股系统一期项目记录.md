@@ -83,7 +83,6 @@ python scripts/manage_selection_system.py --base-dir data show-universe --limit 
 python scripts/manage_selection_system.py --base-dir data run-news --date YYYY-MM-DD --model deepseek-v3.2-exp --batch-size 20
 python scripts/manage_selection_system.py --base-dir data run-signals --date YYYY-MM-DD --board-limit 12 --stock-limit 80
 python scripts/manage_selection_system.py --base-dir data render-hot-input --date YYYY-MM-DD
-python scripts/manage_selection_system.py --base-dir data run-daily --date YYYY-MM-DD --cache-only
 ```
 
 ## 2. 已验证结果

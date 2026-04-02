@@ -46,14 +46,6 @@ class SelectionSystemPaths:
         return self.base_dir / "market_state"
 
     @property
-    def raw_news_dir(self) -> Path:
-        return self.market_state_dir / "raw_news"
-
-    @property
-    def raw_news_manifest_path(self) -> Path:
-        return self.raw_news_dir / "raw_news_manifest.json"
-
-    @property
     def board_signals_dir(self) -> Path:
         return self.market_state_dir / "board_signals"
 
@@ -98,55 +90,18 @@ class SelectionSystemPaths:
         return self.hot_news_state_dir / "hot_news_state.db"
 
     @property
-    def theme_state_path(self) -> Path:
-        return self.market_state_dir / "theme_state.json"
-
-    @property
-    def symbol_hot_state_path(self) -> Path:
-        return self.market_state_dir / "symbol_hot_state.json"
-
-    @property
-    def runtime_hot_pool_path(self) -> Path:
-        return self.market_state_dir / "runtime_hot_pool.json"
-
-    @property
-    def runtime_core_pool_path(self) -> Path:
-        return self.market_state_dir / "runtime_core_pool.json"
-
-    @property
-    def runtime_holdings_guardrail_path(self) -> Path:
-        return self.market_state_dir / "runtime_holdings_guardrail.json"
-
-    @property
     def symbol_memory_dir(self) -> Path:
         return self.base_dir / "symbol_memory"
 
     @property
-    def symbol_memory_index_path(self) -> Path:
-        return self.symbol_memory_dir / "index.json"
-
-    @property
     def selection_runs_dir(self) -> Path:
         return self.base_dir / "selection_runs"
-
-    @property
-    def selection_runs_manifest_path(self) -> Path:
-        return self.selection_runs_dir / "manifest.json"
 
     def run_dir(self, run_date: str) -> Path:
         return self.selection_runs_dir / run_date
 
     def run_manifest_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "run_manifest.json"
-
-    def run_raw_news_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "01_raw_news_items.json"
-
-    def raw_news_daily_path(self, run_date: str) -> Path:
-        return self.raw_news_dir / f"{run_date}.json"
-
-    def run_news_items_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "02_news_items.json"
 
     def run_news_candidates_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "01_news_candidates.json"
@@ -199,29 +154,10 @@ class SelectionSystemPaths:
     def run_hot_state_input_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "06_hot_state_input.md"
 
-    def run_snapshot_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "03_simplified_snapshot.json"
-
-    def run_theme_state_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "04_theme_state.json"
-
-    def run_symbol_hot_state_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "05_symbol_hot_state.json"
-
-    def run_hot_candidates_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "06_hot_candidates.json"
-
-    def run_core_candidates_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "07_core_candidates.json"
-
-    def run_symbol_memory_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "08_symbol_memory.json"
-
     def ensure_directories(self) -> None:
         for path in (
             self.universe_dir,
             self.market_state_dir,
-            self.raw_news_dir,
             self.board_signals_dir,
             self.stock_heat_dir,
             self.board_heat_state_dir,
