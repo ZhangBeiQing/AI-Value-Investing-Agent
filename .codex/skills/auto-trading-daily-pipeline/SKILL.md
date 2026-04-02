@@ -109,6 +109,29 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 - 法官裁决
 - 次日继续跟踪变量
 
+subagent 回传结果必须结构化包含以下字段：
+1. `symbol`
+2. `stock_name`
+3. `scan`
+4. `analysis_type`
+5. `history_anchor`
+6. `allow_reanchor_today`
+7. `forecast_reliability`
+8. `valuation_mode`
+9. `key_facts`
+10. `inferences`
+11. `valuation_conclusion`
+12. `motion`
+13. `court`
+14. `recommended_action`
+15. `action_type`
+16. `action_num`
+17. `price_target`
+18. `stop_loss`
+19. `key_risks`
+20. `next_day_watchlist`
+21. `confidence_score`
+
 **输出要求**：
 - 必须写成可复用的“估值记忆锚”
 - 必须区分“已核实事实”和“基于事实的推断”
@@ -200,13 +223,27 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 
 # 8. subagent 回传最小结构
 
-subagent 回传给主 agent 时，至少包含：
-- `symbol`
-- `recommended_action`
-- 结构化底稿，或至少提供等价的估值记忆锚
-- `price_target`
-- `stop_loss`
-- `key_risks`
-- `next_day_watchlist`
+subagent 回传给主 agent 时，至少包含以下 21 个字段：
+1. `symbol`
+2. `stock_name`
+3. `scan`
+4. `analysis_type`
+5. `history_anchor`
+6. `allow_reanchor_today`
+7. `forecast_reliability`
+8. `valuation_mode`
+9. `key_facts`
+10. `inferences`
+11. `valuation_conclusion`
+12. `motion`
+13. `court`
+14. `recommended_action`
+15. `action_type`
+16. `action_num`
+17. `price_target`
+18. `stop_loss`
+19. `key_risks`
+20. `next_day_watchlist`
+21. `confidence_score`
 
-只要满足以上最小结构即可，不要求额外包装复杂 JSON。
+不要求额外包装复杂 JSON，但字段语义必须完整、可直接被主 agent 汇总进入最终 `05_decision.json`。
