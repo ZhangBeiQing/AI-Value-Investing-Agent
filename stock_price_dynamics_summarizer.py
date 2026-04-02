@@ -26,8 +26,7 @@ f"""Stock Price Dynamics Summarizer
   - `correlation`：与指数、相似股票的相关系数矩阵
   - `price_data`：合并后的时序数据（收盘价、成交量等）
   - `technical_indicators`：MACD、RSI、波动率等指标
-  - `markdown_path`：自动合成的 Markdown 报告路径（存档于 `analysis/` 与
-    `data/0_transaction_package/`）
+  - `markdown_path`：自动合成的 Markdown 报告路径（存档于 `analysis/`）
   - `analysis_date`：生成报告时的真实日期（YYYYMMDD）
 * **设计规则 / 限制**：
   1. **数据完整性优先**：若缓存不足，会自动下发 API 请求，并为不同市场自动选取正确的
@@ -56,7 +55,6 @@ from pathlib import Path
 import os
 import argparse
 from typing import List, Dict, Any, Optional, Tuple, Iterable
-import shutil  # 导入shutil模块用于文件复制
 import logging
 import sys
 
@@ -1127,25 +1125,6 @@ def merge_csv_to_markdown(
     
     logger.info(f"合并报告已保存到: {md_file}")
     
-    # 创建集中存放分析报告的目录
-    transaction_package_dir = base_data_dir / "0_transaction_package"
-    transaction_package_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 复制报告到集中目录
-    transaction_md_file = transaction_package_dir / f"{stock_name}_{target_symbol}_股票分析报告_{report_date}.md"
-    try:
-        shutil.copy2(md_file, transaction_md_file)
-        logger.info(f"报告已复制到: {transaction_md_file}")
-    except Exception as e:
-        logger.error(f"复制报告时出错: {e}")
-    
-    transaction_json_file = transaction_package_dir / f"{stock_name}_{target_symbol}_股票分析报告_{report_date}.json"
-    try:
-        shutil.copy2(json_file, transaction_json_file)
-        logger.info(f"JSON报告已复制到: {transaction_json_file}")
-    except Exception as e:
-        logger.error(f"复制JSON报告时出错: {e}")
-    
     return str(md_file)
 
 
@@ -1288,11 +1267,7 @@ def main():
     symbolsInfo = [parse_symbol(symbol) for symbol in args.symbols]
     index_symbolInfo = parse_symbol(args.index)
     
-    # 创建集中存放分析报告的目录
     data_dir_path = resolve_base_dir(args.data_dir)
-    transaction_package_dir = data_dir_path / "0_transaction_package"
-    transaction_package_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"集中分析报告将保存到: {transaction_package_dir}")
     
     try:
         results = stock_price_dynamics_summarizer(
@@ -1325,9 +1300,7 @@ def main():
             logger.info(result['summary'].head())
             logger.info(f"相似股票: {result['similar_stocks']}")
     
-    if not args.only_find_similar:
-        logger.info(f"\n所有分析报告已复制到: {transaction_package_dir}")
-    else:
+    if args.only_find_similar:
         logger.info("\n只执行了相似股票查找，未生成分析报告。")
 
 

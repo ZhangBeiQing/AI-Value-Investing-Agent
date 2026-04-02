@@ -6,7 +6,6 @@
 1. **行情/财务/公告基础数据**：通过 `shared_data_access.data_access.prepare_dataset()` 的 `ensure_symbol_data()` 链路刷新（包含价格、财报、公告链接等缓存，遵循统一 TTL 与缓存策略）。
 2. **公告新闻审计库**：通过 `news/disclosures_builder.py` 抓取 PDF 并调用 `qwen-doc-turbo` 提取正文，再使用 `AUDIT_MODEL_BASE_URL`/`AUDIT_MODEL_API_KEY` 配置的审计模型对摘要进行复核，更新 `news/news_audited.json`。
 3. **基础面快照**：运行 `basic_stock_info.py` 生成/刷新每日 `basic_info_*.json`，供 `02_basic_snapshot_payload.json` 使用。
-4. **遗留价格序列**：保留原项目的 `data/get_daily_price.py` 与 `data/merge_jsonl.py` 流程，生成历史价差/对齐 position 计算所需的结果。
 
 ## 设计思路
 
@@ -19,10 +18,7 @@
    - 对每个 symbol 调用 `prepare_dataset(symbolInfo, as_of_date=target_date)`，以确保当天 20:00 前的最新缓存可供 AI 使用。
 3. **执行公告新闻构建**：调用 `python news/disclosures_builder.py --all --model qwen-doc-turbo`（或逐股 `--symbol`）并通过环境变量传入审计模型配置。
 4. **生成基础信息**：运行 `python basic_stock_info.py --symbols ... --today-time <target_date> --get-look-back-days 0 --max-workers <n>`（使用多线程参数）。
-5. **遗留价格流程**：
-   - `python data/get_daily_price.py --date <target_date>`
-   - `python data/merge_jsonl.py --date <target_date>`
-6. **结果汇总**：将每个子流程的输出汇总到 `logs/main_scripts/ManageDailyData/` 下的日志文件，并同步写状态报告到 `latest_status.json`。
+5. **结果汇总**：将每个子流程的输出汇总到 `logs/main_scripts/ManageDailyData/` 下的日志文件，并同步写状态报告到 `latest_status.json`。
 
 ### 2. 任务编排
 
@@ -49,7 +45,7 @@
 1. `argparse`：解析日期（默认 `datetime.now().date()`）、signature、symbols 文件、强制刷新选项。
 2. `run_step(name, cmd, env=None)`：复用封装的子进程执行工具，记录开始/结束时间与日志路径。
 3. `prepare_dataset` 入口：遍历 `TRACKED_A_STOCKS` 并调用 `SharedDataAccess.prepare_dataset(symbolInfo, as_of_date=date_str, force_refresh=force_flag)`。
-4. 公告/基础信息/价格流程均通过现有脚本 CLI 完成，降低耦合。
+4. 公告与基础信息流程均通过现有脚本 CLI 完成，降低耦合。
 5. 运行结束写入状态 JSON（含成功步骤列表、失败原因、耗时统计）。
 
 该方案通过一个脚本串联所有数据刷新链路，便于定时调度与日志管理，同时保留原有模块的分工，降低改动风险。

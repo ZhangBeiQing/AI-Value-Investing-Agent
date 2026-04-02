@@ -17,7 +17,6 @@ import json
 import logging
 import math
 from numbers import Integral, Real
-import shutil
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -142,8 +141,6 @@ class EnhancedPEPBAnalyzer:
             analysis_datetime, datetime.now()
         ) if analysis_datetime else datetime.now()
         self.similar_limit = max(0, similar_limit)
-        self.transaction_package_dir = self.base_dir / "0_transaction_package"
-        self.transaction_package_dir.mkdir(parents=True, exist_ok=True)
         self.data_access = SharedDataAccess(
             base_dir=self.base_dir,
             price_lookback_days=price_lookback_days,
@@ -1450,14 +1447,6 @@ class EnhancedPEPBAnalyzer:
         )
         comparison_df.to_csv(csv_file, index=False, encoding="utf-8-sig")
         self._write_markdown(md_file, target_snapshot, similar_snapshots, comparison_df)
-
-        try:
-            dest = self.transaction_package_dir / md_file.name
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(md_file, dest)
-            LOGGER.info("Markdown报告已复制到 %s", dest)
-        except Exception as exc:
-            LOGGER.warning("复制Markdown报告失败: %s", exc)
 
         LOGGER.info("JSON数据: %s", json_file)
         LOGGER.info("对比表格: %s", csv_file)

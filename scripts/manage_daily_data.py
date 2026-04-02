@@ -181,13 +181,6 @@ def manage_daily_data(args: argparse.Namespace) -> int:
         steps.append(run_subprocess('basic_stock_info', basic_cmd, log_file))
         LOGGER.info("basic_stock_info 完成")
 
-        LOGGER.info("开始运行 get_daily_price")
-        steps.append(run_subprocess('get_daily_price', [sys.executable, "-u", 'data/get_daily_price.py'], log_file))
-        LOGGER.info("get_daily_price 完成")
-        LOGGER.info("开始运行 merge_jsonl")
-        steps.append(run_subprocess('merge_jsonl', [sys.executable, "-u", 'data/merge_jsonl.py'], log_file))
-        LOGGER.info("merge_jsonl 完成")
-
         status_path = LOG_DIR / "latest_status.json"
         status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
 

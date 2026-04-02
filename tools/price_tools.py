@@ -140,20 +140,17 @@ def get_yesterday_date(today_date: str, calendar_market: str = "CN") -> str:
         prev_trading_day = ref
     return prev_trading_day.strftime("%Y-%m-%d")
 
-def get_open_prices(today_date: str, symbols: List[str], merged_path: Optional[str] = None) -> Dict[str, Optional[float]]:
+def get_open_prices(today_date: str, symbols: List[str]) -> Dict[str, Optional[float]]:
     """从标准价格缓存读取指定日期与标的的开盘价。
 
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD。
         symbols: 需要查询的股票代码列表。
-        merged_path: 兼容旧接口保留，已弃用，不再使用。
 
     Returns:
         {symbol_price: open_price 或 None} 的字典；若未找到对应日期或标的，则值为 None。
     """
     results: Dict[str, Optional[float]] = {}
-    if merged_path is not None:
-        LOGGER.warning("get_open_prices 已不再使用 merged_path 参数: %s", merged_path)
 
     for sym in symbols:
         row = _price_row_on_or_before(sym, today_date)
@@ -165,26 +162,23 @@ def get_open_prices(today_date: str, symbols: List[str], merged_path: Optional[s
 
     return results
 
-def get_prev_close_prices(today_date: str, symbols: List[str], merged_path: Optional[str] = None) -> Dict[str, Optional[float]]:
+def get_prev_close_prices(today_date: str, symbols: List[str]) -> Dict[str, Optional[float]]:
     """获取相对于 today_date 的上一交易日收盘价。"""
-    _, close_prices = get_yesterday_open_and_close_price(today_date, symbols, merged_path)
+    _, close_prices = get_yesterday_open_and_close_price(today_date, symbols)
     return close_prices
 
-def get_yesterday_open_and_close_price(today_date: str, symbols: List[str], merged_path: Optional[str] = None) -> tuple[Dict[str, Optional[float]], Dict[str, Optional[float]]]:
+def get_yesterday_open_and_close_price(today_date: str, symbols: List[str]) -> tuple[Dict[str, Optional[float]], Dict[str, Optional[float]]]:
     """从标准价格缓存读取指定日期与股票的上一交易日开盘价和收盘价。
 
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD，代表今天日期。
         symbols: 需要查询的股票代码列表。
-        merged_path: 兼容旧接口保留，已弃用，不再使用。
 
     Returns:
         (买入价字典, 卖出价字典) 的元组；若未找到对应日期或标的，则值为 None。
     """
     buy_results: Dict[str, Optional[float]] = {}
     sell_results: Dict[str, Optional[float]] = {}
-    if merged_path is not None:
-        LOGGER.warning("get_yesterday_open_and_close_price 已不再使用 merged_path 参数: %s", merged_path)
 
     yesterday_date = get_yesterday_date(today_date)
     for sym in symbols:
