@@ -4,7 +4,8 @@
 
 本项目是一个本地 `skill-only` 的 AI 股票研究与交易流水线。
 
-- 日常流程：`manage_daily_data` 刷新数据 -> `run_daily_pipeline` 生成 `01-04` 输入产物 -> 本地 Agent 读取 `data/skill_runs/{date}/` -> `run_post_trade` 执行 `05-08`
+- 当前日常交易口径：用户手动准备 `data/skill_runs/{date}/` 下的 `01-04` 输入产物，Agent 负责读取资料、完成逐股分析、生成 `05_decision.json`，并在人工确认后继续后续交易执行与总结归档
+- `manage_daily_data`、`run_daily_pipeline`、`run_post_trade` 仍是仓库内保留的脚本入口，但不再是“开始今天股票交易”这个 skill 的默认自动执行步骤
 - 当前主代码放在 `scripts/`、`services/`、`shared_data_access/`、`core/`
 - `agent_tools/`、`tools/` 仍保留少量兼容层，但不再是新代码主落点
 - 运行产物与缓存写入 `data/`，日志写入 `logs/`，规范与说明写入 `.codex/`、`.claude/`、`docs/`
@@ -44,6 +45,7 @@
 pip install -r requirements.txt
 cp .env.example .env
 
+# 仅在需要手动准备或调试历史脚本链路时使用
 python scripts/manage_daily_data.py
 python scripts/run_daily_pipeline.py --date YYYY-MM-DD
 python scripts/run_post_trade.py --date YYYY-MM-DD
@@ -56,6 +58,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 改代码前先读相关文件，不要凭印象改结构
 - 新业务逻辑优先写到 `services/`、`shared_data_access/`、`core/`
 - 任何外部行情、财报、股本、公告抓取都优先走 `shared_data_access`
+- 用户说“开始今天股票交易”时，优先按 `.codex/skills/auto-trading-daily-pipeline/SKILL.md` 执行，默认假设 `data/skill_runs/YYYY-MM-DD/` 的 `01-04` 已由用户手动准备完成
 - 改主链路后至少给出对应验证证据：日志、输出文件或失败现场
 - 新增或修改核心组件时使用统一日志入口，不要直接散落 `print`
 
@@ -66,6 +69,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 新增第三方依赖、外部 API、系统级运行前提
 - 大规模删除历史兼容层，尤其是 `agent_tools/`、`tools/` 中仍被调用的部分
 - 修改真实交易落地规则、仓位计算规则、价格引用规则
+- 在“开始今天股票交易”场景下，如 `01-04` 产物缺失或不完整，先和用户确认是否要补数据，不要直接代跑旧脚本链路
 
 ### Never Do
 
@@ -73,11 +77,13 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 不要用 `as_of_date` 裁剪抓取窗口，只能在读取阶段做时间截断
 - 不要把运行产物、临时调试文件、日志直接塞进源码目录
 - 不要用 `from x import *`
+- 用户未明确要求时，不要因为“开始今天股票交易”自动执行 `manage_daily_data`、`run_daily_pipeline`、`run_post_trade`
 
 ## Progressive Disclosure
 
 | 任务 | 首选参考 |
 | --- | --- |
+| 开始今天股票交易 | `data/skill_runs/YYYY-MM-DD/`, `.codex/skills/auto-trading-daily-pipeline/SKILL.md` |
 | 刷新每日数据 | `scripts/manage_daily_data.py`, `services/data_refresh/`, `.codex/skills/extend-shared-data-access/SKILL.md` |
 | 调整 `01-04` 产物 | `scripts/run_daily_pipeline.py`, `services/pipeline/`, `.codex/rules/skill-pipeline.md`, `.codex/skills/add-skill-pipeline-step/SKILL.md` |
 | 增加研究/快照字段 | `services/research/`, `services/snapshot/`, `.codex/rules/shared-data-access.md` |
@@ -117,11 +123,12 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 ## Skills
 
+- `auto-trading-daily-pipeline`：用户手动准备好某日 `01-04` 产物后，Agent 读取资料、逐股分析、汇总庭审结果、经人工确认后生成 `05_decision.json` 并继续后续步骤
 - `add-skill-pipeline-step`：新增或重构 `skill` 流水线步骤时使用
 - `extend-shared-data-access`：新增数据源、缓存目录或指标依赖时使用
 - `debug-skill-run`：`manage_daily_data` / `run_daily_pipeline` / `run_post_trade` 失败时使用
 
-以上三类 skill 位于 `.codex/skills/`，`.claude/skills/` 默认通过软链接复用它们。
+以上 skill 位于 `.codex/skills/`，`.claude/skills/` 默认通过软链接复用它们。
 
 ## Commands
 

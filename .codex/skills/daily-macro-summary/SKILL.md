@@ -49,7 +49,7 @@ description: >
 
 ### 1. 基线重建模式
 
-满足任一条件时，优先使用 `unifuncs deep_research`：
+满足任一条件时，优先进行深度搜索：
 
 - `data/macro_economy/` 为空
 - 最近一份文件距离今天超过 7 天
@@ -65,7 +65,7 @@ description: >
 
 ### 2. 强化更新模式
 
-满足任一条件时，优先使用 `unifuncs deep_search`，必要时再辅以免费普通搜索：
+满足任一条件时：
 
 - 最近 24 小时有重磅数据发布
   - 中国 CPI/PPI/社融/PMI/出口
@@ -97,18 +97,13 @@ description: >
    - 当前已知限制：`DXY` 可能降级为 `warning`，`Fed / BOJ / ECB` 在当前数据源下可能只有 `stale` 历史值；看到这些状态时，必须再做额外核验
 2. 再读本地 `data/macro_economy` 最近文件
 3. 搜索阶段默认先用本地 agent 自带的免费普通搜索工具
-4. 一旦需要打开网页正文、PDF 或长文档全文，优先使用 `unifuncs web_reader`，因为它返回的是整理后的可读文本，比直接读取原始 HTML 更稳定
-5. 需要多轮交叉验证时再用 `deep_search`
-6. 只有基线重建或高复杂度 regime 切换时才用 `deep_research`
+4. 需要多轮交叉验证时再用 `deep_search`
+5. 只有基线重建或高复杂度 regime 切换时才用 `deep_research`
 
 补充规则：
 
 - Routine 日更不要默认上 `deep_research`
 - **不要绕过 shared_data_access 重新抓取那些已经在宏观客观数据面板里的硬数据，除非面板缺失、状态为 `warning/stale`、或你需要更高频/更高精度口径**
-- 搜索和阅读分开处理：`search` 用自带的免费工具不要用unifuncs的接口，`reader` 用 `unifuncs web_reader`
-- 不要优先直接读取网页原始 HTML；若需要网页正文、PDF、研报、公告全文，优先使用 `unifuncs web_reader`
-- 若使用 `web_reader`，应设置较大超时
-- 任何时效性强的信息都必须核验，不能靠记忆
 
 ## 每日必须刷新的硬数据
 

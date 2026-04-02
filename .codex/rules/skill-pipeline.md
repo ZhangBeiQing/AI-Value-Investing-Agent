@@ -42,7 +42,7 @@ paths:
 ## 交易后处理
 
 - 交易执行优先通过本地 Python 函数完成，不再新增对 MCP trade 的依赖。
-- 任何交易改动都要保持与 `position.jsonl`、`stock_operations.json`、`operation_summary.json`、`portfolio_daily_summary.json` 的一致性。
+- 任何交易改动都要保持与 `position.jsonl`、`stock_decisions.json`、`decision_summary.json`、`portfolio_daily_summary.json` 的一致性。
 - 价格引用规则、最小交易单位、无交易日补记逻辑属于高风险区域，修改前必须先确认。
 
 ## Prompt / Flow 修改原则

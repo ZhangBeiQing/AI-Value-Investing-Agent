@@ -38,7 +38,7 @@ def build_user_query(research_files: List[Path], run_date: str) -> str:
         "",
         "在完成 USER_QUERY 的两条强制输出前，不要打开任何外部文件。",
         "",
-        "- 02_basic_snapshot_payload.json（《基本面数据概览》：basic_stock_info 生成的 basic snapshot；用于 Step 0 快速扫描与定价基准）",
+        "- 02_basic_snapshot_payload.json（《基本面数据概览》：basic_stock_info 生成的 basic snapshot；仅供主agent在 Step 0 做全组合快扫与定价基准）",
         "- 01_global_context.md（宏观/上证/渐进式新闻总结）",
         "",
         "",
@@ -90,13 +90,14 @@ def write_agent_input_bundle(
     *,
     signature: str = "",
     prompt_config: str | Path | None = None,
+    snapshot_payload: Dict[str, Any] | None = None,
 ) -> None:
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     resolved_signature = resolve_signature(signature)
     resolved_prompt_config = Path(prompt_config) if prompt_config else DEFAULT_PROMPT_CONFIG
 
-    snapshot_payload = build_snapshot_payload(run_date)
+    snapshot_payload = snapshot_payload or build_snapshot_payload(run_date)
     (target_dir / "02_basic_snapshot_payload.json").write_text(
         json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",

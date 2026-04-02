@@ -18,6 +18,7 @@ Runtime defaults are now expected to come from environment variables instead of 
 
 - `SIGNATURE` or `DEFAULT_SIGNATURE`
 - `INITIAL_CASH` or `INIT_CASH`
+- `ALLOW_BUY_EXECUTION`: disabled by default. `BUY` actions are only executed when this is explicitly set to `true/1/yes/on`; otherwise the execution layer downgrades them to research-only outcomes with no automatic order placement.
 - model API keys and base URLs
 
 ## Runtime Contract

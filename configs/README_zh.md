@@ -18,6 +18,7 @@
 
 - `SIGNATURE` 或 `DEFAULT_SIGNATURE`
 - `INITIAL_CASH` 或 `INIT_CASH`
+- `ALLOW_BUY_EXECUTION`：默认关闭。只有显式设为 `true/1/yes/on` 时，执行层才会真实执行 `BUY` 指令；否则会自动把买入动作降级为仅保留研究结论、不自动下单。
 - 各模型 API Key 与 Base URL
 
 ## 运行约定
