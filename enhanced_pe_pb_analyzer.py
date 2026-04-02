@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+import numpy as np
 import pandas as pd
 
 from indicator_library.calculators.fundamental import calculate_rolling_ttm_profit
@@ -95,6 +96,7 @@ class StockSnapshot:
     historical_pe: List[Dict[str, Any]] = field(default_factory=list)
     historical_peg: List[Dict[str, Any]] = field(default_factory=list)
     extreme_price_metrics: List[Dict[str, Any]] = field(default_factory=list)
+    price_distribution_section: Dict[str, Any] = field(default_factory=dict)
     reason: str = ""
     ttm_profit_raw: float = 0.0
     use_plain_pe_label: bool = False
@@ -402,7 +404,20 @@ class EnhancedPEPBAnalyzer:
             fallback_ttm_df=ttm_profit_df,
             total_shares=total_shares,
             yoy_percent_map=yoy_percent_map,
+            years=2.5,
             use_plain_labels=use_plain_labels,
+        )
+        price_distribution_section = self._build_price_distribution_section(
+            price_series=price_series,
+            total_shares=total_shares,
+            symbol=symbol,
+            profit_sheet=profit_sheet,
+            deduct_ttm_df=deduct_ttm_df,
+            fallback_ttm_df=ttm_profit_df,
+            balance_sheet=dataset.financials.balance_sheet,
+            hk_abstract_metrics=hk_abstract_metrics,
+            years=2.5,
+            bins=10,
         )
 
         snapshot = StockSnapshot(
@@ -428,6 +443,7 @@ class EnhancedPEPBAnalyzer:
             historical_pe=historical_pe,
             historical_peg=historical_peg,
             extreme_price_metrics=extreme_price_metrics,
+            price_distribution_section=price_distribution_section,
             reason="",
             ttm_profit_raw=ttm_profit,
             use_plain_pe_label=use_plain_labels,
@@ -858,7 +874,7 @@ class EnhancedPEPBAnalyzer:
         total_shares: float,
         yoy_percent_map: Optional[Dict[str, Tuple[float, str]]] = None,
         *,
-        years: int = 3,
+        years: float = 2.5,
         use_plain_labels: bool = False,
     ) -> List[Dict[str, Any]]:
         if total_shares <= 0 or price_series.empty:
@@ -874,8 +890,9 @@ class EnhancedPEPBAnalyzer:
         if report_df.empty:
             return []
 
+        window_short_label = self._window_short_label(years)
         high_windows = [
-            ("三年最高价", timedelta(days=365 * 3)),
+            (f"{window_short_label}最高价", timedelta(days=365 * years)),
             ("一年最高价", timedelta(days=365)),
             ("三个月最高价", timedelta(days=90)),
         ]
@@ -906,7 +923,7 @@ class EnhancedPEPBAnalyzer:
             ts, price = lows[0]
             records.append(
                 self._compose_extreme_record(
-                    label="三年最低价",
+                    label=f"{window_short_label}最低价",
                     price=float(price),
                     price_date=ts,
                     total_shares=total_shares,
@@ -916,6 +933,299 @@ class EnhancedPEPBAnalyzer:
                 )
             )
         return [record for record in records if record]
+
+    def _build_price_distribution_section(
+        self,
+        *,
+        price_series: pd.Series,
+        total_shares: float,
+        symbol: SymbolInfo,
+        profit_sheet: pd.DataFrame,
+        deduct_ttm_df: pd.DataFrame,
+        fallback_ttm_df: pd.DataFrame,
+        balance_sheet: pd.DataFrame,
+        hk_abstract_metrics: Optional[Dict[str, Any]] = None,
+        years: float = 2.5,
+        bins: int = 10,
+    ) -> Dict[str, Any]:
+        if total_shares <= 0 or price_series.empty:
+            return {}
+
+        daily_frame = self._build_daily_valuation_frame(
+            price_series=price_series,
+            total_shares=total_shares,
+            symbol=symbol,
+            profit_sheet=profit_sheet,
+            deduct_ttm_df=deduct_ttm_df,
+            fallback_ttm_df=fallback_ttm_df,
+            balance_sheet=balance_sheet,
+            hk_abstract_metrics=hk_abstract_metrics,
+            years=years,
+        )
+        if daily_frame.empty:
+            return {}
+
+        price_min = float(daily_frame["收盘价"].min())
+        price_max = float(daily_frame["收盘价"].max())
+        min_idx = daily_frame["收盘价"].idxmin()
+        max_idx = daily_frame["收盘价"].idxmax()
+        min_row = daily_frame.loc[min_idx]
+        max_row = daily_frame.loc[max_idx]
+        total_days = int(len(daily_frame))
+
+        if not math.isfinite(price_min) or not math.isfinite(price_max):
+            return {}
+
+        bin_count = bins if price_max > price_min else 1
+        edges = np.linspace(price_min, price_max, bin_count + 1)
+        if len(edges) < 2:
+            return {}
+
+        working = daily_frame.copy()
+        if bin_count == 1:
+            working["_bin"] = 0
+        else:
+            working["_bin"] = pd.cut(
+                working["收盘价"],
+                bins=edges,
+                labels=False,
+                include_lowest=True,
+                right=True,
+            )
+
+        records: List[Dict[str, Any]] = []
+        for idx in range(bin_count):
+            lower = float(edges[idx])
+            upper = float(edges[idx + 1])
+            bucket = working[working["_bin"] == idx]
+            count = int(len(bucket))
+            probability = count / total_days * 100 if total_days else 0.0
+            avg_pe = self._finite_mean(bucket.get("PE"))
+            avg_pb = self._finite_mean(bucket.get("PB"))
+            records.append(
+                {
+                    "价格区间": f"[{lower:.3f}, {upper:.3f}]",
+                    "区间下限(元)": lower,
+                    "区间上限(元)": upper,
+                    "交易日数": count,
+                    "出现概率(%)": probability,
+                    "平均PE": avg_pe,
+                    "平均PB": avg_pb,
+                }
+            )
+
+        window_start = daily_frame["日期"].min()
+        window_end = daily_frame["日期"].max()
+        return {
+            "summary": {
+                "window_years": years,
+                "window_label": self._window_label(years),
+                "window_short_label": self._window_short_label(years),
+                "window_start": window_start.strftime("%Y-%m-%d"),
+                "window_end": window_end.strftime("%Y-%m-%d"),
+                "trading_days": total_days,
+                "lowest_close": float(min_row["收盘价"]),
+                "lowest_close_date": pd.Timestamp(min_row["日期"]).strftime("%Y-%m-%d"),
+                "highest_close": float(max_row["收盘价"]),
+                "highest_close_date": pd.Timestamp(max_row["日期"]).strftime("%Y-%m-%d"),
+            },
+            "table": records,
+        }
+
+    def _build_daily_valuation_frame(
+        self,
+        *,
+        price_series: pd.Series,
+        total_shares: float,
+        symbol: SymbolInfo,
+        profit_sheet: pd.DataFrame,
+        deduct_ttm_df: pd.DataFrame,
+        fallback_ttm_df: pd.DataFrame,
+        balance_sheet: pd.DataFrame,
+        hk_abstract_metrics: Optional[Dict[str, Any]] = None,
+        years: float = 2.5,
+    ) -> pd.DataFrame:
+        window_start = self.analysis_datetime - timedelta(days=365 * years)
+        window_prices = price_series[
+            (price_series.index >= window_start) & (price_series.index <= self.analysis_datetime)
+        ]
+        if window_prices.empty:
+            return pd.DataFrame()
+
+        daily = pd.DataFrame(
+            {
+                "日期": pd.to_datetime(window_prices.index),
+                "收盘价": pd.to_numeric(window_prices.values, errors="coerce"),
+            }
+        ).dropna(subset=["收盘价"])
+        if daily.empty:
+            return pd.DataFrame()
+        daily = daily.sort_values("日期").reset_index(drop=True)
+
+        profit_events = self._build_profit_events(
+            symbol=symbol,
+            profit_sheet=profit_sheet,
+            deduct_ttm_df=deduct_ttm_df,
+            fallback_ttm_df=fallback_ttm_df,
+            hk_abstract_metrics=hk_abstract_metrics,
+        )
+        equity_events = self._build_equity_events(
+            symbol=symbol,
+            balance_sheet=balance_sheet,
+            total_shares=total_shares,
+            hk_abstract_metrics=hk_abstract_metrics,
+        )
+
+        if not profit_events.empty:
+            daily = pd.merge_asof(
+                daily,
+                profit_events,
+                left_on="日期",
+                right_on="effective_date",
+                direction="backward",
+            )
+        if not equity_events.empty:
+            daily = pd.merge_asof(
+                daily,
+                equity_events,
+                left_on="日期",
+                right_on="effective_date",
+                direction="backward",
+                suffixes=("", "_equity"),
+            )
+
+        daily["PE"] = daily.apply(
+            lambda row: self._finite_ratio(row["收盘价"] * total_shares, row.get("TTM_NET_PROFIT_RAW")),
+            axis=1,
+        )
+        daily["PB"] = daily.apply(
+            lambda row: self._finite_ratio(row["收盘价"] * total_shares, row.get("EQUITY_VALUE")),
+            axis=1,
+        )
+        return daily
+
+    @staticmethod
+    def _window_label(years: float) -> str:
+        if math.isclose(years, 2.5):
+            return "最近两年半"
+        if float(years).is_integer():
+            return f"最近{int(years)}年"
+        return f"最近{years:g}年"
+
+    @staticmethod
+    def _window_short_label(years: float) -> str:
+        if math.isclose(years, 2.5):
+            return "两年半"
+        if float(years).is_integer():
+            return f"{int(years)}年"
+        return f"{years:g}年"
+
+    def _build_profit_events(
+        self,
+        *,
+        symbol: SymbolInfo,
+        profit_sheet: pd.DataFrame,
+        deduct_ttm_df: pd.DataFrame,
+        fallback_ttm_df: pd.DataFrame,
+        hk_abstract_metrics: Optional[Dict[str, Any]] = None,
+    ) -> pd.DataFrame:
+        if hk_abstract_metrics:
+            hk_frame = hk_abstract_metrics.get("frame")
+            if isinstance(hk_frame, pd.DataFrame) and not hk_frame.empty and "TTM_NET_PROFIT_RAW" in hk_frame.columns:
+                work = hk_frame[["REPORT_DATE", "TTM_NET_PROFIT_RAW"]].copy()
+                work["REPORT_DATE"] = pd.to_datetime(work["REPORT_DATE"], errors="coerce")
+                work = work.dropna(subset=["REPORT_DATE", "TTM_NET_PROFIT_RAW"])
+                work["effective_date"] = work["REPORT_DATE"]
+                work = work[work["effective_date"] <= self.analysis_datetime]
+                return work.sort_values(["effective_date", "REPORT_DATE"]).reset_index(drop=True)
+
+        source_df = deduct_ttm_df if not deduct_ttm_df.empty else fallback_ttm_df
+        if source_df.empty or profit_sheet.empty:
+            return pd.DataFrame()
+
+        work = source_df[["REPORT_DATE", "TTM_NET_PROFIT_RAW"]].copy()
+        work["REPORT_DATE"] = pd.to_datetime(work["REPORT_DATE"], errors="coerce")
+        work = work.dropna(subset=["REPORT_DATE", "TTM_NET_PROFIT_RAW"])
+
+        notice_col = self._extract_notice_column(profit_sheet, "利润表", symbol)
+        notice_map = profit_sheet[[notice_col, "REPORT_DATE"]].copy()
+        notice_map[notice_col] = pd.to_datetime(notice_map[notice_col], errors="coerce")
+        notice_map["REPORT_DATE"] = pd.to_datetime(notice_map["REPORT_DATE"], errors="coerce")
+        notice_map = notice_map.dropna(subset=[notice_col, "REPORT_DATE"])
+        notice_map = notice_map.sort_values([notice_col, "REPORT_DATE"]).drop_duplicates(
+            subset=["REPORT_DATE"], keep="last"
+        )
+        notice_map = notice_map.rename(columns={notice_col: "effective_date"})
+
+        merged = work.merge(notice_map, on="REPORT_DATE", how="left")
+        merged["effective_date"] = merged["effective_date"].fillna(merged["REPORT_DATE"])
+        merged = merged[merged["effective_date"] <= self.analysis_datetime]
+        return merged.sort_values(["effective_date", "REPORT_DATE"]).reset_index(drop=True)
+
+    def _build_equity_events(
+        self,
+        *,
+        symbol: SymbolInfo,
+        balance_sheet: pd.DataFrame,
+        total_shares: float,
+        hk_abstract_metrics: Optional[Dict[str, Any]] = None,
+    ) -> pd.DataFrame:
+        if hk_abstract_metrics:
+            hk_frame = hk_abstract_metrics.get("frame")
+            if isinstance(hk_frame, pd.DataFrame) and not hk_frame.empty and "BPS" in hk_frame.columns:
+                work = hk_frame[["REPORT_DATE", "BPS"]].copy()
+                work["REPORT_DATE"] = pd.to_datetime(work["REPORT_DATE"], errors="coerce")
+                work["BPS"] = pd.to_numeric(work["BPS"], errors="coerce")
+                work = work.dropna(subset=["REPORT_DATE", "BPS"])
+                work["EQUITY_VALUE"] = work["BPS"] * total_shares
+                work["effective_date"] = work["REPORT_DATE"]
+                work = work[work["effective_date"] <= self.analysis_datetime]
+                return work[["effective_date", "REPORT_DATE", "EQUITY_VALUE"]].sort_values(
+                    ["effective_date", "REPORT_DATE"]
+                ).reset_index(drop=True)
+
+        if balance_sheet.empty:
+            return pd.DataFrame()
+        notice_col = self._extract_notice_column(balance_sheet, "资产负债表", symbol)
+        work = balance_sheet.copy()
+        work[notice_col] = pd.to_datetime(work[notice_col], errors="coerce")
+        work["REPORT_DATE"] = pd.to_datetime(work.get("REPORT_DATE"), errors="coerce")
+        work = work.dropna(subset=[notice_col, "REPORT_DATE"])
+        work["EQUITY_VALUE"] = np.nan
+        for key in ("TOTAL_PARENT_EQUITY", "TOTAL_EQUITY"):
+            if key in work.columns:
+                candidate = pd.to_numeric(work[key], errors="coerce")
+                work["EQUITY_VALUE"] = work["EQUITY_VALUE"].fillna(candidate)
+        work = work.dropna(subset=["EQUITY_VALUE"])
+        work = work[work[notice_col] <= self.analysis_datetime]
+        work = work.rename(columns={notice_col: "effective_date"})
+        return work[["effective_date", "REPORT_DATE", "EQUITY_VALUE"]].sort_values(
+            ["effective_date", "REPORT_DATE"]
+        ).reset_index(drop=True)
+
+    @staticmethod
+    def _finite_ratio(numerator: Any, denominator: Any) -> Optional[float]:
+        try:
+            num = float(numerator)
+            den = float(denominator)
+        except (TypeError, ValueError):
+            return None
+        if den == 0:
+            return None
+        value = num / den
+        if not math.isfinite(value):
+            return None
+        return value
+
+    @staticmethod
+    def _finite_mean(series: Optional[pd.Series]) -> Optional[float]:
+        if series is None or len(series) == 0:
+            return None
+        numeric = pd.to_numeric(series, errors="coerce")
+        numeric = numeric[np.isfinite(numeric)]
+        if numeric.empty:
+            return None
+        return float(numeric.mean())
 
     @staticmethod
     def _normalize_report_df(df: Optional[pd.DataFrame]) -> pd.DataFrame:
@@ -1191,6 +1501,7 @@ class EnhancedPEPBAnalyzer:
                 "历史PE数据": snapshot.historical_pe,
                 "历史PEG数据": snapshot.historical_peg,
                 "价格极值回顾": snapshot.extreme_price_metrics,
+                "价格区间分布": snapshot.price_distribution_section,
                 **({"估值口径提示": HK_PROFIT_NOTE} if snapshot.use_plain_pe_label else {}),
             }
 
@@ -1263,9 +1574,39 @@ class EnhancedPEPBAnalyzer:
 
         if info.extreme_price_metrics:
             extreme_df = pd.DataFrame(info.extreme_price_metrics)
-            lines.append("## 最近三年最高/最低股价及对应估值指标")
+            lines.append("## 最近两年半最高/最低股价及对应估值指标")
             lines.append("")
             lines.append(extreme_df.to_markdown(index=False, floatfmt=".3f").replace("nan", ""))
+            lines.append("")
+
+        distribution_section = info.price_distribution_section or {}
+        distribution_summary = distribution_section.get("summary") or {}
+        distribution_table = distribution_section.get("table") or []
+        if distribution_summary and distribution_table:
+            avg_pe_label = "平均PE" if info.use_plain_pe_label else "平均PE"
+            window_label = distribution_summary.get("window_label") or "最近两年半"
+            window_short_label = distribution_summary.get("window_short_label") or "两年半"
+            distribution_df = pd.DataFrame(distribution_table)
+            if "平均PE" in distribution_df.columns and avg_pe_label != "平均PE":
+                distribution_df = distribution_df.rename(columns={"平均PE": avg_pe_label})
+            lines.append(f"## {window_label}股价区间分布")
+            lines.append("")
+            lines.append(
+                f"- 样本区间: {distribution_summary.get('window_start')} 至 {distribution_summary.get('window_end')}"
+            )
+            lines.append(f"- 样本交易日数: {distribution_summary.get('trading_days')}")
+            lines.append(
+                f"- {window_short_label}最低收盘价: {distribution_summary.get('lowest_close'):.3f} 元（{distribution_summary.get('lowest_close_date')}）"
+            )
+            lines.append(
+                f"- {window_short_label}最高收盘价: {distribution_summary.get('highest_close'):.3f} 元（{distribution_summary.get('highest_close_date')}）"
+            )
+            lines.append("")
+            lines.append(
+                f"> 说明：按{window_label}每日收盘价从低到高等分为10个价格区间；出现概率 = 区间交易日数 / 全部样本交易日数；平均PE/PB按各交易日对应最近一期已披露财报口径近似计算。"
+            )
+            lines.append("")
+            lines.append(distribution_df.to_markdown(index=False, floatfmt=".3f").replace("nan", ""))
             lines.append("")
 
         md_path.write_text("\n".join(filter(None, lines)), encoding="utf-8")
