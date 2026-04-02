@@ -54,8 +54,6 @@ logs/
 *.svg
 *.js
 *.css
-*.csv
-*.md
 !/docs/
 !/docs/**
 !AGENTS.md
@@ -87,9 +85,6 @@ test/
 data/daily_prices_*.json
 data/basic_info_cache/*.json
 data/merged.jsonl
-data/stock_info/*/analysis/
-data/stock_info/*/pe_pb_analysis/
-
 # ---- 项目运行缓存/生成数据 ----
 **/.cache_registry_meta.json
 **/__pycache__/
@@ -102,3 +97,21 @@ data/stock_info/*/pe_pb_analysis/
 
 !/data/macro_economy/*.md
 !/data/skill_runs/**/05_decision.json
+!/data/stock_info/
+!/data/stock_info/**
+data/stock_info/*/financials_cache/
+data/stock_info/*/financials_cache/**
+data/stock_info/*/prices/
+data/stock_info/*/prices/**
+data/stock_info/*/share_info/
+data/stock_info/*/share_info/**
+data/stock_info/*/disclosures/
+data/stock_info/*/disclosures/**
+data/stock_info/*/analysis/
+data/stock_info/*/analysis/**
+data/stock_info/*/pe_pb_analysis/
+data/stock_info/*/pe_pb_analysis/**
+data/stock_info/*/profit_forecast/
+data/stock_info/*/profit_forecast/**
+data/0_transaction_package/
+data/0_transaction_package/**
