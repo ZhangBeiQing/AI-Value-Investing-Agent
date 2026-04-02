@@ -11,6 +11,7 @@ from configs.stock_pool import TRACKED_A_STOCKS
 from services.research.financial_report import get_financial_report_summary
 from services.research.news_summary import search_stock_news
 from services.research.stock_analysis import analyze_stock_dynamics_and_valuation
+from services.trading.trade_summary import get_historical_context
 from utlity import ensure_stock_subdir, get_stock_data_dir, parse_symbol
 
 
@@ -68,11 +69,50 @@ def _format_news_item(item: dict) -> List[str]:
     return lines
 
 
+def _format_history_entry(entry: Mapping[str, Any]) -> List[str]:
+    start_date = entry.get("start_date") or "未知"
+    end_date = entry.get("end_date") or "未知"
+    duration_days = entry.get("duration_days")
+    action_type = entry.get("action_type") or "未知"
+    header = f"- 时间区间: {start_date} -> {end_date}"
+    details = [f"  - action_type: {action_type}"]
+    if duration_days not in (None, ""):
+        details.append(f"  - duration_days: {duration_days}")
+
+    preferred_fields = [
+        "scan",
+        "analysis_type",
+        "history_anchor",
+        "allow_reanchor_today",
+        "forecast_reliability",
+        "valuation_mode",
+        "key_facts",
+        "inferences",
+        "valuation_conclusion",
+        "motion",
+        "court",
+        "recommended_action",
+        "action_num",
+        "price_target",
+        "stop_loss",
+        "key_risks",
+        "next_day_watchlist",
+        "confidence_score",
+    ]
+    for field in preferred_fields:
+        value = entry.get(field)
+        if value not in (None, "", [], {}):
+            details.append(f"  - {field}: {_format_scalar(value)}")
+
+    return [header, *details]
+
+
 def build_research_markdown(
     symbol: str,
     run_date: str,
     *,
     snapshot_payload: Mapping[str, Any] | None = None,
+    signature: str = "",
 ) -> str:
     symbol_info = parse_symbol(symbol)
     stock_name = symbol_info.stock_name or symbol_info.symbol
@@ -80,6 +120,7 @@ def build_research_markdown(
     price_payload = analyze_stock_dynamics_and_valuation(symbol_info.symbol, run_date)
     news_raw = search_stock_news(symbol_info.symbol, run_date)
     financial_payload = get_financial_report_summary(symbol_info.symbol, run_date)
+    historical_entries = get_historical_context(signature, symbol_info.symbol, 1) if signature else []
 
     try:
         news_payload = json.loads(news_raw)
@@ -131,6 +172,18 @@ def build_research_markdown(
         if metadata:
             lines.extend(["", "**财报元数据**", "```json", _json_block(metadata), "```"])
     lines.append("")
+    lines.append("## 4. 最近一次交易日历史交易总结")
+    lines.append("")
+    if historical_entries:
+        lines.append(
+            "以下内容来自当前 signature 对应 `decision_summary.json` 中该股票最近一次交易日的合并总结，可供 subagent 直接继承历史锚点与上一轮庭审结论。"
+        )
+        lines.append("")
+        for entry in historical_entries:
+            lines.extend(_format_history_entry(entry))
+    else:
+        lines.append("> 未找到该股票最近一次交易日的历史交易总结。")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -151,8 +204,14 @@ def write_stock_research_bundle(
     symbols: Iterable[str] | None = None,
     *,
     snapshot_payload: Mapping[str, Any] | None = None,
+    signature: str = "",
 ) -> None:
     target_symbols = list(symbols) if symbols is not None else [entry.symbol for entry in TRACKED_A_STOCKS]
     for symbol in target_symbols:
-        content = build_research_markdown(symbol, run_date, snapshot_payload=snapshot_payload)
+        content = build_research_markdown(
+            symbol,
+            run_date,
+            snapshot_payload=snapshot_payload,
+            signature=signature,
+        )
         research_output_path(symbol, run_date, output_dir).write_text(content, encoding="utf-8")

@@ -43,7 +43,12 @@ def run_daily_pipeline(
     run_refresh_data(run_date, signature=signature)
     snapshot_payload = build_snapshot_payload(run_date)
     write_global_context(run_date, output_dir)
-    write_stock_research_bundle(run_date, output_dir, snapshot_payload=snapshot_payload)
+    write_stock_research_bundle(
+        run_date,
+        output_dir,
+        snapshot_payload=snapshot_payload,
+        signature=signature,
+    )
     write_agent_input_bundle(
         run_date,
         output_dir,

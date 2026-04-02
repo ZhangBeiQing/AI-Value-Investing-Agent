@@ -31,7 +31,12 @@ def main() -> None:
     snapshot_payload = None
     if snapshot_file.exists():
         snapshot_payload = json.loads(snapshot_file.read_text(encoding="utf-8"))
-    write_stock_research_bundle(args.run_date, output_dir, snapshot_payload=snapshot_payload)
+    write_stock_research_bundle(
+        args.run_date,
+        output_dir,
+        snapshot_payload=snapshot_payload,
+        signature=args.signature,
+    )
 
 
 if __name__ == "__main__":
