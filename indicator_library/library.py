@@ -242,6 +242,7 @@ class IndicatorLibrary:
             ),
             "liquidity_profile": lambda df, spec, _logger, request: liquidity_profile_indicator(
                 df,
+                symbol_info=request.symbolInfo,
                 market_cap=spec.params.get("market_cap"),
             ),
             "correlation_matrix": lambda df, spec, _logger, request: correlation_matrix_indicator(

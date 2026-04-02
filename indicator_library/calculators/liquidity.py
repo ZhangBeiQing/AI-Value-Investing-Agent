@@ -6,11 +6,21 @@ from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
+from utlity import SymbolInfo
+
+
+def _normalize_turnover_pct(value: float | None, symbol_info: SymbolInfo | None) -> float | None:
+    if value is None:
+        return None
+    if symbol_info is not None and symbol_info.is_hk_market():
+        return value
+    return value * 100
 
 
 def liquidity_profile_indicator(
     price_df: pd.DataFrame,
     *,
+    symbol_info: SymbolInfo | None = None,
     market_cap: float | None = None,
     turnover_column: str = "换手率",
     volume_column: str = "成交量",
@@ -34,19 +44,21 @@ def liquidity_profile_indicator(
     # 计算30天平均成交量（单位：万手）
     avg_volume_wan = _rolling_avg(price_df.get(volume_column), window=30, divider=10000)
     
+    turnover_pct = _normalize_turnover_pct(turnover_rate, symbol_info)
+    avg_turnover_pct = _normalize_turnover_pct(avg_turnover, symbol_info)
+
     # 计算流动性评分
-    # 处理换手率值：如果换手率≤1，说明是小数形式（如0.02表示2%），需要乘以100转换为百分比
     score = liquidity_score(
-        turnover_rate * 100 if turnover_rate and turnover_rate <= 1 else turnover_rate,
-        avg_turnover * 100 if avg_turnover and avg_turnover <= 1 else avg_turnover,
+        turnover_pct,
+        avg_turnover_pct,
         market_cap,
         avg_volume_wan,
     )
     
     # 返回流动性指标结果
     return {
-        "最新换手率(%)": _format_optional(turnover_rate, scale=100),  # 最新换手率（百分比）
-        "30天平均换手率(%)": _format_optional(avg_turnover, scale=100),  # 30天平均换手率（百分比）
+        "最新换手率(%)": _format_optional(turnover_pct),  # 最新换手率（百分比）
+        "30天平均换手率(%)": _format_optional(avg_turnover_pct),  # 30天平均换手率（百分比）
         "30天平均成交量(万手)": avg_volume_wan,  # 30天平均成交量（万手）
         "流动性评分": score,  # 流动性评分
     }

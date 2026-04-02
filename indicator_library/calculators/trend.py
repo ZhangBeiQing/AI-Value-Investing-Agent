@@ -6,6 +6,14 @@ import numpy as np
 import pandas as pd
 from utlity import SymbolInfo
 
+
+def _normalize_turnover_pct(turnover_series: pd.Series, symbol_info: SymbolInfo) -> pd.Series:
+    """统一换手率为百分数口径，A 股缓存是小数，港股缓存通常已是百分数。"""
+    numeric_series = pd.to_numeric(turnover_series, errors="coerce")
+    if symbol_info.is_hk_market():
+        return numeric_series
+    return numeric_series * 100
+
 def price_snapshot_indicator(
     price_df: pd.DataFrame,
     *,
@@ -62,7 +70,6 @@ def price_snapshot_indicator(
         if "换手率" in price_df.columns:
             turnover_col = "换手率"
         if turnover_col:
-            turnover_series = pd.to_numeric(price_df[turnover_col], errors="coerce")
-            result["换手率(%)"] = turnover_series * 100
+            result["换手率(%)"] = _normalize_turnover_pct(price_df[turnover_col], symbolInfo)
 
     return result

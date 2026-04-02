@@ -1121,7 +1121,8 @@ def build_basic_snapshot(
         price_lookback_days=price_lookback_days,
         force_refresh=False,
         force_refresh_financials=False,
-        use_cache=True,
+        # 生成流水线产物时直接重算，避免 basic_info_cache 里的旧派生字段污染输出。
+        use_cache=False,
     )
 
 
