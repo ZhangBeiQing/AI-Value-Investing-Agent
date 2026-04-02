@@ -4998,5 +4998,25 @@
     "audited": true,
     "audit_model": "deepseek-v3.2-exp",
     "audit_timestamp": "2026-03-16T23:49:21.184075"
+  },
+  "1225068591": {
+    "announcement_id": "1225068591",
+    "org_id": "",
+    "stock_code": "300750",
+    "title": "关于控股股东无偿捐赠部分公司股份的公告",
+    "date": "2026-03-31",
+    "url": "http://www.cninfo.com.cn/new/disclosure/detail?stockCode=300750&announcementId=1225068591&orgId=GD165627&announcementTime=2026-03-31 20:50:10",
+    "pdf_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/宁德时代_300750.SZ/disclosures/pdfs/2026-03-31__300750__1225068591__关于控股股东无偿捐赠部分公司股份的公告.pdf",
+    "md_path": null,
+    "file_id": "file-fe-cfca887e9111478586e5add4",
+    "downloaded": true,
+    "summarized": true,
+    "summary_json_path": null,
+    "category": "Others",
+    "is_financial_report": false,
+    "dedupe_key": "1225068591",
+    "audited": true,
+    "audit_model": "deepseek-v3.2-exp",
+    "audit_timestamp": "2026-04-02T00:59:19.945452"
   }
 }
