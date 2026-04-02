@@ -164,37 +164,47 @@ def _attach_bond_metrics(payload: Dict[str, Any], run_dt: pd.Timestamp) -> None:
         df = df.copy()
         df["日期"] = pd.to_datetime(df["日期"], errors="coerce")
         df = df.dropna(subset=["日期"])
-        row = df[df["日期"] <= run_dt].sort_values("日期").tail(1)
-        if row.empty:
+        filtered = df[df["日期"] <= run_dt].sort_values("日期")
+        if filtered.empty:
             raise ValueError("bond_zh_us_rate 未返回有效记录")
-        latest = row.iloc[0]
-        as_of_date = latest["日期"].strftime("%Y-%m-%d")
+
+        def _latest_valid(column: str) -> tuple[Any, str]:
+            series = filtered.dropna(subset=[column]).tail(1)
+            if series.empty:
+                raise ValueError(f"{column} 未返回有效记录")
+            latest = series.iloc[0]
+            return latest.get(column), latest["日期"].strftime("%Y-%m-%d")
+
+        us02y_value, us02y_date = _latest_valid("美国国债收益率2年")
+        us10y_value, us10y_date = _latest_valid("美国国债收益率10年")
+        cn10y_value, cn10y_date = _latest_valid("中国国债收益率10年")
+
         payload["indicators"]["US02Y"] = _metric(
             label="US02Y",
-            value=latest.get("美国国债收益率2年"),
+            value=us02y_value,
             unit="%",
-            as_of_date=as_of_date,
+            as_of_date=us02y_date,
             source="akshare.bond_zh_us_rate",
         )
         payload["indicators"]["US10Y"] = _metric(
             label="US10Y",
-            value=latest.get("美国国债收益率10年"),
+            value=us10y_value,
             unit="%",
-            as_of_date=as_of_date,
+            as_of_date=us10y_date,
             source="akshare.bond_zh_us_rate",
         )
         payload["indicators"]["CN10Y"] = _metric(
             label="中国10Y国债",
-            value=latest.get("中国国债收益率10年"),
+            value=cn10y_value,
             unit="%",
-            as_of_date=as_of_date,
+            as_of_date=cn10y_date,
             source="akshare.bond_zh_us_rate",
         )
         payload["source_status"].append(
             {
                 "source": "akshare.bond_zh_us_rate",
                 "status": "ok",
-                "as_of_date": as_of_date,
+                "as_of_date": max(us02y_date, us10y_date, cn10y_date),
             }
         )
     except Exception as exc:
