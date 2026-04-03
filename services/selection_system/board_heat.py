@@ -26,6 +26,7 @@ LOGGER = get_logger("SelectionBoardHeat")
 DEFAULT_TOP_N = 3
 DEFAULT_STOCKS_PER_BOARD = 3
 DEFAULT_RESEARCH_MODEL = "deepseek-v3.2-exp"
+DEFAULT_DIGEST_TOP_K = 10
 
 load_dotenv(".env")
 
@@ -88,13 +89,25 @@ def build_board_heat_state(
         model,
     )
 
-    board_candidates = collect_board_candidates(
+    quant_snapshot = build_board_quant_snapshot(
         run_date,
         base_dir=base_dir,
-        top_n=top_n,
         stocks_per_board=stocks_per_board,
     )
+    LOGGER.info(
+        "板块量化快照已就绪: run_date=%s price_as_of_date=%s board_count=%s",
+        run_date,
+        quant_snapshot.get("price_as_of_date"),
+        len(quant_snapshot.get("boards", [])) if isinstance(quant_snapshot.get("boards"), list) else 0,
+    )
+    board_candidates = select_board_candidates_from_snapshot(
+        quant_snapshot,
+        run_date=run_date,
+        top_n=top_n,
+    )
     save_json_file(paths.run_board_candidates_path(run_date), board_candidates)
+    board_heat_digest = build_board_heat_digest(run_date, quant_snapshot=quant_snapshot)
+    save_json_file(paths.run_board_heat_digest_path(run_date), board_heat_digest)
 
     news_payload = load_json_file(paths.run_news_enriched_path(run_date), default={}) or {}
     board_heat_state = research_board_heat_state(
@@ -117,6 +130,7 @@ def build_board_heat_state(
     LOGGER.info("板块热度层已写入: %s", paths.run_board_heat_state_path(run_date))
     return {
         "board_candidates": paths.run_board_candidates_path(run_date),
+        "board_heat_digest": paths.run_board_heat_digest_path(run_date),
         "board_heat_state": paths.run_board_heat_state_path(run_date),
     }
 
@@ -144,6 +158,62 @@ def collect_board_candidates(
         run_date=run_date,
         top_n=top_n,
     )
+
+
+def build_board_heat_digest(
+    run_date: str,
+    *,
+    quant_snapshot: Mapping[str, Any],
+    top_k: int = DEFAULT_DIGEST_TOP_K,
+) -> Dict[str, Any]:
+    boards = quant_snapshot.get("boards") if isinstance(quant_snapshot, Mapping) else []
+    if not isinstance(boards, list):
+        boards = []
+
+    standard_board_names = sorted(
+        {
+            str(item.get("board_name") or "").strip()
+            for item in boards
+            if isinstance(item, Mapping) and str(item.get("board_name") or "").strip()
+        }
+    )
+
+    return {
+        "schema_version": 1,
+        "run_date": run_date,
+        "generated_at": datetime.now().isoformat(),
+        "summary": {
+            "board_count": len(boards),
+        },
+        "standard_board_names": standard_board_names,
+        "top_boards_today_by_change_pct": _rank_boards_by_metric(boards, metric="change_pct", top_k=top_k),
+        "top_boards_today_by_breadth": _rank_boards_by_metric(
+            boards,
+            metric="up_ratio_pct",
+            top_k=top_k,
+            nested_path=("quant_metrics", "breadth", "up_ratio_pct"),
+        ),
+        "top_boards_recent_by_5d_rank": _rank_boards_by_metric(
+            boards,
+            metric="rank_5d",
+            top_k=top_k,
+            nested_path=("quant_metrics", "interval_rankings", "rank_5d"),
+            ascending=True,
+            extra_metric_paths={
+                "return_5d_pct": ("quant_metrics", "interval_returns", "return_5d_pct"),
+            },
+        ),
+        "top_boards_recent_by_20d_rank": _rank_boards_by_metric(
+            boards,
+            metric="rank_20d",
+            top_k=top_k,
+            nested_path=("quant_metrics", "interval_rankings", "rank_20d"),
+            ascending=True,
+            extra_metric_paths={
+                "return_20d_pct": ("quant_metrics", "interval_returns", "return_20d_pct"),
+            },
+        ),
+    }
 
 
 def research_board_heat_state(
@@ -408,3 +478,49 @@ def _append_manifest(
 
 def json_dumps(payload: Mapping[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _rank_boards_by_metric(
+    boards: Sequence[Mapping[str, Any]],
+    *,
+    metric: str,
+    top_k: int,
+    nested_path: Sequence[str] | None = None,
+    ascending: bool = False,
+    extra_metric_paths: Mapping[str, Sequence[str]] | None = None,
+) -> List[Dict[str, Any]]:
+    ranked: List[Dict[str, Any]] = []
+    for item in boards:
+        if not isinstance(item, Mapping):
+            continue
+        value = _extract_metric_value(item, nested_path or (metric,))
+        if value is None:
+            continue
+        entry: Dict[str, Any] = {
+            "board_name": str(item.get("board_name") or "").strip(),
+            metric: value,
+        }
+        for extra_name, extra_path in (extra_metric_paths or {}).items():
+            extra_value = _extract_metric_value(item, extra_path)
+            if extra_value is not None:
+                entry[extra_name] = extra_value
+        ranked.append(entry)
+
+    ranked.sort(key=lambda item: float(item.get(metric) or 0.0), reverse=not ascending)
+    result: List[Dict[str, Any]] = []
+    for rank, item in enumerate(ranked[: max(top_k, 0)], start=1):
+        result.append({"rank": rank, **item})
+    return result
+
+
+def _extract_metric_value(item: Mapping[str, Any], path: Sequence[str]) -> float | int | None:
+    current: Any = item
+    for key in path:
+        if not isinstance(current, Mapping):
+            return None
+        current = current.get(key)
+    if isinstance(current, bool) or current is None:
+        return None
+    if isinstance(current, (int, float)):
+        return current
+    return None
