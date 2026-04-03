@@ -16,8 +16,6 @@ description: >
 
 - 主输出：`data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
 - 操作日志：`data/selection_runs/YYYY-MM-DD/06_hot_news_state_ops.json`
-- 最新镜像：`data/market_state/hot_news_state/latest.json`
-- 历史镜像：`data/market_state/hot_news_state/YYYY-MM-DD.json`
 
 当前 skill 按 file-only 方式工作：
 
@@ -25,7 +23,7 @@ description: >
 2. 读取最近一天 `06_hot_news_state.json`
 3. 直接生成今天新的 `06_hot_news_state.json` 和 `06_hot_news_state_ops.json`
 
-默认不依赖数据库状态机。
+默认不把 `06_hot_news_state.json` 额外镜像到 `data/market_state/hot_news_state/`。
 
 ## 先读什么
 
@@ -66,7 +64,7 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 2. 最近一天 `06_hot_news_state.json`
 3. 最近一天宏观总结
 4. 最近一天板块热点状态
-5. 最近一天板块热度摘要 `05_board_heat_digest.json`
+5. 今日板块热度摘要 `05_board_heat_digest.json`
 
 板块层规则：
 
@@ -109,13 +107,13 @@ python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A" 
 
 ### 4. 必要时联网补证
 
-如果四层主输入仍不足以支撑某个高权重主题判断，可以联网补证。
+如果上述主输入仍不足以支撑某个高权重主题判断，可以联网补证。
 
 具体规则见 [事件链与风险规则](references/output-contract.md)。
 
 对于“是否应彻底移出今天主上下文”这个判断：
 
-1. 普通低权重主题可直接基于四层主输入判断
+1. 普通低权重主题可直接基于现有主输入判断
 2. 高权重旧主题在准备移出前，建议联网补证
 3. 若最近几天已无新增事实、无板块确认、无扩散影响，可移出今天主上下文
 

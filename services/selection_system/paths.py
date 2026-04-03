@@ -74,22 +74,6 @@ class SelectionSystemPaths:
         return self.board_heat_state_dir / "latest.json"
 
     @property
-    def hot_news_state_dir(self) -> Path:
-        return self.market_state_dir / "hot_news_state"
-
-    @property
-    def hot_news_state_manifest_path(self) -> Path:
-        return self.hot_news_state_dir / "manifest.json"
-
-    @property
-    def hot_news_state_latest_path(self) -> Path:
-        return self.hot_news_state_dir / "latest.json"
-
-    @property
-    def hot_news_state_db_path(self) -> Path:
-        return self.hot_news_state_dir / "hot_news_state.db"
-
-    @property
     def symbol_memory_dir(self) -> Path:
         return self.base_dir / "symbol_memory"
 
@@ -145,12 +129,6 @@ class SelectionSystemPaths:
     def board_heat_state_daily_path(self, run_date: str) -> Path:
         return self.board_heat_state_dir / f"{run_date}.json"
 
-    def hot_news_state_daily_path(self, run_date: str) -> Path:
-        return self.hot_news_state_dir / f"{run_date}.json"
-
-    def hot_news_state_daily_ops_path(self, run_date: str) -> Path:
-        return self.hot_news_state_dir / f"{run_date}_ops.json"
-
     def stock_heat_daily_path(self, run_date: str) -> Path:
         return self.stock_heat_dir / f"{run_date}.json"
 
@@ -164,7 +142,6 @@ class SelectionSystemPaths:
             self.board_signals_dir,
             self.stock_heat_dir,
             self.board_heat_state_dir,
-            self.hot_news_state_dir,
             self.symbol_memory_dir,
             self.selection_runs_dir,
         ):

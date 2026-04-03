@@ -2,7 +2,9 @@
 
 ## 默认主输入
 
-这个 skill 默认有五个主输入，缺一不可；如果缺失，必须在输出里明确记录缺失项。
+这个 skill 默认有五个主输入，原则上都应提供。
+
+如果缺失，不要求机械中止；可以降级执行，但必须在输出里明确记录缺失项、fallback 与影响。
 
 缺失、fallback、跳过或错误，至少要记录到 `06_hot_news_state_ops.json` 的 `source_status`。
 
@@ -10,7 +12,7 @@
 2. 昨天或之前最近一天的 `06_hot_news_state.json`
 3. 最近一天宏观总结
 4. 最近一天板块热点状态
-5. 最近一天板块热度摘要 `05_board_heat_digest.json`
+5. 今日板块热度摘要 `05_board_heat_digest.json`
 
 ## 读取顺序
 
@@ -26,9 +28,11 @@
 
 - `run_date` 之前最近一日的 `data/selection_runs/<date>/06_hot_news_state.json`
 
-若不存在，再退回：
+若不存在：
 
-- `data/market_state/hot_news_state/latest.json`
+- 视为首次运行或缺少历史主题状态
+- 允许从空历史状态启动
+- 必须在 `06_hot_news_state_ops.json` 的 `source_status` 中记录 `missing_previous_state_bootstrap`
 
 ### 3. 最近一天宏观总结
 
@@ -70,6 +74,11 @@
 python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A" --board-name "板块B"
 ```
 
+若缺失：
+
+- 不建议正常执行
+- 如仍需继续，必须在 `source_status` 中明确记录，并说明 `linked_boards` 约束能力下降
+
 ## `linked_boards` 标准板块名清单
 
 `linked_boards` 只能从下面清单中选择，不要自由发挥，不要写别名。
@@ -80,7 +89,7 @@ python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A" 
 
 ## 何时允许联网补证
 
-如果以上四层输入仍不足以支撑主题判断，可以联网补证。
+如果以上主输入仍不足以支撑主题判断，可以联网补证。
 
 适合联网补证的主题：
 
