@@ -19,6 +19,14 @@ description: >
 - 最新镜像：`data/market_state/hot_news_state/latest.json`
 - 历史镜像：`data/market_state/hot_news_state/YYYY-MM-DD.json`
 
+当前 skill 按 file-only 方式工作：
+
+1. 读取本地输入文件
+2. 读取最近一天 `06_hot_news_state.json`
+3. 直接生成今天新的 `06_hot_news_state.json` 和 `06_hot_news_state_ops.json`
+
+默认不依赖数据库状态机。
+
 ## 先读什么
 
 1. 读 [概览](references/overview.md)
@@ -50,7 +58,7 @@ python scripts/manage_selection_system.py --base-dir data run-news --date YYYY-M
 python scripts/manage_selection_system.py --base-dir data build-board-heat-state --date YYYY-MM-DD
 ```
 
-### 2. 读取四层主输入
+### 2. 读取主输入
 
 严格按 [输入约定](references/input-contract.md) 读取：
 
@@ -58,6 +66,20 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 2. 最近一天 `06_hot_news_state.json`
 3. 最近一天宏观总结
 4. 最近一天板块热点状态
+5. 最近一天板块热度摘要 `05_board_heat_digest.json`
+
+板块层规则：
+
+1. 先读 `05_board_heat_digest.json`
+2. 用其中的 `standard_board_names` 约束 `linked_boards`
+3. 不要直接整份读取 `daily_snapshots` 或 `market_snapshots`
+4. 若某个主题需要更细板块证据，再运行：
+
+```bash
+python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A" --board-name "板块B"
+```
+
+`linked_boards` 只能从 [输入约定](references/input-contract.md) 里的标准板块名清单中选。
 
 ### 3. 生成主题级研究记忆
 
@@ -73,11 +95,29 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 6. 有哪些证伪或反转风险
 7. 明天应该跟踪什么
 
+同时必须判断：
+
+1. 哪些旧主题今天仍应保留在主上下文
+2. 哪些旧主题只应降级到 `cooling_themes`
+3. 哪些旧主题应从今天的 `06_hot_news_state.json` 中移出
+
+注意：
+
+1. 被移出的主题不再出现在今天新的 `06_hot_news_state.json`
+2. 但必须在 `06_hot_news_state_ops.json` 中留下完整轨迹
+3. 若未来又被重新激活，可以作为新一轮主上下文主题重新进入
+
 ### 4. 必要时联网补证
 
 如果四层主输入仍不足以支撑某个高权重主题判断，可以联网补证。
 
 具体规则见 [事件链与风险规则](references/output-contract.md)。
+
+对于“是否应彻底移出今天主上下文”这个判断：
+
+1. 普通低权重主题可直接基于四层主输入判断
+2. 高权重旧主题在准备移出前，建议联网补证
+3. 若最近几天已无新增事实、无板块确认、无扩散影响，可移出今天主上下文
 
 ### 5. 按输出契约落盘
 
@@ -93,4 +133,7 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 - 不要直接做最终选股结论
 - 不要把全部新闻直接挂到股票宇宙上
 - 不要省略 `history_anchor / today_update / current_state / expected_duration / forward_paths / scenario_tree / key_risks / next_day_watchlist`
-
+- `linked_boards` 必须优先使用 `05_board_heat_digest.json` 中的标准板块名
+- 不要把昨天出现过的主题机械地全部延续到今天
+- 不要把已结束、已证伪、已完全失去交易性的主题继续保留在今天的 `06_hot_news_state.json`
+- 任何被移出今天主上下文的主题，都必须在 `06_hot_news_state_ops.json` 中写明移出日期、原因、最后一次保留日期、是否做过联网复核
