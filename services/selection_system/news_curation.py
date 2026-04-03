@@ -190,6 +190,30 @@ def run_news_curation_pipeline(
     )
     LOGGER.info("增强正文已写入: %s", paths.run_news_enriched_path(run_date))
 
+    prompt_items = build_news_prompt_input(enriched_items)
+    save_json_file(
+        paths.run_news_prompt_input_path(run_date),
+        _build_payload(
+            run_date,
+            prompt_items,
+            source_status=[
+                *candidate_source_status,
+                *enrichment_status,
+                {
+                    "source": "news_prompt_input",
+                    "status": "ok",
+                    "rows": len(prompt_items),
+                },
+            ],
+            summary={
+                "candidate_count": len(candidates),
+                "deduped_count": len(deduped_items),
+                "prompt_input_count": len(prompt_items),
+            },
+        ),
+    )
+    LOGGER.info("轻量 prompt 输入已写入: %s", paths.run_news_prompt_input_path(run_date))
+
     LOGGER.info(
         "新闻模块完成: candidates=%d deduped=%d enriched=%d",
         len(candidates),
@@ -201,6 +225,7 @@ def run_news_curation_pipeline(
         "decisions": paths.run_news_dedup_decisions_path(run_date),
         "deduped": paths.run_news_deduped_path(run_date),
         "enriched": paths.run_news_enriched_path(run_date),
+        "prompt_input": paths.run_news_prompt_input_path(run_date),
     }
 
 
@@ -413,6 +438,30 @@ def enrich_news_items(
         }
     ]
     return result, status
+
+
+def build_news_prompt_input(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    prepared: List[Dict[str, Any]] = []
+    sorted_items = sorted(
+        (dict(item) for item in items if isinstance(item, dict)),
+        key=lambda item: str(item.get("published_at") or ""),
+        reverse=True,
+    )
+    for item in sorted_items:
+        news_id = str(item.get("news_id") or "").strip()
+        title = str(item.get("title") or "").strip()
+        if not news_id or not title:
+            continue
+        prepared.append(
+            {
+                "news_id": news_id,
+                "title": title,
+                "published_at": str(item.get("published_at") or ""),
+                "source": str(item.get("source") or ""),
+                "content": str(item.get("content") or item.get("preview") or title).strip(),
+            }
+        )
+    return prepared
 
 
 def _enrich_single_item(item: Dict[str, Any]) -> Dict[str, Any]:

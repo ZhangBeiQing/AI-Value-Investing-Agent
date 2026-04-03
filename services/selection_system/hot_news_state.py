@@ -1485,7 +1485,7 @@ def _build_state_payload(
 ) -> Dict[str, Any]:
     op_counts = Counter(str(item.get("op_type") or "") for item in operations)
     status_counts = Counter(str(item.get("status") or "") for item in all_themes)
-    output_themes = [_theme_to_output(item) for item in themes]
+    output_themes = [_theme_to_output(item, run_date=run_date) for item in themes]
     output_themes.sort(
         key=lambda item: (
             0 if item.get("status") == "active" else 1,
@@ -1493,6 +1493,18 @@ def _build_state_payload(
         ),
         reverse=False,
     )
+    archived_themes = [
+        _theme_to_output(item, run_date=run_date)
+        for item in all_themes
+        if str(item.get("status") or "") == "archived"
+    ]
+    new_themes = [
+        item
+        for item in output_themes
+        if str(item.get("first_seen_at") or "").strip()[:10] == str(run_date).strip()[:10]
+    ]
+    active_themes = [item for item in output_themes if str(item.get("status") or "") == "active"]
+    cooling_themes = [item for item in output_themes if str(item.get("status") or "") == "cooling"]
     return {
         "schema_version": 1,
         "run_date": run_date,
@@ -1500,6 +1512,7 @@ def _build_state_payload(
         "model": model,
         "embedding_model": embedding_model,
         "market_regime_note": market_regime_note,
+        "market_regime_bridge": market_regime_note,
         "summary": {
             "theme_count": len(output_themes),
             "active_count": int(status_counts.get("active", 0)),
@@ -1512,15 +1525,46 @@ def _build_state_payload(
             "archived_today_count": int(op_counts.get("ARCHIVE_THEME", 0)),
             "dropped_count": int(op_counts.get("DROP_CANDIDATE", 0)),
         },
+        "active_themes": active_themes,
+        "cooling_themes": cooling_themes,
+        "new_themes": new_themes,
+        "archived_themes": archived_themes,
+        "universe_expansion_hints": [],
         "themes": output_themes,
         "source_status": list(source_status),
     }
 
 
-def _theme_to_output(theme: Mapping[str, Any]) -> Dict[str, Any]:
+def _theme_to_output(theme: Mapping[str, Any], *, run_date: str) -> Dict[str, Any]:
+    theme_name = theme.get("theme_name")
+    summary = str(theme.get("summary") or "").strip()
+    today_delta = str(theme.get("today_delta") or "").strip()
+    persistence_view = str(theme.get("persistence_view") or "").strip()
+    strength = theme.get("strength")
+    linked_boards = _limit_list(theme.get("linked_boards") or [], MAX_LINKS_PER_THEME)
+    linked_symbols = _limit_list(theme.get("linked_symbols") or [], MAX_LINKS_PER_THEME)
+    evidence_news_ids = _limit_list(theme.get("key_evidence_news_ids") or [], MAX_LINKS_PER_THEME)
+    bear_case = _limit_list(theme.get("bear_case") or [], MAX_POINTS_PER_THEME)
+    days_running = _days_since(str(theme.get("first_seen_at") or ""), run_date)
+    already_running_for = f"已持续{days_running}个交易日" if days_running < 9999 else "持续时间不确定"
+    forward_paths: List[str] = []
+    if persistence_view:
+        forward_paths.append(persistence_view)
+    if strength == "strengthening":
+        forward_paths.append("若新增证据继续累积且板块强度同步确认，主题可能继续强化。")
+        forward_paths.append("若资金未继续确认或新催化缺位，主题可能从强化转向分化。")
+    elif strength == "fading":
+        forward_paths.append("若缺少新增验证，主题大概率继续衰减并逐步退出主上下文。")
+        forward_paths.append("若出现新的政策、价格或事件催化，主题可能再次回到观察范围。")
+    else:
+        forward_paths.append("若新的高质量新闻继续补强，主题可继续保留在主上下文。")
+        forward_paths.append("若相关板块和风险偏好未跟进，主题可能只停留在新闻层。")
+    scenario_tree = _build_default_scenario_tree(theme, forward_paths)
+    key_risks = _build_default_key_risks(theme, bear_case)
+    next_day_watchlist = _build_default_watchlist(theme, linked_boards, linked_symbols, evidence_news_ids)
     return {
         "theme_id": theme.get("theme_id"),
-        "theme_name": theme.get("theme_name"),
+        "theme_name": theme_name,
         "status": theme.get("status"),
         "first_seen_at": theme.get("first_seen_at"),
         "last_seen_at": theme.get("last_seen_at"),
@@ -1529,12 +1573,95 @@ def _theme_to_output(theme: Mapping[str, Any]) -> Dict[str, Any]:
         "strength": theme.get("strength"),
         "persistence_view": theme.get("persistence_view"),
         "bull_case": _limit_list(theme.get("bull_case") or [], MAX_POINTS_PER_THEME),
-        "bear_case": _limit_list(theme.get("bear_case") or [], MAX_POINTS_PER_THEME),
-        "key_evidence_news_ids": _limit_list(theme.get("key_evidence_news_ids") or [], MAX_LINKS_PER_THEME),
-        "linked_boards": _limit_list(theme.get("linked_boards") or [], MAX_LINKS_PER_THEME),
-        "linked_symbols": _limit_list(theme.get("linked_symbols") or [], MAX_LINKS_PER_THEME),
+        "bear_case": bear_case,
+        "key_evidence_news_ids": evidence_news_ids,
+        "linked_boards": linked_boards,
+        "linked_symbols": linked_symbols,
         "aliases": _limit_list(theme.get("aliases") or [], MAX_LINKS_PER_THEME),
+        "history_anchor": summary or str(theme_name or ""),
+        "today_update": today_delta or summary or str(theme_name or ""),
+        "current_state": summary or today_delta or str(theme_name or ""),
+        "expected_duration": {
+            "already_running_for": already_running_for,
+            "base_case": persistence_view or "未来持续时间仍需结合新增证据与板块确认继续判断。",
+            "decay_signals": bear_case or ["若后续缺少新增验证，主题可能逐步降温。"],
+        },
+        "forward_paths": forward_paths,
+        "scenario_tree": scenario_tree,
+        "key_risks": key_risks,
+        "why_it_matters": summary or today_delta or str(theme_name or ""),
+        "linked_macro_topics": [],
+        "linked_symbols_in_universe": linked_symbols,
+        "outside_universe_names_to_check": [],
+        "search_trigger": "若相关板块继续强化且宇宙内缺少合适标的，应搜索宇宙外龙头或弹性股。",
+        "evidence_news_ids": evidence_news_ids,
+        "key_events": [],
+        "next_day_watchlist": next_day_watchlist,
     }
+
+
+def _build_default_scenario_tree(theme: Mapping[str, Any], forward_paths: Sequence[str]) -> List[Dict[str, Any]]:
+    theme_name = str(theme.get("theme_name") or "").strip() or "当前主题"
+    paths = list(forward_paths)
+    defaults = [
+        {
+            "scenario": f"{theme_name}继续强化",
+            "probability_band": "medium",
+            "trigger_signals": ["新增高质量新闻继续出现", "相关板块得到资金确认"],
+            "market_impact": paths[0] if paths else "主题继续强化并扩大影响范围。",
+        },
+        {
+            "scenario": f"{theme_name}高位钝化或分化",
+            "probability_band": "medium",
+            "trigger_signals": ["新增催化减少", "板块内部开始分化"],
+            "market_impact": paths[1] if len(paths) > 1 else "主题仍在，但交易重心可能缩窄到少数代表方向。",
+        },
+        {
+            "scenario": f"{theme_name}明显降温或反转",
+            "probability_band": "low_to_medium",
+            "trigger_signals": ["关键催化被证伪", "风险偏好转向", "市场主线切换"],
+            "market_impact": "相关板块与股票的主题溢价可能快速回吐。",
+        },
+    ]
+    return defaults
+
+
+def _build_default_key_risks(theme: Mapping[str, Any], bear_case: Sequence[str]) -> List[Dict[str, Any]]:
+    risks = [
+        {
+            "risk": risk,
+            "probability_band": "medium",
+            "why_it_matters": "若该风险兑现，主题可能弱化、分化或提前反转。",
+        }
+        for risk in bear_case
+    ]
+    if risks:
+        return risks
+    theme_name = str(theme.get("theme_name") or "").strip() or "当前主题"
+    return [
+        {
+            "risk": f"{theme_name}缺少新增高质量验证",
+            "probability_band": "medium",
+            "why_it_matters": "若后续缺少新增验证，主题热度可能自然衰减。",
+        }
+    ]
+
+
+def _build_default_watchlist(
+    theme: Mapping[str, Any],
+    linked_boards: Sequence[str],
+    linked_symbols: Sequence[str],
+    evidence_news_ids: Sequence[str],
+) -> List[str]:
+    theme_name = str(theme.get("theme_name") or "").strip() or "当前主题"
+    watchlist = [f"继续跟踪 {theme_name} 是否出现新的高质量证据新闻。"] if evidence_news_ids else []
+    if linked_boards:
+        watchlist.append(f"观察相关板块是否继续维持强度：{', '.join(linked_boards[:3])}。")
+    if linked_symbols:
+        watchlist.append(f"观察相关股票是否继续得到市场确认：{', '.join(linked_symbols[:3])}。")
+    if not watchlist:
+        watchlist.append(f"继续跟踪 {theme_name} 的增量事件与市场确认信号。")
+    return watchlist
 
 
 def _merge_theme_payload(
