@@ -101,9 +101,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     hot_news_parser = subparsers.add_parser(
-        "build-hot-news-state",
-        aliases=["merge-hot-news-state"],
-        help="Build incremental hot-news state from daily news and historical theme state.",
+        "update-gradual-hot-news-summary",
+        help="Update today's gradual hot-news summary from daily news and recent state.",
     )
     hot_news_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
     hot_news_parser.add_argument(
@@ -128,15 +127,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Rollback the same run_date from SQLite state before rebuilding.",
     )
 
-    hot_input_parser = subparsers.add_parser(
-        "render-hot-input",
-        help="Render markdown input for the future hot_news_state skill.",
-    )
-    hot_input_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
-    hot_input_parser.add_argument("--news-limit", type=int, default=40, help="Max news items to render.")
-    hot_input_parser.add_argument("--board-limit", type=int, default=12, help="Max board items to render.")
-    hot_input_parser.add_argument("--universe-heat-limit", type=int, default=30, help="Max universe-hit hot stocks.")
-    hot_input_parser.add_argument("--outside-heat-limit", type=int, default=15, help="Max outside-universe hot stocks.")
     return parser
 
 
@@ -210,28 +200,6 @@ def _handle_run_market_signals(
         stock_limit=stock_limit,
     )
     LOGGER.info("market signals 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
-    return 0
-
-
-def _handle_render_hot_input(
-    base_dir: str,
-    run_date: str,
-    news_limit: int,
-    board_limit: int,
-    universe_heat_limit: int,
-    outside_heat_limit: int,
-) -> int:
-    from services.selection_system.hot_state_input import render_hot_state_input
-
-    output_path = render_hot_state_input(
-        run_date,
-        base_dir=base_dir,
-        news_limit=news_limit,
-        board_limit=board_limit,
-        universe_heat_limit=universe_heat_limit,
-        outside_heat_limit=outside_heat_limit,
-    )
-    LOGGER.info("hot state input 完成: %s", output_path)
     return 0
 
 
@@ -309,7 +277,7 @@ def main() -> int:
             args.stocks_per_board,
             args.model,
         )
-    if args.command in {"build-hot-news-state", "merge-hot-news-state"}:
+    if args.command == "update-gradual-hot-news-summary":
         return _handle_build_hot_news_state(
             args.base_dir,
             args.date,
@@ -317,15 +285,6 @@ def main() -> int:
             args.embedding_model,
             args.candidate_limit,
             args.force_rebuild,
-        )
-    if args.command == "render-hot-input":
-        return _handle_render_hot_input(
-            args.base_dir,
-            args.date,
-            args.news_limit,
-            args.board_limit,
-            args.universe_heat_limit,
-            args.outside_heat_limit,
         )
 
     parser.error(f"未知命令: {args.command}")

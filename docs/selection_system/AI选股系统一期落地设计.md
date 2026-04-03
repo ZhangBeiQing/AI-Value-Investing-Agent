@@ -4,21 +4,19 @@
 
 说明：
 
-1. 本文件只保留“一期设计思路与目标架构”，不再混入已完成事项与历史实施记录。
-2. 已完成项目记录、阶段性验证与历史设计切换，统一放到 `docs/selection_system/AI选股系统一期项目记录.md`。
+1. 本文件只保留当前有效的“一期设计思路与目标架构”。
 
 ## 0. 最新设计结论
 
 当前一期的设计基线已经明确切换为以下结构：
 
 1. 保留一个共享研究底座：`master_universe`、新闻链、`hot_news_state`、`board_heat_state`。
-2. 不再采用“先规则打分筛出 `hot_candidates` / `core_candidates`，再让模型做边界判断”的旧主方案。
 3. 最终决策层不再是单一 `selection_skill`，而是拆成两个不同 mandate 的策略决策头：
    - `select-hot-book`
    - `select-core-book`
 4. 这两个策略簿共享输入，但持有周期、调仓逻辑、风险容忍度、输出状态不同。
 5. 顶层再加一个轻量 `portfolio_orchestrator`，负责汇总两套结果、检查冲突、管理资金分配。
-6. 板块层当前以 `test/test_akshare.py` 中已经验证的同花顺行业板块排行抓取逻辑为准，而不是旧文档中写过的“板块异动接口”。
+6. 板块层当前以 `test/test_akshare.py` 中已经验证的同花顺行业板块排行抓取逻辑为准。
 
 换句话说，一期的主轴是：
 
@@ -170,9 +168,7 @@ data/selection_runs/YYYY-MM-DD/
 
 ### 3.3.1 当前定位
 
-`hot_news_state` 不再走旧的规则候选评分路线，也不建议做成纯 prompt 驱动的本地 skill。
-
-当前更合适的方向是：
+`hot_news_state` 的定位是：
 
 1. 由本地代码服务维护渐进式主题状态。
 2. workflow / skill 只保留薄编排外壳。
@@ -245,13 +241,13 @@ data/selection_runs/YYYY-MM-DD/
 
 ### 3.3.6 实现建议
 
-本地 `merge-hot-news-state` 更建议做成“代码服务为主、workflow 为辅”的结构。
+渐进式新闻总结应采用固定输入和固定输出契约的本地 skill 结构。
 
-核心服务职责建议固定为：
+核心职责建议固定为：
 
-1. 读取旧状态。
+1. 读取最近一天主题状态。
 2. 从今天 `03_news_enriched.json` 抽取主题候选。
-3. 召回相关旧主题。
+3. 召回相关既有主题。
 4. 通过 `ADD / UPDATE / MERGE / ARCHIVE / DROP` 等操作生成新状态。
 5. 落盘新的 `hot_news_state` 与操作日志。
 
@@ -618,8 +614,8 @@ data/selection_runs/YYYY-MM-DD/
 Step 1. run-news
     -> 生成 01/02/03 新闻链产物
 
-Step 2. merge-hot-news-state
-    -> 输入: 昨天 hot_news_state + 今天 03_news_enriched.json
+Step 2. update-gradual-hot-news-summary
+    -> 输入: 最近一天 hot_news_state + 今天 03_news_enriched.json
     -> 输出: 今天新的 hot_news_state
 
 Step 3. build-board-heat-state
@@ -726,20 +722,10 @@ data/
 3. 现有新闻抓取与正文增强能力。
 4. 本地 skill-only 工作方式。
 
-### 6.2 不再作为主线的旧设计
+### 6.2 当前运行方式
 
-以下内容不再作为一期主方案：
-
-1. 规则打分版 `candidate_selector`。
-2. 以 `stock_board_change_em` 为主的旧板块设计表述。
-3. 把新闻链、板块链、个股热度链混成一个规则状态机的做法。
-4. 期望先定义一套稳定规则分数，再由模型做少量边界修正的方案。
-
-### 6.3 与旧主链路的关系
-
-1. 当前 `manage_daily_data -> run_daily_pipeline -> run_post_trade` 主链路继续保留。
-2. 新选股系统链路在 `selection_runs` 下独立验证。
-3. 新链路稳定后，再考虑与旧主链路如何衔接。
+1. 选股系统链路在 `selection_runs` 下独立维护。
+2. 新闻、渐进式主题总结、板块热度、股票输入包应按独立步骤稳定生成。
 
 ## 7. 一期实施顺序
 

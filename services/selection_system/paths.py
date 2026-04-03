@@ -115,6 +115,9 @@ class SelectionSystemPaths:
     def run_news_enriched_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "03_news_enriched.json"
 
+    def run_news_prompt_input_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "03_news_prompt_input.json"
+
     def run_board_signals_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "04_board_signals.json"
 
@@ -150,9 +153,6 @@ class SelectionSystemPaths:
 
     def run_stock_heat_path(self, run_date: str) -> Path:
         return self.run_stock_heat_signals_path(run_date)
-
-    def run_hot_state_input_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "06_hot_state_input.md"
 
     def ensure_directories(self) -> None:
         for path in (

@@ -24,11 +24,11 @@
 - **数据落地**：每只股票的数据均存放于 `data/{stock_name}_{symbol}/`（财经缓存、价格、analysis、pe_pb_analysis、news/announcements等），运行日志按组件或工具写入 `logs/` 下的分类目录。
 
 ## 4. 核心分析与研究模块
-- **一期选股系统基座**（`services/selection_system/`, `scripts/manage_selection_system.py`）：新增与现有 `skill-only` 主链路并存的轻量选股框架，当前主线已经收敛到 `master_universe`、独立新闻链、`hot_news_state` 与 `board_heat_state`。初始化后会在 `data/universe/master_universe.json` 写入主股票宇宙，并在 `data/market_state/`、`data/symbol_memory/`、`data/selection_runs/` 建立相关状态目录；已废弃的规则候选池 `run-daily` 旧链路已从代码中清理。
+- **一期选股系统基座**（`services/selection_system/`, `scripts/manage_selection_system.py`）：当前选股框架主线收敛到 `master_universe`、独立新闻链、渐进式新闻主题总结与 `board_heat_state`。初始化后会在 `data/universe/master_universe.json` 写入主股票宇宙，并在 `data/market_state/`、`data/symbol_memory/`、`data/selection_runs/` 建立相关状态目录。
 - **基础指标批处理**（`basic_stock_info.py`）：`BasicStockInfoService` 会调用 `SharedDataAccess.prepare_dataset` + `IndicatorLibrary`，输出估值、财报增速、风险、流动性等字段并写入 `data/basic_info_cache/basic_info_{symbol}.json`（含历史快照）；CLI 支持 `--symbols`/`--history-days`。
 - **增强估值分析**（`enhanced_pe_pb_analyzer.py`）：以 `SymbolInfo` 为核心，串联财报/股本/价格缓存、TTM EPS、PEG、相似股比较、Markdown/CSV/JSON 报告写入。重构后通用指标计算迁移至 `indicator_library.calculators`，并通过 `cache_registry` 管理输出目录。
 - **股价动态总结**（`stock_price_dynamics_summarizer.py`）：围绕 `IndicatorLibrary` + `IndicatorBatchRequest` 计算 3/6/12 个月收益、夏普、相关性矩阵、MACD/RSI/MA、行业对比等信息，生成 Markdown + JSON 报告，供 `services/research/stock_analysis.py` 复用。
-- **公告与新闻**：`news/disclosures_builder.py` 把 `SharedDataAccess` 的公告索引下载到本地 PDF/Markdown，并通过 OpenAI/Qwen 模型提取结构化 `raw_facts`、`quantitative_data`、`category` 等字段；当前新闻链路以公告摘要与审计为主，不再保留旧的渐进式新闻汇总脚本。
+- **公告与新闻**：`news/disclosures_builder.py` 把 `SharedDataAccess` 的公告索引下载到本地 PDF/Markdown，并通过 OpenAI/Qwen 模型提取结构化 `raw_facts`、`quantitative_data`、`category` 等字段；选股系统中的新闻链路负责生成新闻正文输入与渐进式主题总结输入。
 - **财报深度研究**（`fundamental/fundamental_research.py`）：以 `SharedDataAccess` + `disclosures_builder` 提供的公告 Markdown 为输入，`FinancialReportExtractor` 下载/提取要点，再由 `FundamentalResearchAgent` 按 `DOC_EXTRACTION_PROMPT` 与 `REPORT_ANALYSIS_AGENT_PROMPT` 生成结构化研究结果，落地到 `fundamental_reports/`。`docs/fundamental_research/README.md` 描述端到端流程。
 
 ## 5. 兼容层与运行治理
