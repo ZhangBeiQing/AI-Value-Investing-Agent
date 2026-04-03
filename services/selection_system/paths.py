@@ -133,6 +133,9 @@ class SelectionSystemPaths:
     def run_board_heat_state_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "05_board_heat_state.json"
 
+    def run_board_heat_digest_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "05_board_heat_digest.json"
+
     def run_hot_news_state_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "06_hot_news_state.json"
 
