@@ -297,7 +297,332 @@
 2. 上层字段是面向新 agent 的解释层
 3. `scenario_tree` 和 `key_risks` 用来抑制单向叙事偏见
 
-## 6. 哪些新闻应该进入这个系统
+## 6. `06_hot_news_state_ops.json`
+
+### 6.1 它是干嘛用的
+
+`06_hot_news_state_ops.json` 不是给后续选股 agent 直接消费的主结果文件。
+
+它的定位是：
+
+1. 当天主题更新过程的审计日志
+2. 供人工复核、回放、调试、排障使用
+3. 让人或系统能够追溯：
+   - 今天从多少新闻里抽出了哪些候选
+   - 每个候选为什么被新增、更新或丢弃
+   - 哪些主题发生了 merge、archive、cooling
+   - 哪些输入缺失、fallback、失败或降级执行
+
+所以：
+
+1. `06_hot_news_state.json` 是结果文件
+2. `06_hot_news_state_ops.json` 是过程文件
+
+### 6.2 设计原则
+
+1. `ops` 是过程审计日志，不是第二份 `06_hot_news_state.json`
+2. 顶层按“一次运行”组织，不按“一个主题一个顶层项目”组织
+3. 候选判断按 `candidate` 粒度记录，真实写库动作按 `operation` 粒度记录
+4. 不要把 `03_news_prompt_input.json` 的全量新闻正文再复制一遍
+5. 证据以 `evidence_news_ids` 为主，如需增强可读性，只补轻量摘要，不补全文
+6. 缺失、fallback、报错和跳过必须能在 `source_status` 中被审计出来
+
+不建议把 `ops` 设计成“一个主题一个顶层项目”，原因是：
+
+1. `DROP_CANDIDATE` 在被丢弃时还不是主题
+2. 同一主题同一天可能出现多个动作
+3. 过程文件的原子单位是“判断”和“动作”，不是最终静态主题
+
+### 6.3 顶层结构
+
+```json
+{
+  "schema_version": 1,
+  "run_date": "2026-04-03",
+  "updated_at": "2026-04-03T21:15:00+08:00",
+  "model": "deepseek-v3.2-exp",
+  "embedding_model": "text-embedding-v4",
+  "input_summary": {},
+  "extracted_candidates": [],
+  "retrievals": [],
+  "planned_candidate_actions": [],
+  "planned_archive_actions": [],
+  "planned_merge_actions": [],
+  "applied_operations": [],
+  "source_status": []
+}
+```
+
+### 6.4 字段说明
+
+#### `input_summary`
+
+记录输入规模，而不是复制原始输入内容。
+
+建议包含：
+
+1. `news_count`
+2. `prompt_news_count`
+3. `board_context_count`
+4. `existing_theme_count`
+
+#### `source_status`
+
+记录输入与外部步骤是否完整可用。
+
+用途：
+
+1. 让后续排障时区分“今天没有这个信号”还是“今天输入缺失/失败”
+2. 记录是否使用了 `latest.json` 或其他 fallback
+3. 记录模型调用、检索、merge 等步骤是 `ok / skipped / error`
+
+#### `extracted_candidates`
+
+记录当天从新闻与板块线索中抽出来的候选。
+
+用途：
+
+1. 回看今天本来想追踪什么
+2. 对比哪些候选最终被升级、哪些被丢弃
+
+每个 candidate 建议包含：
+
+1. `candidate_id`
+2. `theme_name`
+3. `summary`
+4. `today_delta`
+5. `strength`
+6. `linked_boards`
+   - 必须优先使用 `05_board_heat_digest.json` 里的 `standard_board_names`
+7. `linked_symbols`
+8. `evidence_news_ids`
+
+#### `retrievals`
+
+记录每个候选回溯匹配到了哪些历史主题。
+
+用途：
+
+1. 解释为什么某候选最终是 `UPDATE_THEME` 而不是 `ADD_THEME`
+2. 让人工快速检查主题归并是否合理
+
+#### `planned_candidate_actions`
+
+记录每个候选最终如何决策。
+
+建议动作：
+
+1. `ADD_THEME`
+2. `UPDATE_THEME`
+3. `DROP_CANDIDATE`
+
+每条 action 建议包含：
+
+1. `candidate_id`
+2. `action`
+3. `target_theme_id`
+4. `reason`
+5. `canonical_theme_name`
+6. `evidence_news_ids`
+
+#### `planned_archive_actions` / `planned_merge_actions`
+
+记录归档与合并的计划动作，用于解释当天主题库为什么发生结构变化。
+
+#### `applied_operations`
+
+记录真正写入状态库的操作。
+
+它和 `planned_candidate_actions` 的区别：
+
+1. `planned_candidate_actions` 是候选层决策
+2. `applied_operations` 是最终落盘动作
+
+建议每条 operation 包含：
+
+1. `op_type`
+2. `theme_id`
+3. `candidate_id`
+4. `target_theme_id`
+5. `reason`
+6. `payload`
+
+### 6.5 证据记录原则
+
+每条候选或操作可以引用新闻证据，但应尽量轻量：
+
+1. 必须保留 `evidence_news_ids`
+2. 如需增加可读性，可补 `news_id / title / source / published_at`
+3. 不要在 `ops` 中复制全部 `content`
+4. `03_news_prompt_input.json` 仍是原始全文新闻的唯一主来源
+
+### 6.6 主题遗忘与移出主上下文规则
+
+这里的“遗忘”不是物理删除历史，而是：
+
+1. 某主题不再出现在今天新的 `06_hot_news_state.json`
+2. 但它的移出轨迹必须保留在今天的 `06_hot_news_state_ops.json`
+
+换句话说：
+
+1. `06_hot_news_state.json` 只保留今天还值得保留在主上下文里的主题
+2. 被移出的主题只留在 `ops` 中，供后续人工追溯
+
+#### 6.6.1 何时仍应保留主题
+
+满足以下任一条件，主题通常仍应保留在今天的 `06_hot_news_state.json`：
+
+1. 今天有新增高质量事实、政策、产业或地缘增量
+2. 板块和资金仍在持续交易这条叙事
+3. 即使新闻增量不大，但主题对明天决策仍有明显影响
+4. 主题尚未结束，只是进入分化、钝化或等待确认阶段
+
+#### 6.6.2 何时可以降级到 `cooling_themes`
+
+满足以下特征时，可从 `active_themes` 降到 `cooling_themes`：
+
+1. 最近 1-3 个交易日没有明显新增事实
+2. 板块热度和资金确认开始减弱
+3. 主题尚未被证伪，也未完全结束
+4. 仍存在短期回流或二次强化可能
+
+#### 6.6.3 何时可以从今天主上下文中移出
+
+只有当主题已经明显失去继续占据主上下文的必要性时，才可以移出今天的 `06_hot_news_state.json`。
+
+至少应满足以下大部分条件：
+
+1. 核心事件已经兑现、结束、落地或被证伪
+2. 最近几天没有新的高质量增量
+3. 板块热度和资金确认已经明显消失
+4. 该主题不再对明天的选股或市场理解产生明显影响
+5. 继续保留它只会增加噪声，而不会提高决策质量
+
+高权重旧主题在移出前，建议额外联网复核：
+
+1. 搜索最近几天是否还有新发展
+2. 搜索是否还有政策、产业、地缘层面的延续影响
+3. 若最近已无明显新风声、无扩散影响，可移出今天主上下文
+
+#### 6.6.4 不应轻易移出的情形
+
+以下情况不应直接遗忘：
+
+1. 主题只是暂时缺少新闻，但板块仍在交易
+2. 主题虽然降温，但仍可能在 1-2 个交易日内回流
+3. 主题影响虽然减弱，但仍是理解其他热点的背景前提
+4. 当前证据不足以判断它已经彻底结束
+
+### 6.7 `ops` 中必须记录的移出轨迹
+
+任何被移出今天主上下文的主题，都必须在 `06_hot_news_state_ops.json` 中留下可追溯记录。
+
+建议在 `applied_operations` 中至少写明：
+
+1. `op_type`
+   - 固定写 `REMOVE_FROM_MAIN_CONTEXT`
+2. `theme_id`
+3. `theme_name`
+4. `removed_on`
+   - 即今天的 `run_date`
+5. `last_seen_on`
+   - 即它最后一次出现在 `06_hot_news_state.json` 的日期
+6. `reason`
+   - 为什么移出
+7. `evidence_news_ids`
+   - 支撑移出判断的新闻证据
+8. `search_checked`
+   - 是否做过联网复核
+9. `search_verdict`
+   - 若做过联网复核，简述最近几天是否仍有延续影响
+
+### 6.8 推荐示例
+
+```json
+{
+  "schema_version": 1,
+  "run_date": "2026-04-03",
+  "updated_at": "2026-04-03T21:15:00+08:00",
+  "model": "deepseek-v3.2-exp",
+  "embedding_model": "text-embedding-v4",
+  "input_summary": {
+    "news_count": 320,
+    "prompt_news_count": 40,
+    "board_context_count": 6,
+    "existing_theme_count": 14
+  },
+  "extracted_candidates": [
+    {
+      "candidate_id": "cand_01",
+      "theme_name": "油价上行与霍尔木兹风险",
+      "summary": "中东冲突继续强化，油运与能源风险溢价抬升",
+      "linked_boards": ["油气开采", "航运", "军工"],
+      "evidence_news_ids": ["N001", "N015", "N021"]
+    }
+  ],
+  "retrievals": [
+    {
+      "candidate_id": "cand_01",
+      "matches": [
+        {
+          "theme_id": "theme_oil_hormuz",
+          "score": 0.92
+        }
+      ]
+    }
+  ],
+  "planned_candidate_actions": [
+    {
+      "candidate_id": "cand_01",
+      "action": "UPDATE_THEME",
+      "target_theme_id": "theme_oil_hormuz",
+      "reason": "与昨日主题属于同一条主线，今天是强化而非新主题",
+      "canonical_theme_name": "油价上行与霍尔木兹风险",
+      "evidence_news_ids": ["N001", "N015", "N021"]
+    }
+  ],
+  "planned_archive_actions": [],
+  "planned_merge_actions": [],
+  "applied_operations": [
+    {
+      "op_type": "UPDATE_THEME",
+      "candidate_id": "cand_01",
+      "theme_id": "theme_oil_hormuz",
+      "reason": "与昨日主题属于同一条主线，今天是强化而非新主题"
+    },
+    {
+      "op_type": "DROP_CANDIDATE",
+      "candidate_id": "cand_05",
+      "reason": "单公司公告，无板块外溢性"
+    },
+    {
+      "op_type": "REMOVE_FROM_MAIN_CONTEXT",
+      "theme_id": "theme_shipping_rate_bounce",
+      "theme_name": "航运运价反弹",
+      "removed_on": "2026-04-03",
+      "last_seen_on": "2026-04-02",
+      "reason": "最近几天无新增事实，板块确认消失，继续保留只会增加噪声",
+      "evidence_news_ids": [],
+      "search_checked": true,
+      "search_verdict": "近几天无新的产业或政策催化，主题延续性不足"
+    }
+  ],
+  "source_status": [
+    {
+      "source": "03_news_prompt_input",
+      "status": "ok",
+      "rows": 320
+    },
+    {
+      "source": "previous_hot_news_state",
+      "status": "fallback",
+      "reason": "selection_runs_missing_use_latest"
+    }
+  ]
+}
+```
+
+## 7. 哪些新闻应该进入这个系统
 
 应进入主主题系统的内容：
 
@@ -318,7 +643,7 @@
 2. 股票侧观察清单
 3. 股票侧决策日志
 
-## 7. 主题如何映射到股票
+## 8. 主题如何映射到股票
 
 主题层不直接负责最终选股，但必须提供股票映射线索。
 

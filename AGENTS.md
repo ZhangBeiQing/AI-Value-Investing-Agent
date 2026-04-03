@@ -8,7 +8,7 @@
 - `manage_daily_data`、`run_daily_pipeline`、`run_post_trade` 仍是仓库内保留的脚本入口，但不再是“开始今天股票交易”这个 skill 的默认自动执行步骤
 - 当前主代码放在 `scripts/`、`services/`、`shared_data_access/`、`core/`
 - `agent_tools/`、`tools/` 仍保留少量兼容层，但不再是新代码主落点
-- 运行产物与缓存写入 `data/`，日志写入 `logs/`，规范与说明写入 `.codex/`、`.claude/`、`docs/`
+- 运行产物与缓存写入 `data/`，日志写入 `logs/`，规范与说明写入 `.codex/`、`docs/`
 
 ## WHY：设计目标
 
@@ -37,7 +37,6 @@
 - `.codex/rules/`：当前主维护的规则目录，供 Codex 场景优先使用
 - `.codex/skills/`：当前主维护的项目技能文档
 - `.codex/commands/`：当前主维护的固定动作文档
-- `.claude/`：兼容 Claude Code 的镜像目录，默认通过软链接指向 `.codex/`
 
 ## 核心命令
 
@@ -115,7 +114,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - `skill-pipeline.md`：`01-08` 产物契约、脚本分层与交易后处理约束
 - `testing.md`：evidence-first 调试、最小复现、主链路验证要求
 
-上述规则以 `.codex/rules/` 为主维护目录；`.claude/rules/` 默认是兼容镜像。
+上述规则以 `.codex/rules/` 为主维护目录。
 
 ## Docs
 
@@ -128,10 +127,10 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - `extend-shared-data-access`：新增数据源、缓存目录或指标依赖时使用
 - `debug-skill-run`：`manage_daily_data` / `run_daily_pipeline` / `run_post_trade` 失败时使用
 
-以上 skill 位于 `.codex/skills/`，`.claude/skills/` 默认通过软链接复用它们。
+以上 skill 位于 `.codex/skills/`。
 
 ## Commands
 
 - `review-skill-run`：检查某一天的 `skill` 运行产物、日志与交易后处理是否完整且一致
 
-Commands 位于 `.codex/commands/`，`.claude/commands/` 默认通过软链接复用它们。它不替代 `rules` 或 `skills`，而是把高频动作写成统一入口。
+Commands 位于 `.codex/commands/`。它不替代 `rules` 或 `skills`，而是把高频动作写成统一入口。
