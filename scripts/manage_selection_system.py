@@ -100,33 +100,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Deep research model name.",
     )
 
-    hot_news_parser = subparsers.add_parser(
-        "update-gradual-hot-news-summary",
-        help="Update today's gradual hot-news summary from daily news and recent state.",
-    )
-    hot_news_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
-    hot_news_parser.add_argument(
-        "--model",
-        default="deepseek-v3.2-exp",
-        help="Theme extraction and theme-op planning model name.",
-    )
-    hot_news_parser.add_argument(
-        "--embedding-model",
-        default="text-embedding-v4",
-        help="Embedding model used for theme retrieval.",
-    )
-    hot_news_parser.add_argument(
-        "--candidate-limit",
-        type=int,
-        default=8,
-        help="Max theme candidates extracted from today's news.",
-    )
-    hot_news_parser.add_argument(
-        "--force-rebuild",
-        action="store_true",
-        help="Rollback the same run_date from SQLite state before rebuilding.",
-    )
-
     return parser
 
 
@@ -223,28 +196,6 @@ def _handle_build_board_heat_state(
     return 0
 
 
-def _handle_build_hot_news_state(
-    base_dir: str,
-    run_date: str,
-    model: str,
-    embedding_model: str,
-    candidate_limit: int,
-    force_rebuild: bool,
-) -> int:
-    from services.selection_system.hot_news_state import build_hot_news_state
-
-    outputs = build_hot_news_state(
-        run_date,
-        base_dir=base_dir,
-        model=model,
-        embedding_model=embedding_model,
-        candidate_limit=candidate_limit,
-        force_rebuild=force_rebuild,
-    )
-    LOGGER.info("hot news state 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
-    return 0
-
-
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -277,16 +228,6 @@ def main() -> int:
             args.stocks_per_board,
             args.model,
         )
-    if args.command == "update-gradual-hot-news-summary":
-        return _handle_build_hot_news_state(
-            args.base_dir,
-            args.date,
-            args.model,
-            args.embedding_model,
-            args.candidate_limit,
-            args.force_rebuild,
-        )
-
     parser.error(f"未知命令: {args.command}")
     return 2
 

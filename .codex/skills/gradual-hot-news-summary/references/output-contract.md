@@ -23,7 +23,6 @@
   "active_themes": [],
   "cooling_themes": [],
   "new_themes": [],
-  "archived_themes": [],
   "universe_expansion_hints": [],
   "summary": {}
 }
@@ -38,7 +37,7 @@
     {
       "theme_id": "theme_oil_hormuz",
       "theme_name": "油价上行与霍尔木兹风险",
-      "status": "strengthening",
+      "status": "active",
       "strength": "strengthening",
       "history_anchor": "这个主题进入主上下文的历史锚点与过去几天的核心演变线。",
       "today_update": "今天新增了哪些关键新闻、谁说了什么、什么关键事件发生了、相比昨天哪里变了。",
@@ -87,7 +86,7 @@
       ],
       "why_it_matters": "影响油气、航运、军工、输入性通胀",
       "linked_macro_topics": ["中东冲突", "油价", "Fed更难转鸽"],
-      "linked_boards": ["油气开采", "航运", "军工"],
+      "linked_boards": ["油气开采及服务", "港口航运", "军工装备"],
       "linked_symbols_in_universe": ["600000.SH", "000001.SZ"],
       "outside_universe_names_to_check": ["某油运股", "某军工股"],
       "search_trigger": "若板块继续强化，应搜索宇宙外龙头/弹性股",
@@ -109,7 +108,6 @@
   ],
   "cooling_themes": [],
   "new_themes": [],
-  "archived_themes": [],
   "universe_expansion_hints": []
 }
 ```
@@ -373,7 +371,7 @@
 用途：
 
 1. 让后续排障时区分“今天没有这个信号”还是“今天输入缺失/失败”
-2. 记录是否使用了 `latest.json` 或其他 fallback
+2. 记录是否使用了前一日文件、板块热度 fallback 或空历史 bootstrap
 3. 记录模型调用、检索、merge 等步骤是 `ok / skipped / error`
 
 #### `extracted_candidates`
@@ -468,6 +466,11 @@
 1. `06_hot_news_state.json` 只保留今天还值得保留在主上下文里的主题
 2. 被移出的主题只留在 `ops` 中，供后续人工追溯
 
+也就是说：
+
+1. 今天的 `06_hot_news_state.json` 不再单独保留 `archived_themes`
+2. 主题若已移出主上下文，只能在 `06_hot_news_state_ops.json` 中追溯
+
 #### 6.6.1 何时仍应保留主题
 
 满足以下任一条件，主题通常仍应保留在今天的 `06_hot_news_state.json`：
@@ -556,7 +559,7 @@
       "candidate_id": "cand_01",
       "theme_name": "油价上行与霍尔木兹风险",
       "summary": "中东冲突继续强化，油运与能源风险溢价抬升",
-      "linked_boards": ["油气开采", "航运", "军工"],
+      "linked_boards": ["油气开采及服务", "港口航运", "军工装备"],
       "evidence_news_ids": ["N001", "N015", "N021"]
     }
   ],

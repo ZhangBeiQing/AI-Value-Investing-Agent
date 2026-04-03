@@ -2,7 +2,6 @@
 
 from .bootstrap import initialize_selection_system
 from .board_heat import build_board_heat_state
-from .hot_news_state import build_hot_news_state
 from .master_universe import (
     build_master_universe_from_stock_pool,
     initialize_master_universe,
@@ -17,7 +16,6 @@ __all__ = [
     "MasterUniverseStock",
     "SelectionSystemPaths",
     "build_board_heat_state",
-    "build_hot_news_state",
     "build_master_universe_from_stock_pool",
     "initialize_master_universe",
     "initialize_selection_system",
