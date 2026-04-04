@@ -1,0 +1,674 @@
+{
+  "schema_version": 1,
+  "universe_name": "master_universe",
+  "description": "用户自选股票宇宙，来源于手工维护与截图补全",
+  "updated_at": "2026-04-04T01:45:29+08:00",
+  "stocks": [
+    {
+      "symbol": "000063.SZ",
+      "name": "中兴通讯",
+      "sector": "科技",
+      "industry": "通信设备"
+    },
+    {
+      "symbol": "300408.SZ",
+      "name": "三环集团",
+      "sector": "电子元件",
+      "industry": "电子陶瓷"
+    },
+    {
+      "symbol": "000100.SZ",
+      "name": "TCL科技",
+      "sector": "电子",
+      "industry": "面板显示"
+    },
+    {
+      "symbol": "000400.SZ",
+      "name": "许继电气",
+      "sector": "电力设备",
+      "industry": "电网自动化"
+    },
+    {
+      "symbol": "002897.SZ",
+      "name": "意华股份",
+      "sector": "通信设备",
+      "industry": "通信连接器"
+    },
+    {
+      "symbol": "000426.SZ",
+      "name": "兴业银锡",
+      "sector": "有色金属",
+      "industry": "铅锌银"
+    },
+    {
+      "symbol": "000792.SZ",
+      "name": "盐湖股份",
+      "sector": "基础化工",
+      "industry": "钾肥与锂盐"
+    },
+    {
+      "symbol": "000895.SZ",
+      "name": "双汇发展",
+      "sector": "食品饮料",
+      "industry": "肉制品"
+    },
+    {
+      "symbol": "000977.SZ",
+      "name": "浪潮信息",
+      "sector": "计算机",
+      "industry": "服务器"
+    },
+    {
+      "symbol": "00100.HK",
+      "name": "MINIMAX-W",
+      "sector": "人工智能",
+      "industry": "大模型"
+    },
+    {
+      "symbol": "002027.SZ",
+      "name": "分众传媒",
+      "sector": "传媒",
+      "industry": "楼宇广告"
+    },
+    {
+      "symbol": "002028.SZ",
+      "name": "思源电气",
+      "sector": "电力设备",
+      "industry": "电网设备"
+    },
+    {
+      "symbol": "688213.SH",
+      "name": "思特威",
+      "sector": "半导体",
+      "industry": "CIS芯片"
+    },
+    {
+      "symbol": "002080.SZ",
+      "name": "中材科技",
+      "sector": "基础材料",
+      "industry": "复合材料"
+    },
+    {
+      "symbol": "002236.SZ",
+      "name": "大华股份",
+      "sector": "计算机",
+      "industry": "安防设备"
+    },
+    {
+      "symbol": "002299.SZ",
+      "name": "圣农发展",
+      "sector": "农林牧渔",
+      "industry": "白羽鸡养殖"
+    },
+    {
+      "symbol": "002311.SZ",
+      "name": "海大集团",
+      "sector": "农林牧渔",
+      "industry": "饲料与养殖"
+    },
+    {
+      "symbol": "002352.SZ",
+      "name": "顺丰控股",
+      "sector": "交通运输",
+      "industry": "快递物流"
+    },
+    {
+      "symbol": "002371.SZ",
+      "name": "北方华创",
+      "sector": "电子",
+      "industry": "半导体设备"
+    },
+    {
+      "symbol": "00241.HK",
+      "name": "阿里健康",
+      "sector": "医药健康",
+      "industry": "互联网医疗"
+    },
+    {
+      "symbol": "002415.SZ",
+      "name": "海康威视",
+      "sector": "计算机",
+      "industry": "安防设备"
+    },
+    {
+      "symbol": "002460.SZ",
+      "name": "赣锋锂业",
+      "sector": "有色金属",
+      "industry": "锂资源"
+    },
+    {
+      "symbol": "002463.SZ",
+      "name": "沪电股份",
+      "sector": "电子",
+      "industry": "印制电路板"
+    },
+    {
+      "symbol": "002468.SZ",
+      "name": "申通快递",
+      "sector": "交通运输",
+      "industry": "快递物流"
+    },
+    {
+      "symbol": "002472.SZ",
+      "name": "双环传动",
+      "sector": "汽车",
+      "industry": "汽车零部件"
+    },
+    {
+      "symbol": "002475.SZ",
+      "name": "立讯精密",
+      "sector": "电子",
+      "industry": "消费电子制造"
+    },
+    {
+      "symbol": "002497.SZ",
+      "name": "雅化集团",
+      "sector": "基础化工",
+      "industry": "民爆与锂盐"
+    },
+    {
+      "symbol": "002594.SZ",
+      "name": "比亚迪",
+      "sector": "汽车",
+      "industry": "新能源汽车"
+    },
+    {
+      "symbol": "002648.SZ",
+      "name": "卫星化学",
+      "sector": "基础化工",
+      "industry": "化工新材料"
+    },
+    {
+      "symbol": "002706.SZ",
+      "name": "良信股份",
+      "sector": "电力设备",
+      "industry": "低压电器"
+    },
+    {
+      "symbol": "002714.SZ",
+      "name": "牧原股份",
+      "sector": "农林牧渔",
+      "industry": "生猪养殖"
+    },
+    {
+      "symbol": "002747.SZ",
+      "name": "埃斯顿",
+      "sector": "机械设备",
+      "industry": "工业机器人"
+    },
+    {
+      "symbol": "002916.SZ",
+      "name": "深南电路",
+      "sector": "电子",
+      "industry": "印制电路板"
+    },
+    {
+      "symbol": "003816.SZ",
+      "name": "中国广核",
+      "sector": "公用事业",
+      "industry": "核电运营"
+    },
+    {
+      "symbol": "00384.HK",
+      "name": "中国燃气",
+      "sector": "公用事业",
+      "industry": "城市燃气"
+    },
+    {
+      "symbol": "00700.HK",
+      "name": "腾讯控股",
+      "sector": "互联网",
+      "industry": "综合互联网平台"
+    },
+    {
+      "symbol": "01810.HK",
+      "name": "小米集团-W",
+      "sector": "科技消费",
+      "industry": "智能手机与IoT"
+    },
+    {
+      "symbol": "02252.HK",
+      "name": "微创机器人-B",
+      "sector": "医疗器械",
+      "industry": "手术机器人"
+    },
+    {
+      "symbol": "02513.HK",
+      "name": "智谱",
+      "sector": "人工智能",
+      "industry": "大模型"
+    },
+    {
+      "symbol": "09988.HK",
+      "name": "阿里巴巴-W",
+      "sector": "互联网",
+      "industry": "电商与云计算"
+    },
+    {
+      "symbol": "09999.HK",
+      "name": "网易-S",
+      "sector": "互联网",
+      "industry": "游戏与互联网服务"
+    },
+    {
+      "symbol": "300124.SZ",
+      "name": "汇川技术",
+      "sector": "机械设备",
+      "industry": "工业自动化"
+    },
+    {
+      "symbol": "300251.SZ",
+      "name": "光线传媒",
+      "sector": "传媒",
+      "industry": "影视娱乐"
+    },
+    {
+      "symbol": "300274.SZ",
+      "name": "阳光电源",
+      "sector": "电力设备",
+      "industry": "光伏逆变器"
+    },
+    {
+      "symbol": "300308.SZ",
+      "name": "中际旭创",
+      "sector": "通信",
+      "industry": "光模块"
+    },
+    {
+      "symbol": "300394.SZ",
+      "name": "天孚通信",
+      "sector": "通信",
+      "industry": "光器件"
+    },
+    {
+      "symbol": "300442.SZ",
+      "name": "润泽科技",
+      "sector": "通信",
+      "industry": "数据中心"
+    },
+    {
+      "symbol": "300476.SZ",
+      "name": "胜宏科技",
+      "sector": "电子",
+      "industry": "印制电路板"
+    },
+    {
+      "symbol": "300498.SZ",
+      "name": "温氏股份",
+      "sector": "农林牧渔",
+      "industry": "生猪养殖"
+    },
+    {
+      "symbol": "300502.SZ",
+      "name": "新易盛",
+      "sector": "通信",
+      "industry": "光模块"
+    },
+    {
+      "symbol": "300604.SZ",
+      "name": "长川科技",
+      "sector": "电子",
+      "industry": "半导体测试设备"
+    },
+    {
+      "symbol": "300661.SZ",
+      "name": "圣邦股份",
+      "sector": "电子",
+      "industry": "模拟芯片"
+    },
+    {
+      "symbol": "000988.SZ",
+      "name": "华工科技",
+      "sector": "AI产业链",
+      "industry": "光模块"
+    },
+    {
+      "symbol": "300750.SZ",
+      "name": "宁德时代",
+      "sector": "电力设备",
+      "industry": "动力电池"
+    },
+    {
+      "symbol": "300760.SZ",
+      "name": "迈瑞医疗",
+      "sector": "医药生物",
+      "industry": "医疗器械"
+    },
+    {
+      "symbol": "301358.SZ",
+      "name": "湖南裕能",
+      "sector": "电力设备",
+      "industry": "正极材料"
+    },
+    {
+      "symbol": "518800.SH",
+      "name": "黄金基金ETF",
+      "sector": "基金",
+      "industry": "黄金ETF"
+    },
+    {
+      "symbol": "600019.SH",
+      "name": "宝钢股份",
+      "sector": "钢铁",
+      "industry": "普钢"
+    },
+    {
+      "symbol": "600026.SH",
+      "name": "中远海能",
+      "sector": "交通运输",
+      "industry": "油运"
+    },
+    {
+      "symbol": "600028.SH",
+      "name": "中国石化",
+      "sector": "石油石化",
+      "industry": "炼化与综合石化"
+    },
+    {
+      "symbol": "600030.SH",
+      "name": "中信证券",
+      "sector": "非银金融",
+      "industry": "证券"
+    },
+    {
+      "symbol": "600150.SH",
+      "name": "中国船舶",
+      "sector": "国防军工",
+      "industry": "船舶制造"
+    },
+    {
+      "symbol": "600183.SH",
+      "name": "生益科技",
+      "sector": "电子",
+      "industry": "覆铜板"
+    },
+    {
+      "symbol": "600233.SH",
+      "name": "圆通速递",
+      "sector": "交通运输",
+      "industry": "快递物流"
+    },
+    {
+      "symbol": "600258.SH",
+      "name": "首旅酒店",
+      "sector": "社会服务",
+      "industry": "酒店"
+    },
+    {
+      "symbol": "600276.SH",
+      "name": "恒瑞医药",
+      "sector": "医药生物",
+      "industry": "创新药"
+    },
+    {
+      "symbol": "600312.SH",
+      "name": "平高电气",
+      "sector": "电力设备",
+      "industry": "高压开关"
+    },
+    {
+      "symbol": "600406.SH",
+      "name": "国电南瑞",
+      "sector": "电力设备",
+      "industry": "智能电网"
+    },
+    {
+      "symbol": "600426.SH",
+      "name": "华鲁恒升",
+      "sector": "基础化工",
+      "industry": "煤化工"
+    },
+    {
+      "symbol": "600487.SH",
+      "name": "亨通光电",
+      "sector": "通信",
+      "industry": "光纤光缆"
+    },
+    {
+      "symbol": "600521.SH",
+      "name": "华海药业",
+      "sector": "医药生物",
+      "industry": "化学制剂"
+    },
+    {
+      "symbol": "600685.SH",
+      "name": "中船防务",
+      "sector": "国防军工",
+      "industry": "船舶制造"
+    },
+    {
+      "symbol": "600760.SH",
+      "name": "中航沈飞",
+      "sector": "国防军工",
+      "industry": "军机整机"
+    },
+    {
+      "symbol": "600841.SH",
+      "name": "动力新科",
+      "sector": "汽车",
+      "industry": "商用车与柴油发动机"
+    },
+    {
+      "symbol": "600867.SH",
+      "name": "通化东宝",
+      "sector": "医药生物",
+      "industry": "生物制药"
+    },
+    {
+      "symbol": "600875.SH",
+      "name": "东方电气",
+      "sector": "电力设备",
+      "industry": "能源装备"
+    },
+    {
+      "symbol": "600900.SH",
+      "name": "长江电力",
+      "sector": "公用事业",
+      "industry": "水电"
+    },
+    {
+      "symbol": "600905.SH",
+      "name": "三峡能源",
+      "sector": "公用事业",
+      "industry": "风电光伏运营"
+    },
+    {
+      "symbol": "600938.SH",
+      "name": "中国海油",
+      "sector": "石油石化",
+      "industry": "油气开采"
+    },
+    {
+      "symbol": "600941.SH",
+      "name": "中国移动",
+      "sector": "通信",
+      "industry": "电信运营商"
+    },
+    {
+      "symbol": "600989.SH",
+      "name": "宝丰能源",
+      "sector": "基础化工",
+      "industry": "煤化工"
+    },
+    {
+      "symbol": "601012.SH",
+      "name": "隆基绿能",
+      "sector": "电力设备",
+      "industry": "光伏组件"
+    },
+    {
+      "symbol": "601100.SH",
+      "name": "恒立液压",
+      "sector": "机械设备",
+      "industry": "液压件"
+    },
+    {
+      "symbol": "601318.SH",
+      "name": "中国平安",
+      "sector": "非银金融",
+      "industry": "保险"
+    },
+    {
+      "symbol": "601398.SH",
+      "name": "工商银行",
+      "sector": "银行",
+      "industry": "国有大行"
+    },
+    {
+      "symbol": "601607.SH",
+      "name": "上海医药",
+      "sector": "医药生物",
+      "industry": "医药商业"
+    },
+    {
+      "symbol": "601611.SH",
+      "name": "中国核建",
+      "sector": "建筑装饰",
+      "industry": "核电工程"
+    },
+    {
+      "symbol": "601688.SH",
+      "name": "华泰证券",
+      "sector": "非银金融",
+      "industry": "证券"
+    },
+    {
+      "symbol": "601857.SH",
+      "name": "中国石油",
+      "sector": "石油石化",
+      "industry": "油气开采与炼化"
+    },
+    {
+      "symbol": "601877.SH",
+      "name": "正泰电器",
+      "sector": "电力设备",
+      "industry": "低压电器"
+    },
+    {
+      "symbol": "601888.SH",
+      "name": "中国中免",
+      "sector": "商贸零售",
+      "industry": "免税零售"
+    },
+    {
+      "symbol": "601899.SH",
+      "name": "紫金矿业",
+      "sector": "有色金属",
+      "industry": "金铜矿"
+    },
+    {
+      "symbol": "601975.SH",
+      "name": "招商南油",
+      "sector": "交通运输",
+      "industry": "油运"
+    },
+    {
+      "symbol": "601872.SH",
+      "name": "招商轮船",
+      "sector": "交通运输",
+      "industry": "油运"
+    },
+    {
+      "symbol": "601985.SH",
+      "name": "中国核电",
+      "sector": "公用事业",
+      "industry": "核电运营"
+    },
+    {
+      "symbol": "603019.SH",
+      "name": "中科曙光",
+      "sector": "计算机",
+      "industry": "服务器"
+    },
+    {
+      "symbol": "603049.SH",
+      "name": "中策橡胶",
+      "sector": "汽车",
+      "industry": "轮胎"
+    },
+    {
+      "symbol": "603195.SH",
+      "name": "公牛集团",
+      "sector": "家用电器",
+      "industry": "电工照明"
+    },
+    {
+      "symbol": "603259.SH",
+      "name": "药明康德",
+      "sector": "医药生物",
+      "industry": "CXO"
+    },
+    {
+      "symbol": "603501.SH",
+      "name": "豪威集团",
+      "sector": "电子",
+      "industry": "CIS芯片"
+    },
+    {
+      "symbol": "603650.SH",
+      "name": "彤程新材",
+      "sector": "基础化工",
+      "industry": "电子材料"
+    },
+    {
+      "symbol": "603993.SH",
+      "name": "洛阳钼业",
+      "sector": "有色金属",
+      "industry": "铜钴钼资源"
+    },
+    {
+      "symbol": "605117.SH",
+      "name": "德业股份",
+      "sector": "家用电器",
+      "industry": "光储逆变器"
+    },
+    {
+      "symbol": "688012.SH",
+      "name": "中微公司",
+      "sector": "电子",
+      "industry": "半导体设备"
+    },
+    {
+      "symbol": "688041.SH",
+      "name": "海光信息",
+      "sector": "电子",
+      "industry": "CPU芯片"
+    },
+    {
+      "symbol": "688072.SH",
+      "name": "拓荆科技",
+      "sector": "电子",
+      "industry": "半导体设备"
+    },
+    {
+      "symbol": "688146.SH",
+      "name": "中船特气",
+      "sector": "电子",
+      "industry": "电子特气"
+    },
+    {
+      "symbol": "688208.SH",
+      "name": "道通科技",
+      "sector": "计算机",
+      "industry": "汽车智能诊断"
+    },
+    {
+      "symbol": "688271.SH",
+      "name": "联影医疗",
+      "sector": "医药生物",
+      "industry": "医疗影像设备"
+    },
+    {
+      "symbol": "688525.SH",
+      "name": "佰维存储",
+      "sector": "电子",
+      "industry": "存储芯片"
+    },
+    {
+      "symbol": "688981.SH",
+      "name": "中芯国际",
+      "sector": "电子",
+      "industry": "晶圆代工"
+    }
+  ]
+}
