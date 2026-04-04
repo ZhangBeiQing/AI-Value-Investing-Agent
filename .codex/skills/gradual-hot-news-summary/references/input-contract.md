@@ -2,17 +2,13 @@
 
 ## 默认主输入
 
-这个 skill 默认有五个主输入，原则上都应提供。
-
-如果缺失，不要求机械中止；可以降级执行，但必须在输出里明确记录缺失项、fallback 与影响。
-
-缺失、fallback、跳过或错误，至少要记录到 `06_hot_news_state_ops.json` 的 `source_status`。
-
-1. 今日 `03_news_prompt_input.json`
+这个 skill 默认有四个主输入加一个股票宇宙用于背景填充，
+1. 今日 `03_news_prompt_input.json`(这个文件很长，有今天所有的重要消息，你必须完整读完；若文件过长，必须分段顺序读到末尾)
 2. 昨天或之前最近一天的 `06_hot_news_state.json`
 3. 最近一天宏观总结
-4. 最近一天板块热点状态
-5. 今日板块热度摘要 `05_board_heat_digest.json`
+4. 今日板块信息层
+5. 当前股票宇宙 `data/universe/master_universe.json`
+其中今日 `03_news_prompt_input.json`和 `今日板块信息层 `需要你自己运行脚本生成。
 
 ## 读取顺序
 
@@ -20,7 +16,7 @@
 
 读取：
 
-- `data/selection_runs/YYYY-MM-DD/03_news_prompt_input.json`
+- `data/selection_runs/YYYY-MM-DD/03_news_prompt_input.json`(这个文件很长，有今天所有的重要消息，你必须完整读完；若文件过长，必须分段顺序读到末尾)
 
 ### 2. 最近一天主题状态
 
@@ -42,42 +38,57 @@
 
 宏观总结不是补充材料，而是默认校准器。
 
-### 4. 今天板块热点状态
+### 4. 今日板块信息层
 
-优先读取：
+这一层由两份文件加一个接口组成，应合并理解，不要当成并列系统：
 
-- `data/selection_runs/YYYY-MM-DD/05_board_heat_state.json`
+1. `data/selection_runs/YYYY-MM-DD/05_board_heat_state.json`
+2. `data/selection_runs/YYYY-MM-DD/05_board_heat_digest.json`
+3. `query_board_snapshot.py` 接口
 
-若今日不存在，再退回：
+各自职责：
 
-- `data/market_state/board_heat_state/latest.json`
+1. `05_board_heat_state.json`
+   - 今天最热板块的研究结果
+   - 适合快速看“今天市场重点在交易哪些板块”
+   - 不覆盖全部板块
+2. `05_board_heat_digest.json`
+   - 近期板块热点的超级简单概览
+   - 给 AI 提供全局板块导航
+3、`query_board_snapshot.py`
+   - 负责根据需要，如历史主题总结里跟踪的板块，宏观新闻下可能受影响的版本，感兴趣的板块等不在
+     不在05_board_heat_state的板块细节中，则可以调用该接口，查看需要跟踪的板块的详细信息
 
-板块热点状态不是可选附件，而是主题是否被市场确认的重要证据。
+推荐读取顺序：
 
-若使用了 fallback，也应在 `06_hot_news_state_ops.json` 的 `source_status` 中明确记录。
+1. 先读 `05_board_heat_digest.json`
+2. 再看 `05_board_heat_state.json` 里的当日热点板块
+3. 按需调用query_board_snapshot接口查询板块详细信息
 
-### 5. 今天板块热度摘要
-
-读取：
-
-- `data/selection_runs/YYYY-MM-DD/05_board_heat_digest.json`
-
-用途：
-
-1. 给 AI 提供全局板块导航
-2. 提供 `standard_board_names`，约束 `linked_boards`
-3. 让 AI 只在必要时再查具体板块细节
-
-若需要单板块细节，不要整份读取全市场快照，改用：
+query_board_snapshot 使用方法：
 
 ```bash
 python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A" --board-name "板块B"
 ```
 
-若缺失：
+### 5. 当前股票宇宙
 
-- 不建议正常执行
-- 如仍需继续，必须在 `source_status` 中明确记录，并说明 `linked_boards` 约束能力下降
+读取：
+
+- `data/universe/master_universe.json`
+
+用途：
+
+1. 判断某个主题里的股票应写入 `linked_symbols_in_universe`
+2. 判断哪些候选只能保留在 `outside_universe_names_to_check`
+3. 决定 `universe_expansion_hints` 里哪些名字仍需要提示后续补充
+
+要求：
+
+1. 不要凭印象假设股票已经在宇宙里，必须显式对照这个文件
+2. `linked_symbols_in_universe` 只能写当前 `master_universe.json` 中已经存在的 symbol
+3. 若主题里明显值得跟踪的核心股票当前不在宇宙里，可以在总结中保留到 `outside_universe_names_to_check` 或 `universe_expansion_hints`
+4. 若用户本轮已经先更新了 `master_universe.json`，生成当天 `06_hot_news_state.json` 时应优先使用更新后的宇宙，而不是沿用旧 run 的股票映射
 
 ## `linked_boards` 标准板块名清单
 

@@ -170,14 +170,6 @@ def build_board_heat_digest(
     if not isinstance(boards, list):
         boards = []
 
-    standard_board_names = sorted(
-        {
-            str(item.get("board_name") or "").strip()
-            for item in boards
-            if isinstance(item, Mapping) and str(item.get("board_name") or "").strip()
-        }
-    )
-
     return {
         "schema_version": 1,
         "run_date": run_date,
@@ -185,7 +177,6 @@ def build_board_heat_digest(
         "summary": {
             "board_count": len(boards),
         },
-        "standard_board_names": standard_board_names,
         "top_boards_today_by_change_pct": _rank_boards_by_metric(boards, metric="change_pct", top_k=top_k),
         "top_boards_today_by_breadth": _rank_boards_by_metric(
             boards,
