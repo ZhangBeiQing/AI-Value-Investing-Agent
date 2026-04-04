@@ -17,13 +17,11 @@ description: >
 - 主输出：`data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
 - 操作日志：`data/selection_runs/YYYY-MM-DD/06_hot_news_state_ops.json`
 
-当前 skill 按 file-only 方式工作：
+当前 skill 按 "上游准备步骤 + file-only 的总结步骤" 方式工作：
 
 1. 读取本地输入文件
 2. 读取最近一天 `06_hot_news_state.json`
 3. 直接生成今天新的 `06_hot_news_state.json` 和 `06_hot_news_state_ops.json`
-
-默认不把 `06_hot_news_state.json` 额外镜像到 `data/market_state/hot_news_state/`。
 
 ## 先读什么
 
@@ -63,21 +61,8 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 1. 今日 `03_news_prompt_input.json`
 2. 最近一天 `06_hot_news_state.json`
 3. 最近一天宏观总结
-4. 最近一天板块热点状态
-5. 今日板块热度摘要 `05_board_heat_digest.json`
-
-板块层规则：
-
-1. 先读 `05_board_heat_digest.json`
-2. 用其中的 `standard_board_names` 约束 `linked_boards`
-3. 不要直接整份读取 `daily_snapshots` 或 `market_snapshots`
-4. 若某个主题需要更细板块证据，再运行：
-
-```bash
-python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A" --board-name "板块B"
-```
-
-`linked_boards` 只能从 [输入约定](references/input-contract.md) 里的标准板块名清单中选。
+4. 今日板块信息层
+5. 当前股票宇宙 `data/universe/master_universe.json`
 
 ### 3. 生成主题级研究记忆
 
@@ -130,8 +115,9 @@ python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A" 
 - 不要替代板块热度层
 - 不要直接做最终选股结论
 - 不要把全部新闻直接挂到股票宇宙上
+- `linked_symbols_in_universe` 必须显式对照 `data/universe/master_universe.json`
 - 不要省略 `history_anchor / today_update / current_state / expected_duration / forward_paths / scenario_tree / key_risks / next_day_watchlist`
-- `linked_boards` 必须优先使用 `05_board_heat_digest.json` 中的标准板块名
+- `linked_boards` 必须使用 [输入约定](references/input-contract.md) 中的标准板块名清单
 - 不要把昨天出现过的主题机械地全部延续到今天
 - 不要把已结束、已证伪、已完全失去交易性的主题继续保留在今天的 `06_hot_news_state.json`
 - 任何被移出今天主上下文的主题，都必须在 `06_hot_news_state_ops.json` 中写明移出日期、原因、最后一次保留日期、是否做过联网复核

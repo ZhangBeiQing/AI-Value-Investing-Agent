@@ -391,7 +391,7 @@
 4. `today_delta`
 5. `strength`
 6. `linked_boards`
-   - 必须优先使用 `05_board_heat_digest.json` 里的 `standard_board_names`
+   - 必须使用 [输入约定](input-contract.md) 中的标准板块名清单
 7. `linked_symbols`
 8. `evidence_news_ids`
 
