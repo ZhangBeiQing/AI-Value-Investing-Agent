@@ -98,6 +98,9 @@ data/merged.jsonl
 !/data/macro_economy/*.md
 !/data/universe/master_universe.json
 !/data/skill_runs/**/05_decision.json
+!/data/agent_data/
+!/data/agent_data/deepseek-reasoner/
+!/data/agent_data/deepseek-reasoner/**
 !/data/stock_info/
 !/data/stock_info/**
 data/stock_info/*/financials_cache/
