@@ -232,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force-refresh-price",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Force refresh price cache for all target symbols (default: disabled)",
     )
     parser.add_argument("--max-workers", type=int, default=4, help="basic_stock_info max workers")
