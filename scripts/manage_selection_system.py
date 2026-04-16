@@ -100,6 +100,61 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Deep research model name.",
     )
 
+    announcements_parser = subparsers.add_parser(
+        "build-announcements",
+        help="Build recent company-announcement summaries for the master universe.",
+    )
+    announcements_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    announcements_parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=30,
+        help="Lookback window for announcements. Default: 30",
+    )
+    announcements_parser.add_argument(
+        "--max-items-per-symbol",
+        type=int,
+        default=6,
+        help="Max announcement titles kept per symbol. Default: 6",
+    )
+    announcements_parser.add_argument(
+        "--refresh-missing",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Deprecated flag. build-announcements now always updates all universe symbols before aggregation.",
+    )
+    announcements_parser.add_argument(
+        "--force-refresh-disclosures",
+        action="store_true",
+        help="Deprecated compatibility flag. build-announcements already refreshes all universe symbols before aggregation.",
+    )
+
+    shared_context_parser = subparsers.add_parser(
+        "build-shared-context",
+        help="Build the shared selection-context markdown from current upstream artifacts.",
+    )
+    shared_context_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    shared_context_parser.add_argument(
+        "--announcement-limit",
+        type=int,
+        default=24,
+        help="How many announcement rows to include in the markdown. Default: 24",
+    )
+
+    candidate_parser = subparsers.add_parser(
+        "build-candidate-pools",
+        help="Prepare local-agent inputs for short/long candidate selection.",
+    )
+    candidate_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    candidate_parser.add_argument("--short-count", type=int, default=15, help="Short-book candidate count.")
+    candidate_parser.add_argument("--long-count", type=int, default=15, help="Long-book candidate count.")
+
+    merge_parser = subparsers.add_parser(
+        "merge-candidates",
+        help="Merge short/long pools and build the deep-research queue.",
+    )
+    merge_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+
     return parser
 
 
@@ -196,6 +251,76 @@ def _handle_build_board_heat_state(
     return 0
 
 
+def _handle_build_announcements(
+    base_dir: str,
+    run_date: str,
+    lookback_days: int,
+    max_items_per_symbol: int,
+    refresh_missing: bool,
+    force_refresh_disclosures: bool,
+) -> int:
+    from services.selection_system.announcement_summary import build_recent_company_announcements
+
+    outputs = build_recent_company_announcements(
+        run_date,
+        base_dir=base_dir,
+        lookback_days=lookback_days,
+        max_items_per_symbol=max_items_per_symbol,
+        refresh_missing=refresh_missing,
+        force_refresh_disclosures=force_refresh_disclosures,
+    )
+    LOGGER.info("recent announcements 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_build_shared_context(
+    base_dir: str,
+    run_date: str,
+    announcement_limit: int,
+) -> int:
+    from services.selection_system.shared_context import build_shared_selection_context
+
+    outputs = build_shared_selection_context(
+        run_date,
+        base_dir=base_dir,
+        announcement_limit=announcement_limit,
+    )
+    LOGGER.info("shared selection context 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_build_candidate_pools(
+    base_dir: str,
+    run_date: str,
+    short_count: int,
+    long_count: int,
+) -> int:
+    from services.selection_system.candidate_selection import build_candidate_pools
+
+    outputs = build_candidate_pools(
+        run_date,
+        base_dir=base_dir,
+        short_count=short_count,
+        long_count=long_count,
+    )
+    LOGGER.info("candidate pools 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_merge_candidates(
+    base_dir: str,
+    run_date: str,
+) -> int:
+    from services.selection_system.candidate_selection import merge_candidate_pools
+
+    outputs = merge_candidate_pools(
+        run_date,
+        base_dir=base_dir,
+    )
+    LOGGER.info("candidate merge 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -227,6 +352,33 @@ def main() -> int:
             args.top_n,
             args.stocks_per_board,
             args.model,
+        )
+    if args.command == "build-announcements":
+        return _handle_build_announcements(
+            args.base_dir,
+            args.date,
+            args.lookback_days,
+            args.max_items_per_symbol,
+            args.refresh_missing,
+            args.force_refresh_disclosures,
+        )
+    if args.command == "build-shared-context":
+        return _handle_build_shared_context(
+            args.base_dir,
+            args.date,
+            args.announcement_limit,
+        )
+    if args.command == "build-candidate-pools":
+        return _handle_build_candidate_pools(
+            args.base_dir,
+            args.date,
+            args.short_count,
+            args.long_count,
+        )
+    if args.command == "merge-candidates":
+        return _handle_merge_candidates(
+            args.base_dir,
+            args.date,
         )
     parser.error(f"未知命令: {args.command}")
     return 2

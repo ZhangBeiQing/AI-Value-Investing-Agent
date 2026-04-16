@@ -1,0 +1,4 @@
+interface:
+  display_name: "自动选股流水线"
+  short_description: "自动补齐输入并生成每日08/09选股输入与最终选股决策"
+  default_prompt: "当用户要求开始今天自动选股、生成今日选股结果、运行每日选股流水线时，先补齐宏观总结、渐进式新闻主题与snapshot，再生成08/09输入，并分别用两个subagent完成短期池和长期池选股。"

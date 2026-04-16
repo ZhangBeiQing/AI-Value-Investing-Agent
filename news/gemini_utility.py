@@ -11,6 +11,7 @@ from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.output import save_output, text_from_rendered
 from marker.config.parser import ConfigParser
+from surya.settings import settings as surya_settings
 
 LOGGER = get_logger("PDFMarkdownConverter")
 
@@ -30,58 +31,73 @@ class PDFMarkdownConverter:
     def __init__(self):
         if not self.initialized:
             LOGGER.info("检查 marker 模型缓存")
-            
-            # 检查模型是否已经下载到缓存目录
-            cache_dir = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'datalab', 'datalab', 'Cache', 'models')
+
+            cache_dir = Path(surya_settings.MODEL_CACHE_DIR)
             models_exist = self._check_models_exist(cache_dir)
-            
+
             if models_exist:
-                LOGGER.info("发现已缓存模型，快速加载")
+                LOGGER.info("发现已缓存模型，快速加载: %s", cache_dir)
             else:
-                LOGGER.info("首次运行，需要下载模型")
-            
+                LOGGER.info("模型缓存不完整，将按需下载缺失文件: %s", cache_dir)
+
             LOGGER.info("开始加载模型")
             start_time = time.time()
-            
+
             if not PDFMarkdownConverter._models_loaded:
                 PDFMarkdownConverter._model_dict = create_model_dict()
                 PDFMarkdownConverter._models_loaded = True
-            
+
             self.converter = PdfConverter(
                 artifact_dict=PDFMarkdownConverter._model_dict,
                 config={"output_format": "markdown"}
             )
-            
+
             load_time = time.time() - start_time
             LOGGER.info("模型加载完成，耗时 %.2f 秒", load_time)
             self.initialized = True
-    
-    def _check_models_exist(self, cache_dir):
-        """检查必要的模型是否已经存在于缓存目录中"""
-        if not os.path.exists(cache_dir):
-            return False
-        
-        # 检查必要的模型目录
-        required_models = [
-            'text_detection',
-            'text_recognition', 
-            'layout',
-            'table_recognition',
-            'ocr_error_detection'
+
+    def _required_model_dirs(self, cache_dir: Path) -> list[Path]:
+        checkpoints = [
+            surya_settings.DETECTOR_MODEL_CHECKPOINT,
+            surya_settings.RECOGNITION_MODEL_CHECKPOINT,
+            surya_settings.LAYOUT_MODEL_CHECKPOINT,
+            surya_settings.TABLE_REC_MODEL_CHECKPOINT,
+            surya_settings.OCR_ERROR_MODEL_CHECKPOINT,
         ]
-        
-        for model in required_models:
-            model_path = os.path.join(cache_dir, model)
-            if not os.path.exists(model_path):
-                return False
-            
-            # 检查模型目录是否有内容
+        required_dirs: list[Path] = []
+        for checkpoint in checkpoints:
+            relative = checkpoint.replace("s3://", "", 1).strip("/")
+            required_dirs.append(cache_dir / relative)
+        return required_dirs
+
+    def _check_models_exist(self, cache_dir: Path) -> bool:
+        """检查 marker/surya 所需模型是否已完整缓存。"""
+        if not cache_dir.exists():
+            return False
+
+        missing_paths: list[Path] = []
+        for model_dir in self._required_model_dirs(cache_dir):
+            manifest_path = model_dir / "manifest.json"
+            if not model_dir.exists() or not manifest_path.exists():
+                missing_paths.append(model_dir)
+                continue
+
             try:
-                if not os.listdir(model_path):
-                    return False
-            except:
-                return False
-        
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                expected_files = manifest.get("files") or []
+                if not expected_files:
+                    missing_paths.append(model_dir)
+                    continue
+                for filename in expected_files:
+                    if not (model_dir / filename).exists():
+                        missing_paths.append(model_dir / filename)
+            except Exception:
+                missing_paths.append(manifest_path)
+
+        if missing_paths:
+            LOGGER.info("缺失模型文件: %s", ", ".join(str(path) for path in missing_paths))
+            return False
+
         return True
     
     def convert(self, file_path, output_dir=None):
