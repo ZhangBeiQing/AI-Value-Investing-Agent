@@ -23,6 +23,18 @@
       "industry": "面板显示"
     },
     {
+      "symbol": "600089.SH",
+      "name": "特变电工",
+      "sector": "电网",
+      "industry": "变压器"
+    },
+    {
+      "symbol": "601179.SH",
+      "name": "中国西电",
+      "sector": "电网",
+      "industry": "电网设备"
+    },
+    {
       "symbol": "000400.SZ",
       "name": "许继电气",
       "sector": "电力设备",
@@ -60,7 +72,7 @@
     },
     {
       "symbol": "00100.HK",
-      "name": "MINIMAX-W",
+      "name": "MINIMAX-WP",
       "sector": "人工智能",
       "industry": "大模型"
     },
