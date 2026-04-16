@@ -1126,6 +1126,65 @@ def build_basic_snapshot(
     )
 
 
+def load_basic_snapshot_from_cache(
+    symbols: Iterable[str],
+    run_date: str,
+    *,
+    base_dir: Optional[str | Path] = None,
+) -> Dict[str, Any]:
+    """Load snapshot rows strictly from basic_info cache without recomputing missing symbols."""
+
+    analysis_dt = _parse_analysis_time(run_date)
+    analysis_date = (
+        analysis_dt.date() if analysis_dt is not None else datetime.now().date()
+    )
+    normalized_symbols, normalization_errors = _normalize_stock_list(symbols)
+    resolved_base_dir = resolve_base_dir(base_dir)
+
+    target_dates: Dict[str, date] = {}
+    valid_symbols: List[str] = []
+    for symbol in normalized_symbols:
+        try:
+            info = parse_symbol(symbol)
+        except SymbolFormatError as exc:
+            normalization_errors[symbol] = str(exc)
+            continue
+        try:
+            trade_date = get_latest_trading_day(analysis_date, info.calendar, LOGGER)
+        except Exception as exc:
+            normalization_errors[symbol] = f"无法确定交易日: {exc}"
+            continue
+        target_dates[symbol] = trade_date
+        valid_symbols.append(symbol)
+
+    cached_stocks, missing_symbols = _load_cached_stocks(
+        valid_symbols,
+        resolved_base_dir,
+        target_dates,
+    )
+
+    errors: Dict[str, str] = {}
+    errors.update(normalization_errors)
+    for symbol in missing_symbols:
+        errors[symbol] = "cache_missing"
+
+    timestamp_date = (
+        max(target_dates.values()).strftime("%Y-%m-%d")
+        if target_dates
+        else analysis_date.strftime("%Y-%m-%d")
+    )
+    payload: Dict[str, Any] = {
+        "timestamp": timestamp_date,
+        "data_source": "basic_info_cache only",
+        "stocks_count": len(cached_stocks),
+        "stocks": cached_stocks,
+        "field_notes": FIELD_NOTES,
+    }
+    if errors:
+        payload["errors"] = errors
+    return payload
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="basic_info 工具")
     parser.add_argument(

@@ -54,14 +54,6 @@ class SelectionSystemPaths:
         return self.board_signals_dir / "manifest.json"
 
     @property
-    def stock_heat_dir(self) -> Path:
-        return self.market_state_dir / "stock_heat"
-
-    @property
-    def stock_heat_manifest_path(self) -> Path:
-        return self.stock_heat_dir / "manifest.json"
-
-    @property
     def board_heat_state_dir(self) -> Path:
         return self.market_state_dir / "board_heat_state"
 
@@ -102,14 +94,14 @@ class SelectionSystemPaths:
     def run_news_prompt_input_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "03_news_prompt_input.json"
 
+    def run_recent_company_announcements_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "04_recent_company_announcements.json"
+
     def run_board_signals_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "04_board_signals.json"
 
     def board_signals_daily_path(self, run_date: str) -> Path:
         return self.board_signals_dir / f"{run_date}.json"
-
-    def run_stock_heat_signals_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "05_stock_heat_signals.json"
 
     def run_board_candidates_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "04_board_candidates.json"
@@ -126,21 +118,41 @@ class SelectionSystemPaths:
     def run_hot_news_ops_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "06_hot_news_state_ops.json"
 
+    def run_shared_selection_context_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "07_shared_selection_context.md"
+
+    def run_short_book_candidates_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "08_short_book_candidates.json"
+
+    def run_short_book_input_markdown_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "08_short_book_input.md"
+
+    def run_short_book_input_payload_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "08_short_book_input.json"
+
+    def run_long_book_candidates_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "09_long_book_candidates.json"
+
+    def run_long_book_input_markdown_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "09_long_book_input.md"
+
+    def run_long_book_input_payload_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "09_long_book_input.json"
+
+    def run_candidate_merge_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "10_candidate_merge.json"
+
+    def run_deep_research_queue_path(self, run_date: str) -> Path:
+        return self.run_dir(run_date) / "11_deep_research_queue.json"
+
     def board_heat_state_daily_path(self, run_date: str) -> Path:
         return self.board_heat_state_dir / f"{run_date}.json"
-
-    def stock_heat_daily_path(self, run_date: str) -> Path:
-        return self.stock_heat_dir / f"{run_date}.json"
-
-    def run_stock_heat_path(self, run_date: str) -> Path:
-        return self.run_stock_heat_signals_path(run_date)
 
     def ensure_directories(self) -> None:
         for path in (
             self.universe_dir,
             self.market_state_dir,
             self.board_signals_dir,
-            self.stock_heat_dir,
             self.board_heat_state_dir,
             self.symbol_memory_dir,
             self.selection_runs_dir,
