@@ -68,12 +68,11 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 ### 步骤 4：读取宏观和大盘信息
 主 agent 阅读 `01_global_context.md`，提炼本轮共享的宏观、指数、流动性、事件风险背景。
 
-### 步骤 5：读取上一交易日的决策（保持连贯性）
-**⚠️ 关键步骤：在分发个股任务前，主 agent 必须先阅读上一交易日的决策文件**
-- 定位上一个交易日：在 `data/skill_runs/` 目录下找到日期早于当前日期的最近一个目录
-- 读取该目录下的 `05_decision.json`
-- 对持仓股票提炼上次的估值锚、目标价、止损价、关键跟踪变量
-- 这些信息必须进入每个 subagent 的共享 briefing，避免今天的个股分析丢失连续性
+### 步骤 5：读取当前账本的历史交易总结（保持连贯性）
+**⚠️ 关键步骤：主 agent 不再默认阅读上一交易日整份 `05_decision.json`。**
+- 主 agent 应优先依赖每只股票研究包 `04_stock_research/{symbol}_research.md` 中的“最近一次交易日历史交易总结”段落恢复该股票的历史锚点
+- 若该段为空，再降级查询当前账本 signature 对应的 `decision_summary.json` 中该股票最近一次历史记录
+- 目标仍然是提炼上次的估值锚、目标价、止损价、关键跟踪变量，但不再要求整份上一交易日 `05_decision.json` 作为主来源
 
 ### 步骤 6：主 agent 构造共享 briefing
 主 agent 在启动 subagent 前，先形成一份统一共享 briefing，至少包含：
@@ -81,8 +80,8 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 - `03_agent_input.md` 的核心规则与 `05_decision.json` 输出契约
 - `01_global_context.md` 的宏观与市场摘要
 - 主agent从 `02_basic_snapshot_payload.json` 提炼出的该股票快照锚点
-- 上一交易日 `05_decision.json` 中与该股票相关的历史估值锚
-- 上一交易日 `next_day_watchlist` 中今天必须核验的遗留跟踪点（如果存在）
+- 本股研究包中已注入的最近一次历史交易锚点
+- 最近一次历史记录中的 `next_day_watchlist` 遗留跟踪点（如果存在）
 - 主agent对该股指定的 `search_brief`：至少包括今天异常涨跌/放量需要解释的现象、研究包里可能过时或矛盾的事实、以及必须联网确认的高时效问题
 - 本轮分析的统一口径：事实与推断分离、先判断今日是否允许重算估值锚、估值写法、庭审写法、禁止事项
 

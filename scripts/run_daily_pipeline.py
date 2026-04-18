@@ -39,13 +39,23 @@ def main() -> None:
         default="",
         help="Agent signature used for historical context and trade summary files.",
     )
+    parser.add_argument(
+        "--manifest",
+        default="auto",
+        help="Run manifest path or 'auto' to build from selection outputs.",
+    )
     args = parser.parse_args()
+
+    prompt_config = args.prompt_config
+    if args.manifest == "auto" and not args.signature and prompt_config == str(SKILL_FLOW_CONFIG):
+        prompt_config = None
 
     run_daily_pipeline(
         args.run_date,
         base_dir=args.base_dir,
-        prompt_config=args.prompt_config,
+        prompt_config=prompt_config,
         signature=args.signature,
+        manifest_path=args.manifest,
     )
 
 

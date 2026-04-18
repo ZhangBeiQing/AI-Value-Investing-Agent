@@ -261,7 +261,7 @@ def execute_trade_from_decision(
     summary_date = decision.get("summary_date") or run_date
 
     resolved_signature = signature or (
-        get_config_value("SIGNATURE") or "deepseek-reasoner"
+        get_config_value("SIGNATURE") or "book-fixed_tracked"
     )
     ensure_runtime_env(resolved_output_dir, resolved_signature, summary_date)
     ensure_position_file(resolved_signature, summary_date)
@@ -335,7 +335,7 @@ def merge_trade_summary(
         signature
         or os.environ.get("SIGNATURE")
         or get_config_value("SIGNATURE")
-        or "deepseek-reasoner"
+        or "book-fixed_tracked"
     )
 
     initialize_data_files(resolved_signature)

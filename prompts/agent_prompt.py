@@ -28,13 +28,32 @@ from tools.price_tools import (
 )
 from tools.general_tools import get_config_value
 from configs.stock_pool import TRACKED_SYMBOLS, TRACKED_A_STOCKS
+from utlity.stock_utils import parse_symbol
 
 all_stock_pool_symbols = TRACKED_SYMBOLS
 
-stock_pool_block = "\n".join(
-    f"{idx}. {entry.symbol} {entry.name}（{entry.description}）"
-    for idx, entry in enumerate(TRACKED_A_STOCKS, start=1)
-)
+
+def _display_name(symbol: str) -> str:
+    if symbol in NAME_BY_SYMBOL:
+        return NAME_BY_SYMBOL[symbol]
+    info = parse_symbol(symbol)
+    return info.stock_name or symbol
+
+
+def _build_stock_pool_block(symbols: List[str]) -> str:
+    tracked_map = {entry.symbol: entry for entry in TRACKED_A_STOCKS}
+    lines: List[str] = []
+    for idx, symbol in enumerate(symbols, start=1):
+        tracked = tracked_map.get(symbol)
+        if tracked is not None:
+            lines.append(f"{idx}. {tracked.symbol} {tracked.name}（{tracked.description}）")
+            continue
+        stock_name = _display_name(symbol)
+        lines.append(f"{idx}. {symbol} {stock_name}")
+    return "\n".join(lines)
+
+
+stock_pool_block = _build_stock_pool_block([entry.symbol for entry in TRACKED_A_STOCKS])
 
 NAME_BY_SYMBOL = {entry.symbol: entry.name for entry in TRACKED_A_STOCKS}
 
@@ -329,8 +348,16 @@ def _format_metric_dict(raw: Dict[str, float], suffix: str) -> Dict[str, float]:
     return formatted
 
 
-def get_agent_system_prompt(today_date: str, signature: str) -> str:
+def get_agent_system_prompt(
+    today_date: str,
+    signature: str,
+    *,
+    stock_codes: Optional[List[str]] = None,
+    stock_pool_block_override: Optional[str] = None,
+) -> str:
     LOGGER.info("生成 agent prompt: signature=%s, today_date=%s", signature, today_date)
+    target_symbols = stock_codes or list(all_stock_pool_symbols)
+    target_stock_pool_block = stock_pool_block_override or _build_stock_pool_block(target_symbols)
     
     
     # 只有当模板仍包含 {historical_summary} 占位符时，才计算历史交易总结。
@@ -346,8 +373,8 @@ def get_agent_system_prompt(today_date: str, signature: str) -> str:
     yesterday_date = yesterday_dt.strftime("%Y-%m-%d")
     
     # Get yesterday's buy and sell prices
-    yesterday_buy_prices, yesterday_sell_prices = get_yesterday_open_and_close_price(today_date, all_stock_pool_symbols)
-    today_buy_price = get_open_prices(today_date, all_stock_pool_symbols)
+    yesterday_buy_prices, yesterday_sell_prices = get_yesterday_open_and_close_price(today_date, target_symbols)
+    today_buy_price = get_open_prices(today_date, target_symbols)
     today_init_position, _ = get_latest_position(today_date, signature)
     position_costs, position_profit = compute_position_costs_and_profit(today_date, signature)
 
@@ -380,7 +407,7 @@ def get_agent_system_prompt(today_date: str, signature: str) -> str:
         # 延迟导入，避免循环依赖
         from trade_summary import get_portfolio_historical_context
         # 读取股票池最近N次（默认1）合并后的操作摘要
-        portfolio_hist = get_portfolio_historical_context(signature, [s.symbol for s in TRACKED_A_STOCKS], n=1)
+        portfolio_hist = get_portfolio_historical_context(signature, target_symbols, n=1)
         historical_summary_value = json.dumps(portfolio_hist, ensure_ascii=False, indent=2)
     except Exception:
         historical_summary_value = SUMMARY_PLACEHOLDER
@@ -412,7 +439,7 @@ def get_agent_system_prompt(today_date: str, signature: str) -> str:
     config = load_prompt_config()
     return build_prompt(
         config,
-        stock_pool_block=stock_pool_block,
+        stock_pool_block=target_stock_pool_block,
         context=context,
     )
 
