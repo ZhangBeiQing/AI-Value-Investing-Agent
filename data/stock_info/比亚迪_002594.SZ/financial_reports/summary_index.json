@@ -1,0 +1,33 @@
+{
+  "symbol": "002594.SZ",
+  "stock_name": "比亚迪",
+  "latest_completed_report": {
+    "announcement_id": "1225045351",
+    "report_date": "2026-03-28",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224776127",
+    "paired_previous_report_date": "2025-10-31",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/比亚迪_002594.SZ/financial_reports/20260328.md",
+    "generated_at": "2026-04-17T19:34:14.223873"
+  },
+  "history": [
+    {
+      "announcement_id": "1225045351",
+      "report_date": "2026-03-28",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224776127",
+      "paired_previous_report_date": "2025-10-31",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/比亚迪_002594.SZ/financial_reports/20260328.md",
+      "generated_at": "2026-04-17T19:34:14.223873"
+    },
+    {
+      "announcement_id": "1225045350",
+      "report_date": "2026-03-28",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224776127",
+      "paired_previous_report_date": "2025-10-31",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/比亚迪_002594.SZ/financial_reports/20260328.md",
+      "generated_at": "2026-04-17T19:26:04.518740"
+    }
+  ]
+}

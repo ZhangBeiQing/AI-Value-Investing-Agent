@@ -1,0 +1,33 @@
+{
+  "symbol": "300274.SZ",
+  "stock_name": "阳光电源",
+  "latest_completed_report": {
+    "announcement_id": "1225066678",
+    "report_date": "2026-04-01",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224755574",
+    "paired_previous_report_date": "2025-10-29",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/阳光电源_300274.SZ/financial_reports/20260401.md",
+    "generated_at": "2026-04-17T19:33:55.351404"
+  },
+  "history": [
+    {
+      "announcement_id": "1225066678",
+      "report_date": "2026-04-01",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224755574",
+      "paired_previous_report_date": "2025-10-29",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/阳光电源_300274.SZ/financial_reports/20260401.md",
+      "generated_at": "2026-04-17T19:33:55.351404"
+    },
+    {
+      "announcement_id": "1225066677",
+      "report_date": "2026-04-01",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224755574",
+      "paired_previous_report_date": "2025-10-29",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/阳光电源_300274.SZ/financial_reports/20260401.md",
+      "generated_at": "2026-04-17T19:03:24.092414"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "symbol": "300124.SZ",
+  "stock_name": "汇川技术",
+  "latest_completed_report": {
+    "announcement_id": "1223371431",
+    "report_date": "2025-04-29",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224727210",
+    "paired_previous_report_date": "2025-10-24",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/汇川技术_300124.SZ/financial_reports/20250429.md",
+    "generated_at": "2026-04-18T10:06:24+08:00"
+  },
+  "history": [
+    {
+      "announcement_id": "1223371431",
+      "report_date": "2025-04-29",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224727210",
+      "paired_previous_report_date": "2025-10-24",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/汇川技术_300124.SZ/financial_reports/20250429.md",
+      "generated_at": "2026-04-18T10:06:24+08:00"
+    }
+  ]
+}

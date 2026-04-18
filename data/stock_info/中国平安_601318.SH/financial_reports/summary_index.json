@@ -1,0 +1,11 @@
+{
+  "latest_announcement_id": "1225038263",
+  "latest_report_date": "2026-03-27",
+  "reports": [
+    {
+      "announcement_id": "1225038263",
+      "report_date": "2026-03-27",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中国平安_601318.SH/financial_reports/20260327.md"
+    }
+  ]
+}

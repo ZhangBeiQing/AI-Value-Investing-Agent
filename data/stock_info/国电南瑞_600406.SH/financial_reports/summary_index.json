@@ -1,0 +1,24 @@
+{
+  "symbol": "600406.SH",
+  "stock_name": "国电南瑞",
+  "latest_completed_report": {
+    "announcement_id": "1224769921",
+    "report_date": "2025-10-31",
+    "report_type": "q3",
+    "paired_previous_announcement_id": "1224591219",
+    "paired_previous_report_date": "2025-08-28",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/国电南瑞_600406.SH/financial_reports/20251031.md",
+    "generated_at": "2026-04-17T19:25:45.442497"
+  },
+  "history": [
+    {
+      "announcement_id": "1224769921",
+      "report_date": "2025-10-31",
+      "report_type": "q3",
+      "paired_previous_announcement_id": "1224591219",
+      "paired_previous_report_date": "2025-08-28",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/国电南瑞_600406.SH/financial_reports/20251031.md",
+      "generated_at": "2026-04-17T19:25:45.442497"
+    }
+  ]
+}
