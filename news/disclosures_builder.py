@@ -28,7 +28,11 @@ from configs.stock_pool import TRACKED_A_STOCKS
 from openai import OpenAI
 from shared_data_access.cache_registry import CacheKind, build_cache_dir
 from shared_data_access.data_access import SharedDataAccess
-from news.gemini_utility import basic_convert
+from news.gemini_utility import (
+    PDFMarkdownConverter,
+    is_pdf_markdown_cache_current,
+    write_pdf_conversion_artifacts,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -935,19 +939,20 @@ def convert_pdf_to_markdown(pdf_path: Path, md_path: Path) -> Optional[str]:
     Returns:
         Optional[str]: 转换后的Markdown文本，如果失败则返回None
     """
-    if md_path.exists() and md_path.stat().st_size > 0:
+    if is_pdf_markdown_cache_current(md_path, pdf_path, profile="financial_report"):
         _log(f"使用缓存的Markdown: {md_path}")
         return md_path.read_text(encoding="utf-8")
 
     _log(f"开始将PDF转换为Markdown: {pdf_path}")
     try:
-        markdown_content = basic_convert(str(pdf_path), output_dir=str(md_path.parent))
+        converter = PDFMarkdownConverter()
+        result = converter.convert_with_details(str(pdf_path), output_dir=None, profile="financial_report")
+        markdown_content = result.markdown
         if markdown_content:
-            if md_path.exists() and md_path.stat().st_size == 0:
-                md_path.write_text(markdown_content, encoding="utf-8")
+            write_pdf_conversion_artifacts(md_path, result, pdf_path)
             _log(f"Markdown转换成功: {md_path}")
             return markdown_content
-        _log(f"PDF转Markdown失败: basic_convert没有返回有效内容 for {pdf_path}")
+        _log(f"PDF转Markdown失败: 转换器没有返回有效内容 for {pdf_path}")
         return None
     except Exception as e:
         _log(f"PDF转Markdown过程出错: {pdf_path}, 错误: {e}")
@@ -1187,6 +1192,93 @@ def update_disclosures_for_stock(
         return 0
     _log(f"更新完成，共新增{len(items)}条")
     return len(items)
+
+
+def sync_financial_reports_for_stock(
+    symbol_info: SymbolInfo,
+    *,
+    lookback_days: int = 550,
+    convert_markdown: bool = True,
+    data_access: Optional[SharedDataAccess] = None,
+) -> int:
+    """同步财报公告到 disclosures 缓存，但不走普通公告摘要流程。"""
+    stock_name = symbol_info.stock_name or symbol_info.symbol
+    symbol = symbol_info.symbol
+    _log(f"开始同步财报公告: {stock_name}({symbol}), lookback={lookback_days}天")
+
+    idx_path = index_path(symbol_info)
+    idx = load_index(idx_path)
+
+    access = data_access or SharedDataAccess(logger=LOGGER)
+    prepared = access.prepare_dataset(
+        symbolInfo=symbol_info,
+        as_of_date=datetime.now().strftime("%Y-%m-%d"),
+        include_disclosures=True,
+        disclosure_lookback_days=lookback_days,
+    )
+    disclosure_bundle = prepared.disclosures
+    if disclosure_bundle is None or disclosure_bundle.frame.empty:
+        _log("公告列表为空，返回")
+        return 0
+
+    df = disclosure_bundle.frame
+    synced = 0
+    for _, row in df.iterrows():
+        row_dict = row.to_dict()
+        stock_code, title, date, url, ann_id = parse_announcement_row(row_dict)
+        if not is_financial_report(title):
+            continue
+
+        key = ann_id or _hash_key(title, date)
+        meta = idx.get(key)
+        if meta is None:
+            meta = AnnouncementMeta(
+                announcement_id=ann_id or key,
+                org_id=str(row_dict.get("orgId") or ""),
+                stock_code=stock_code,
+                title=title,
+                date=date,
+                url=url,
+                category="Financial_Report",
+                is_financial_report=True,
+                dedupe_key=key,
+            )
+        else:
+            meta.is_financial_report = True
+            meta.category = meta.category or "Financial_Report"
+
+        if not meta.downloaded:
+            file_name = f"{date}__{stock_code}__{meta.announcement_id}__{_slugify(title)}.pdf"
+            out = pdfs_dir(symbol_info) / file_name
+            ok = download_pdf(url, out)
+            if ok:
+                meta.pdf_path = str(out)
+                meta.downloaded = True
+
+        needs_markdown_refresh = False
+        if convert_markdown and meta.downloaded:
+            if not meta.md_path:
+                needs_markdown_refresh = True
+            elif meta.pdf_path:
+                needs_markdown_refresh = not is_pdf_markdown_cache_current(
+                    Path(meta.md_path),
+                    Path(meta.pdf_path),
+                    profile="financial_report",
+                )
+
+        if needs_markdown_refresh:
+            md_file_name = f"{date}__{stock_code}__{meta.announcement_id}__{_slugify(title)}.md"
+            md_path_obj = md_dir(symbol_info) / md_file_name
+            markdown_content = convert_pdf_to_markdown(Path(meta.pdf_path), md_path_obj)
+            if markdown_content:
+                meta.md_path = str(md_path_obj)
+
+        idx[key] = meta
+        synced += 1
+
+    save_index_merge(idx_path, idx)
+    _log(f"财报公告同步完成，共处理{synced}条")
+    return synced
 
 
 def update_all_tracked_stocks(tracked: List[SymbolInfo], model: str, lookback_days: int = 365) -> Dict[str, int]:
