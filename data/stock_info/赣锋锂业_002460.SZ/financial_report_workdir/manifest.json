@@ -1,0 +1,17 @@
+{
+  "symbol": "002460.SZ",
+  "stock_name": "赣锋锂业",
+  "final_mandate": "short_book",
+  "latest_announcement_id": "1225059953",
+  "latest_report_date": "2026-03-31",
+  "latest_report_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/赣锋锂业_002460.SZ/financial_report_workdir/01_latest_report.md",
+  "previous_announcement_id": "1224755093",
+  "previous_report_date": "2025-10-29",
+  "previous_report_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/赣锋锂业_002460.SZ/financial_report_workdir/02_previous_report.md",
+  "report_analysis_prompt_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/赣锋锂业_002460.SZ/financial_report_workdir/03_report_analysis_prompt.md",
+  "future_outlook_prompt_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/赣锋锂业_002460.SZ/financial_report_workdir/04_future_outlook_prompt.md",
+  "agent_input_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/赣锋锂业_002460.SZ/financial_report_workdir/05_agent_input.md",
+  "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/赣锋锂业_002460.SZ/financial_reports/20260331.md",
+  "summary_index_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/赣锋锂业_002460.SZ/financial_reports/summary_index.json",
+  "industry_name": "所属行业"
+}

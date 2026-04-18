@@ -1,0 +1,33 @@
+{
+  "symbol": "600276.SH",
+  "stock_name": "恒瑞医药",
+  "latest_completed_report": {
+    "announcement_id": "1225032585",
+    "report_date": "2026-03-26",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224743064",
+    "paired_previous_report_date": "2025-10-28",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/恒瑞医药_600276.SH/financial_reports/20260326.md",
+    "generated_at": "2026-04-17T19:33:46.184756"
+  },
+  "history": [
+    {
+      "announcement_id": "1225032585",
+      "report_date": "2026-03-26",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224743064",
+      "paired_previous_report_date": "2025-10-28",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/恒瑞医药_600276.SH/financial_reports/20260326.md",
+      "generated_at": "2026-04-17T19:33:46.184756"
+    },
+    {
+      "announcement_id": "1225032582",
+      "report_date": "2026-03-26",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224743064",
+      "paired_previous_report_date": "2025-10-28",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/恒瑞医药_600276.SH/financial_reports/20260326.md",
+      "generated_at": "2026-04-17T19:03:06.187132"
+    }
+  ]
+}

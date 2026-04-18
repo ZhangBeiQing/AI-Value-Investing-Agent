@@ -1,0 +1,24 @@
+{
+  "symbol": "600150.SH",
+  "stock_name": "中国船舶",
+  "latest_completed_report": {
+    "announcement_id": "1224755124",
+    "report_date": "2025-10-29",
+    "report_type": "q3",
+    "paired_previous_announcement_id": "1224625157",
+    "paired_previous_report_date": "2025-08-30",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中国船舶_600150.SH/financial_reports/20251029.md",
+    "generated_at": "2026-04-17T19:26:13.446353"
+  },
+  "history": [
+    {
+      "announcement_id": "1224755124",
+      "report_date": "2025-10-29",
+      "report_type": "q3",
+      "paired_previous_announcement_id": "1224625157",
+      "paired_previous_report_date": "2025-08-30",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中国船舶_600150.SH/financial_reports/20251029.md",
+      "generated_at": "2026-04-17T19:26:13.446353"
+    }
+  ]
+}

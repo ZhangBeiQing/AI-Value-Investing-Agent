@@ -1,0 +1,24 @@
+{
+  "symbol": "002352.SZ",
+  "stock_name": "顺丰控股",
+  "latest_completed_report": {
+    "announcement_id": "1225057387",
+    "report_date": "2026-03-31",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224776363",
+    "paired_previous_report_date": "2025-10-31",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/顺丰控股_002352.SZ/financial_reports/20260331.md",
+    "generated_at": "2026-04-18T10:05:51+08:00"
+  },
+  "history": [
+    {
+      "announcement_id": "1225057387",
+      "report_date": "2026-03-31",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224776363",
+      "paired_previous_report_date": "2025-10-31",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/顺丰控股_002352.SZ/financial_reports/20260331.md",
+      "generated_at": "2026-04-18T10:05:51+08:00"
+    }
+  ]
+}

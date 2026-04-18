@@ -1,0 +1,24 @@
+{
+  "symbol": "00100.HK",
+  "stock_name": "MINIMAX-WP",
+  "latest_completed_report": {
+    "announcement_id": "1224992039",
+    "report_date": "2026-03-02",
+    "report_type": "annual",
+    "paired_previous_announcement_id": null,
+    "paired_previous_report_date": null,
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/MINIMAX-WP_00100.HK/financial_reports/20260302.md",
+    "generated_at": "2026-04-17T19:25:17.213196"
+  },
+  "history": [
+    {
+      "announcement_id": "1224992039",
+      "report_date": "2026-03-02",
+      "report_type": "annual",
+      "paired_previous_announcement_id": null,
+      "paired_previous_report_date": null,
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/MINIMAX-WP_00100.HK/financial_reports/20260302.md",
+      "generated_at": "2026-04-17T19:25:17.213196"
+    }
+  ]
+}

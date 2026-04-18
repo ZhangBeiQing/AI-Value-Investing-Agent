@@ -1,7 +1,36 @@
 {
   "stock": "阳光电源 (300274.SZ)",
-  "today": "2026-04-14",
+  "today": "2026-04-17",
   "news_items": [
+    {
+      "announcement_id": "1225111332",
+      "dedupe_key": "1225111332",
+      "title": "关于为子公司提供担保额度预计的进展公告",
+      "datetime": "2026-04-16",
+      "summary": "2025年4月25日，阳光电源股份有限公司（证券代码：300274）召开第五届董事会第十七次会议审议通过了《关于为子公司提供2025年度担保额度预计及子公司为客户提供担保的议案》，同意公司为十七家子公司向业务相关方申请银行综合授信及日常经营需要提供担保，担保额度预计不超过人民币1,000,000万元。其中，同意为SUNGROW(INDIA) PRIVATE LIMITED（印度阳光）提供担保额度为6,000万元，为Sungrow Power(Hong Kong) Co., Limited（香港阳光）提供担保额度为70,000万元。以上议案于2025年5月28日经2024年年度股东会审议通过。调整后，印度阳光的担保额度调整为11,000.00万元，香港阳光的担保额度调整为65,000.00万元。近日，印度阳光向汇丰银行申请新增1,000万美元的综合授信，公司为此提供连带责任保证，担保期限自担保函签署日起不超过三年。本次担保金额折合人民币约6,859.30万元（按2026年4月14日汇率计算），占公司2025年12月31日经审计净资产的0.15%。截至本公告披露日，公司累计对外担保总额度为不超过人民币5,660,052.79万元，扣除即将于2026年5月28日到期的424,924.53万元后，占公司2025年12月31日经审计净资产的112.32%；累计实际对外担保余额为人民币2,685,480.00万元，占公司2025年12月31日经审计净资产的57.61%。截至本公告披露日，公司子公司对子公司累计担保总额度为不超过人民币3,454,721.25万元，占公司2025年12月31日经审计净资产的74.12%；累计实际担保余额为人民币2,415,334.69万元，占公司2025年12月31日经审计净资产的51.82%。",
+      "raw_facts": "2025年4月25日，阳光电源股份有限公司（证券代码：300274）召开第五届董事会第十七次会议审议通过了《关于为子公司提供2025年度担保额度预计及子公司为客户提供担保的议案》，同意公司为十七家子公司向业务相关方申请银行综合授信及日常经营需要提供担保，担保额度预计不超过人民币1,000,000万元。其中，同意为SUNGROW(INDIA) PRIVATE LIMITED（印度阳光）提供担保额度为6,000万元，为Sungrow Power(Hong Kong) Co., Limited（香港阳光）提供担保额度为70,000万元。以上议案于2025年5月28日经2024年年度股东会审议通过。调整后，印度阳光的担保额度调整为11,000.00万元，香港阳光的担保额度调整为65,000.00万元。近日，印度阳光向汇丰银行申请新增1,000万美元的综合授信，公司为此提供连带责任保证，担保期限自担保函签署日起不超过三年。本次担保金额折合人民币约6,859.30万元（按2026年4月14日汇率计算），占公司2025年12月31日经审计净资产的0.15%。截至本公告披露日，公司累计对外担保总额度为不超过人民币5,660,052.79万元，扣除即将于2026年5月28日到期的424,924.53万元后，占公司2025年12月31日经审计净资产的112.32%；累计实际对外担保余额为人民币2,685,480.00万元，占公司2025年12月31日经审计净资产的57.61%。截至本公告披露日，公司子公司对子公司累计担保总额度为不超过人民币3,454,721.25万元，占公司2025年12月31日经审计净资产的74.12%；累计实际担保余额为人民币2,415,334.69万元，占公司2025年12月31日经审计净资产的51.82%。",
+      "category": "Contract",
+      "quantitative_data": {
+        "total_suggested_guarantee_amount": 10000000000,
+        "india_sunshine_guarantee_amount_before_adjustment": 60000000,
+        "hong_kong_sunshine_guarantee_amount_before_adjustment": 7000000000,
+        "india_sunshine_guarantee_amount_after_adjustment": 110000000,
+        "hong_kong_sunshine_guarantee_amount_after_adjustment": 6500000000,
+        "new_guarantee_amount_usd": 10000000,
+        "new_guarantee_amount_cny": 68593000,
+        "guarantee_percentage_of_net_asset": 0.15,
+        "total_outward_guarantee_quota": 56600527900,
+        "outstanding_guarantee_quota_to_expire": 4249245300,
+        "outstanding_guarantee_quota_percentage": 112.32,
+        "total_actual_outward_guarantee_balance": 26854800000,
+        "actual_outward_guarantee_balance_percentage": 57.61,
+        "total_subsidiary_to_subsidiary_guarantee_quota": 34547212500,
+        "subsidiary_to_subsidiary_guarantee_quota_percentage": 74.12,
+        "actual_subsidiary_to_subsidiary_guarantee_balance": 24153346900,
+        "actual_subsidiary_to_subsidiary_guarantee_balance_percentage": 51.82
+      },
+      "source": "公告"
+    },
     {
       "announcement_id": "1225099240",
       "dedupe_key": "1225099240",
