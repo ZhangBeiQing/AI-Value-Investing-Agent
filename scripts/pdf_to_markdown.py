@@ -50,11 +50,19 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="同时将转换后的 Markdown 输出到标准输出。",
     )
+    parser.add_argument(
+        "--profile",
+        default="financial_report",
+        choices=["financial_report", "general"],
+        help="转换策略。默认 financial_report，优先保住财报/公告中的数字与表格文本。",
+    )
     return parser
 
 
 def _resolve_output_path(pdf_path: Path, output_arg: str | None) -> Path:
     if not output_arg:
+        if pdf_path.parent.name == "pdfs" and pdf_path.parent.parent.exists():
+            return pdf_path.parent.parent / "md" / f"{pdf_path.stem}.md"
         return pdf_path.with_suffix(".md")
     return _normalize_path(output_arg, prefer_existing=False).expanduser()
 
@@ -78,18 +86,18 @@ def main() -> int:
         group="tools",
         filename_prefix="pdf_to_markdown",
     )
-    from news.gemini_utility import PDFMarkdownConverter
+    from news.gemini_utility import PDFMarkdownConverter, write_pdf_conversion_artifacts
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info("开始转换 PDF: %s", pdf_path)
+    logger.info("开始转换 PDF: %s, profile=%s", pdf_path, args.profile)
     converter = PDFMarkdownConverter()
-    markdown = converter.convert(str(pdf_path), output_dir=None)
-    output_path.write_text(markdown, encoding="utf-8")
-    logger.info("Markdown 已写入: %s", output_path)
+    result = converter.convert_with_details(str(pdf_path), output_dir=None, profile=args.profile)
+    write_pdf_conversion_artifacts(output_path, result, pdf_path)
+    logger.info("Markdown 与元数据已写入: %s", output_path)
 
     if args.stdout:
-        sys.stdout.write(markdown)
-        if not markdown.endswith("\n"):
+        sys.stdout.write(result.markdown)
+        if not result.markdown.endswith("\n"):
             sys.stdout.write("\n")
 
     return 0
