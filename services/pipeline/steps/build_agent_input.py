@@ -6,11 +6,11 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable, List, Optional
 
-from configs.stock_pool import TRACKED_A_STOCKS
 from services.prompting.system_prompt import get_skill_system_prompt
 from services.snapshot.basic_snapshot import build_basic_snapshot
+from utlity.stock_utils import parse_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -25,9 +25,18 @@ def resolve_signature(raw_signature: str) -> str:
     return os.environ.get("DEFAULT_SIGNATURE", "deepseek-reasoner")
 
 
-def build_user_query(research_files: List[Path], run_date: str) -> str:
+def _build_stock_pool_block(symbols: Iterable[str]) -> str:
+    lines = []
+    for idx, symbol in enumerate(symbols, start=1):
+        info = parse_symbol(symbol)
+        lines.append(f"{idx}. {symbol} {info.stock_name or symbol}")
+    return "\n".join(lines)
+
+
+def build_user_query(research_files: List[Path], run_date: str, book_type: str) -> str:
     lines = [
         f"今天是 {run_date} 早上，股市还没开盘。",
+        f"当前分析账本为 `{book_type}`。你只能基于当前账本的持仓、研究包和历史交易总结做决策，不能把其他账本的仓位或锚点混入本账本。",
         "请遵循 SYSTEM_PROMPT 的规范和价值投资原则，基于已提供的输入文件进行分析并决策今日的持仓调整。",
         "",
         "【强制输出（在任何分析之前）】",
@@ -51,9 +60,24 @@ def build_user_query(research_files: List[Path], run_date: str) -> str:
     return "\n".join(lines)
 
 
-def build_agent_input(run_date: str, signature: str, prompt_config: str | Path, output_dir: str | Path) -> str:
+def build_agent_input(
+    run_date: str,
+    signature: str,
+    prompt_config: str | Path,
+    output_dir: str | Path,
+    *,
+    stock_codes: Optional[List[str]] = None,
+    book_type: str = "fixed_tracked",
+) -> str:
     prompt_path = Path(prompt_config)
-    system_prompt = get_skill_system_prompt(run_date, signature, prompt_path)
+    target_symbols = stock_codes or []
+    system_prompt = get_skill_system_prompt(
+        run_date,
+        signature,
+        prompt_path,
+        stock_codes=target_symbols,
+        stock_pool_block_override=_build_stock_pool_block(target_symbols),
+    )
     research_files = sorted((Path(output_dir) / "04_stock_research").glob("*_research.md"))
     generated_at = datetime.now()
 
@@ -62,6 +86,7 @@ def build_agent_input(run_date: str, signature: str, prompt_config: str | Path, 
         "",
         f"- 生成日期: {run_date}",
         f"- 生成时间: {generated_at.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"- BOOK_TYPE: {book_type}",
         f"- PROMPT_FLOW_CONFIG: {prompt_path.resolve()}",
         f"- SIGNATURE: {signature}",
         "",
@@ -73,14 +98,13 @@ def build_agent_input(run_date: str, signature: str, prompt_config: str | Path, 
         "",
         "## USER_QUERY",
         "",
-        build_user_query(research_files, run_date),
+        build_user_query(research_files, run_date, book_type),
         "",
     ]
     return "\n".join(sections)
 
 
-def build_snapshot_payload(run_date: str) -> Dict[str, Any]:
-    symbols = [entry.symbol for entry in TRACKED_A_STOCKS]
+def build_snapshot_payload(run_date: str, symbols: List[str]) -> Dict[str, Any]:
     return build_basic_snapshot(symbols, run_date)
 
 
@@ -88,6 +112,8 @@ def write_agent_input_bundle(
     run_date: str,
     output_dir: str | Path,
     *,
+    symbols: List[str],
+    book_type: str = "fixed_tracked",
     signature: str = "",
     prompt_config: str | Path | None = None,
     snapshot_payload: Dict[str, Any] | None = None,
@@ -97,11 +123,18 @@ def write_agent_input_bundle(
     resolved_signature = resolve_signature(signature)
     resolved_prompt_config = Path(prompt_config) if prompt_config else DEFAULT_PROMPT_CONFIG
 
-    snapshot_payload = snapshot_payload or build_snapshot_payload(run_date)
+    snapshot_payload = snapshot_payload or build_snapshot_payload(run_date, symbols)
     (target_dir / "02_basic_snapshot_payload.json").write_text(
         json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
-    agent_input = build_agent_input(run_date, resolved_signature, resolved_prompt_config, target_dir)
+    agent_input = build_agent_input(
+        run_date,
+        resolved_signature,
+        resolved_prompt_config,
+        target_dir,
+        stock_codes=symbols,
+        book_type=book_type,
+    )
     (target_dir / "03_agent_input.md").write_text(agent_input, encoding="utf-8")

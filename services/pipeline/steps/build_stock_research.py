@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, List, Mapping
+from typing import Any, Iterable, List, Mapping, Optional
 
-from configs.stock_pool import TRACKED_A_STOCKS
 from services.research.financial_report import get_financial_report_summary
 from services.research.news_summary import search_stock_news
 from services.research.stock_analysis import analyze_stock_dynamics_and_valuation
@@ -113,6 +112,7 @@ def build_research_markdown(
     *,
     snapshot_payload: Mapping[str, Any] | None = None,
     signature: str = "",
+    book_type: str = "fixed_tracked",
 ) -> str:
     symbol_info = parse_symbol(symbol)
     stock_name = symbol_info.stock_name or symbol_info.symbol
@@ -133,6 +133,8 @@ def build_research_markdown(
     lines.append("")
     lines.append(f"- 请求日期: {run_date}")
     lines.append(f"- 生成时间: {generated_at}")
+    lines.append(f"- book_type: {book_type}")
+    lines.append(f"- history_signature: {signature or '未指定'}")
     lines.append("")
     lines.append("## 1. 股票指标与估值")
     lines.append("")
@@ -182,7 +184,7 @@ def build_research_markdown(
         for entry in historical_entries:
             lines.extend(_format_history_entry(entry))
     else:
-        lines.append("> 未找到该股票最近一次交易日的历史交易总结。")
+        lines.append(f"> 未找到该股票在当前账本（{book_type}）下最近一次交易日的历史交易总结。")
     lines.append("")
     return "\n".join(lines)
 
@@ -205,13 +207,15 @@ def write_stock_research_bundle(
     *,
     snapshot_payload: Mapping[str, Any] | None = None,
     signature: str = "",
+    book_type: str = "fixed_tracked",
 ) -> None:
-    target_symbols = list(symbols) if symbols is not None else [entry.symbol for entry in TRACKED_A_STOCKS]
+    target_symbols = list(symbols) if symbols is not None else []
     for symbol in target_symbols:
         content = build_research_markdown(
             symbol,
             run_date,
             snapshot_payload=snapshot_payload,
             signature=signature,
+            book_type=book_type,
         )
         research_output_path(symbol, run_date, output_dir).write_text(content, encoding="utf-8")
