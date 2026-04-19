@@ -1,0 +1,24 @@
+{
+  "symbol": "000792.SZ",
+  "stock_name": "盐湖股份",
+  "latest_completed_report": {
+    "announcement_id": "1225061823",
+    "report_date": "2026-03-31",
+    "report_type": null,
+    "paired_previous_announcement_id": null,
+    "paired_previous_report_date": null,
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/盐湖股份_000792.SZ/financial_reports/20260331.md",
+    "generated_at": null
+  },
+  "history": [
+    {
+      "announcement_id": "1225061823",
+      "report_date": "2026-03-31",
+      "report_type": null,
+      "paired_previous_announcement_id": null,
+      "paired_previous_report_date": null,
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/盐湖股份_000792.SZ/financial_reports/20260331.md",
+      "generated_at": null
+    }
+  ]
+}

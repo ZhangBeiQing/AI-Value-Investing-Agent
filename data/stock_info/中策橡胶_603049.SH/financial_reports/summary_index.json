@@ -1,5 +1,24 @@
 {
-  "latest_announcement_id": "1225109514",
-  "latest_report_date": "2026-04-17",
-  "latest_output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中策橡胶_603049.SH/financial_reports/20260417.md"
+  "symbol": "603049.SH",
+  "stock_name": "中策橡胶",
+  "latest_completed_report": {
+    "announcement_id": "1225109514",
+    "report_date": "2026-04-17",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224720987",
+    "paired_previous_report_date": "2025-10-21",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中策橡胶_603049.SH/financial_reports/20260417.md",
+    "generated_at": "2026-04-19T12:03:15.827305"
+  },
+  "history": [
+    {
+      "announcement_id": "1225109514",
+      "report_date": "2026-04-17",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224720987",
+      "paired_previous_report_date": "2025-10-21",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中策橡胶_603049.SH/financial_reports/20260417.md",
+      "generated_at": "2026-04-19T12:03:15.827305"
+    }
+  ]
 }

@@ -1,7 +1,30 @@
 {
   "stock": "赣锋锂业 (002460.SZ)",
-  "today": "2026-04-16",
+  "today": "2026-04-18",
   "news_items": [
+    {
+      "announcement_id": "1225111388",
+      "dedupe_key": "1225111388",
+      "title": "2026年第一季度业绩预告",
+      "datetime": "2026-04-17",
+      "summary": "江西赣锋锂业集团股份有限公司于2026年4月17日发布了《2026年第一季度业绩预告》。公告披露，公司预计2026年第一季度净利润为160,000万元至210,000万元；扣除非经常性损益后的净利润为125,000万元至175,000万元；基本每股收益为0.77元/股至1.01元/股。上年同期，归属于上市公司股东的净利润为亏损35,582.95万元，扣除非经常性损益后的净利润为亏损24,219.31万元。报告期内，公司持有的PLS Group Ltd（PLS）股票价格上涨，产生了约2.59亿元的公允价值变动收益。",
+      "raw_facts": "江西赣锋锂业集团股份有限公司于2026年4月17日发布了《2026年第一季度业绩预告》。公告披露，公司预计2026年第一季度净利润为160,000万元至210,000万元；扣除非经常性损益后的净利润为125,000万元至175,000万元；基本每股收益为0.77元/股至1.01元/股。上年同期，归属于上市公司股东的净利润为亏损35,582.95万元，扣除非经常性损益后的净利润为亏损24,219.31万元。报告期内，公司持有的PLS Group Ltd（PLS）股票价格上涨，产生了约2.59亿元的公允价值变动收益。",
+      "category": "Financial_Report",
+      "quantitative_data": {
+        "net_profit_lower_bound": 1600000000,
+        "net_profit_upper_bound": 2100000000,
+        "non_recurring_net_profit_lower_bound": 1250000000,
+        "non_recurring_net_profit_upper_bound": 1750000000,
+        "basic_earnings_per_share_lower_bound": 0.77,
+        "basic_earnings_per_share_upper_bound": 1.01,
+        "previous_period_net_profit": -355829500,
+        "previous_period_non_recurring_net_profit": -242193100,
+        "fair_value_change_gain": 259000000,
+        "period_start_date": "2026-01-01",
+        "period_end_date": "2026-03-31"
+      },
+      "source": "公告"
+    },
     {
       "announcement_id": "1225097795",
       "dedupe_key": "1225097795",

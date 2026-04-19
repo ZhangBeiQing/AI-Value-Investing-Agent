@@ -1,9 +1,24 @@
 {
-  "reports": [
+  "symbol": "600941.SH",
+  "stock_name": "中国移动",
+  "latest_completed_report": {
+    "announcement_id": "1225036280",
+    "report_date": "2026-03-27",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224721562",
+    "paired_previous_report_date": "2025-10-21",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中国移动_600941.SH/financial_reports/20260327.md",
+    "generated_at": "2026-04-19T12:02:41.720894"
+  },
+  "history": [
     {
-      "latest_announcement_id": "1225036280",
-      "latest_report_date": "2026-03-27",
-      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中国移动_600941.SH/financial_reports/20260327.md"
+      "announcement_id": "1225036280",
+      "report_date": "2026-03-27",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224721562",
+      "paired_previous_report_date": "2025-10-21",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/中国移动_600941.SH/financial_reports/20260327.md",
+      "generated_at": "2026-04-19T12:02:41.720894"
     }
   ]
 }

@@ -1,7 +1,20 @@
 {
   "stock": "豪威集团 (00501.HK)",
-  "today": "2026-04-16",
+  "today": "2026-04-18",
   "news_items": [
+    {
+      "title": "H股公告_董事会会议日期",
+      "datetime": "2026-04-18",
+      "category": "Financial_Report",
+      "summary": "董事会会议将于2026年4月29日举行，审议及批准截至2026年3月31日止三个月的第一季度业绩及其发布。",
+      "impact_level": "Low",
+      "sentiment": "Neutral",
+      "validity_period": "Short",
+      "audit_analysis": "【业务归因】此为常规的董事会会议预告，属于上市公司标准信息披露流程，无特殊业务含义。\n【横向对比】所有上市公司均需按监管要求定期召开董事会审议季度报告，此为行业共性。\n【纵向对比】公司历史上每个季度均会发布类似会议预告公告，符合常态。\n【综合诊断】纯程序性公告，不包含任何实质性财务或经营信息，对投资决策无影响价值。",
+      "financial_implication": null,
+      "price_driver": "无实质性驱动",
+      "risk_warning": "无风险"
+    },
     {
       "title": "2025年年度股东会会议资料",
       "datetime": "2026-04-16",

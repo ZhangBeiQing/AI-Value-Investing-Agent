@@ -1,7 +1,53 @@
 {
   "stock": "顺丰控股 (002352.SZ)",
-  "today": "2026-04-16",
+  "today": "2026-04-18",
   "news_items": [
+    {
+      "announcement_id": "1225117549",
+      "dedupe_key": "1225117549",
+      "title": "2026年3月快递物流业务经营简报",
+      "datetime": "2026-04-17",
+      "summary": "顺丰控股股份有限公司于2026年4月17日披露了2026年3月快递物流业务经营简报。该公司2026年3月的速运物流业务营业收入为180.19亿元人民币，业务量为12.51亿票，单票收入为14.40元人民币；供应链及国际业务营业收入为62.83亿元人民币。与2025年3月相比，速运物流业务营业收入增长0.68%，业务量下降3.40%，单票收入增长4.20%；供应链及国际业务营业收入增长9.00%。合计营业收入2026年3月为243.02亿元人民币，同比增长2.71%。",
+      "raw_facts": "顺丰控股股份有限公司于2026年4月17日披露了2026年3月快递物流业务经营简报。该公司2026年3月的速运物流业务营业收入为180.19亿元人民币，业务量为12.51亿票，单票收入为14.40元人民币；供应链及国际业务营业收入为62.83亿元人民币。与2025年3月相比，速运物流业务营业收入增长0.68%，业务量下降3.40%，单票收入增长4.20%；供应链及国际业务营业收入增长9.00%。合计营业收入2026年3月为243.02亿元人民币，同比增长2.71%。",
+      "category": "Financial_Report",
+      "quantitative_data": {
+        "total_revenue_2026_03": 24302000000,
+        "total_revenue_2025_03": 23661000000,
+        "speed_logistics_revenue_2026_03": 18019000000,
+        "speed_logistics_volume_2026_03": 1251000000,
+        "speed_logistics_ticket_price_2026_03": 1440,
+        "supply_chain_international_revenue_2026_03": 6283000000,
+        "revenue_growth_rate_total": 2.71,
+        "revenue_growth_rate_speed_logistics": 0.68,
+        "volume_growth_rate_speed_logistics": -3.4,
+        "ticket_price_growth_rate_speed_logistics": 4.2,
+        "revenue_growth_rate_supply_chain_international": 9.0
+      },
+      "source": "公告"
+    },
+    {
+      "announcement_id": "1225117548",
+      "dedupe_key": "1225117548",
+      "title": "关于控股股东部分A股股份解除质押的公告",
+      "datetime": "2026-04-17",
+      "summary": "2026年4月17日，顺丰控股股份有限公司（证券代码：002352）披露公告。其控股股东深圳明德控股发展有限公司（以下简称“明德控股”）于2026年4月16日解除质押的A股股份包括：1. 30,000,000股，占其所持股份比例1.22%，占公司总股本比例0.60%，质押起始日为2021年6月7日，质权人为中国工商银行股份有限公司深圳喜年支行；2. 18,000,000股，占其所持股份比例0.73%，占公司总股本比例0.36%，质押起始日为2023年6月15日，质权人为中国邮政储蓄银行股份有限公司前海分行。截至本公告披露日，明德控股合计持有顺丰控股2,461,920,119股A股股份，占公司总股本比例48.85%。",
+      "raw_facts": "2026年4月17日，顺丰控股股份有限公司（证券代码：002352）披露公告。其控股股东深圳明德控股发展有限公司（以下简称“明德控股”）于2026年4月16日解除质押的A股股份包括：1. 30,000,000股，占其所持股份比例1.22%，占公司总股本比例0.60%，质押起始日为2021年6月7日，质权人为中国工商银行股份有限公司深圳喜年支行；2. 18,000,000股，占其所持股份比例0.73%，占公司总股本比例0.36%，质押起始日为2023年6月15日，质权人为中国邮政储蓄银行股份有限公司前海分行。截至本公告披露日，明德控股合计持有顺丰控股2,461,920,119股A股股份，占公司总股本比例48.85%。",
+      "category": "Equity_Change",
+      "quantitative_data": {
+        "total_shares_pledged_removed": 48000000,
+        "shares_pledged_removed_from_bank_1": 30000000,
+        "pledge_ratio_of_bank_1": 1.22,
+        "shareholding_ratio_of_bank_1": 0.6,
+        "pledge_start_date_of_bank_1": "2021-06-07",
+        "shares_pledged_removed_from_bank_2": 18000000,
+        "pledge_ratio_of_bank_2": 0.73,
+        "shareholding_ratio_of_bank_2": 0.36,
+        "pledge_start_date_of_bank_2": "2023-06-15",
+        "total_shares_held_by_controlling_shareholder": 2461920119,
+        "shareholding_percentage_of_controlling_shareholder": 48.85
+      },
+      "source": "公告"
+    },
     {
       "announcement_id": "1225057405",
       "dedupe_key": "1225057405",
