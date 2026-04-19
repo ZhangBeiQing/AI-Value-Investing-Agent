@@ -1,0 +1,24 @@
+{
+  "symbol": "600487.SH",
+  "stock_name": "亨通光电",
+  "latest_completed_report": {
+    "announcement_id": "1224745916",
+    "report_date": "2025-10-28",
+    "report_type": "quarterly",
+    "paired_previous_announcement_id": "1224567735",
+    "paired_previous_report_date": "2025-08-26",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/亨通光电_600487.SH/financial_reports/20251028.md",
+    "generated_at": "2026-04-19T12:36:20+08:00"
+  },
+  "history": [
+    {
+      "announcement_id": "1224745916",
+      "report_date": "2025-10-28",
+      "report_type": "quarterly",
+      "paired_previous_announcement_id": "1224567735",
+      "paired_previous_report_date": "2025-08-26",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/亨通光电_600487.SH/financial_reports/20251028.md",
+      "generated_at": "2026-04-19T12:36:20+08:00"
+    }
+  ]
+}

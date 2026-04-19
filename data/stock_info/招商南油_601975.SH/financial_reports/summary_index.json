@@ -1,0 +1,24 @@
+{
+  "symbol": "601975.SH",
+  "stock_name": "招商南油",
+  "latest_completed_report": {
+    "announcement_id": "1225059757",
+    "report_date": "2026-03-31",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1225059738",
+    "paired_previous_report_date": "2026-03-31",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/招商南油_601975.SH/financial_reports/20260331.md",
+    "generated_at": "2026-04-19T12:30:00"
+  },
+  "history": [
+    {
+      "announcement_id": "1225059757",
+      "report_date": "2026-03-31",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1225059738",
+      "paired_previous_report_date": "2026-03-31",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/招商南油_601975.SH/financial_reports/20260331.md",
+      "generated_at": "2026-04-19T12:30:00"
+    }
+  ]
+}

@@ -1,9 +1,24 @@
 {
-  "reports": [
+  "symbol": "600900.SH",
+  "stock_name": "长江电力",
+  "latest_completed_report": {
+    "announcement_id": "1224931391",
+    "report_date": "2026-01-14",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224776945",
+    "paired_previous_report_date": "2025-10-31",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/长江电力_600900.SH/financial_reports/20260114.md",
+    "generated_at": "2026-04-19T12:02:26.526896"
+  },
+  "history": [
     {
-      "latest_announcement_id": "1224931391",
-      "latest_report_date": "2026-01-14",
-      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/长江电力_600900.SH/financial_reports/20260114.md"
+      "announcement_id": "1224931391",
+      "report_date": "2026-01-14",
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224776945",
+      "paired_previous_report_date": "2025-10-31",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/长江电力_600900.SH/financial_reports/20260114.md",
+      "generated_at": "2026-04-19T12:02:26.526896"
     }
   ]
 }

@@ -1,11 +1,24 @@
 {
-  "latest_announcement_id": "1225025225",
-  "latest_report_date": "2026-03-24",
-  "summaries": [
+  "symbol": "603259.SH",
+  "stock_name": "药明康德",
+  "latest_completed_report": {
+    "announcement_id": "1225025225",
+    "report_date": "2026-03-24",
+    "report_type": "annual",
+    "paired_previous_announcement_id": "1224737987",
+    "paired_previous_report_date": "2025-10-27",
+    "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/药明康德_603259.SH/financial_reports/20260324.md",
+    "generated_at": "2026-04-19T12:03:34.193656"
+  },
+  "history": [
     {
       "announcement_id": "1225025225",
       "report_date": "2026-03-24",
-      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/药明康德_603259.SH/financial_reports/20260324.md"
+      "report_type": "annual",
+      "paired_previous_announcement_id": "1224737987",
+      "paired_previous_report_date": "2025-10-27",
+      "output_path": "/home/zhangbeiqing/programer/AI-Value-Investing-Agent/data/stock_info/药明康德_603259.SH/financial_reports/20260324.md",
+      "generated_at": "2026-04-19T12:03:34.193656"
     }
   ]
 }
