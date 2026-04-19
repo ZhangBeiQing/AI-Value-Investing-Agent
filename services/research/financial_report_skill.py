@@ -82,20 +82,111 @@ def financial_report_workdir(symbol: str) -> Path:
     return _stock_root(symbol) / "financial_report_workdir"
 
 
+def _empty_summary_index(symbol: str, stock_name: Optional[str] = None) -> Dict[str, Any]:
+    resolved_stock_name = stock_name or parse_symbol(symbol).stock_name
+    return {
+        "symbol": symbol,
+        "stock_name": resolved_stock_name,
+        "latest_completed_report": None,
+        "history": [],
+    }
+
+
+def _normalize_summary_entry(raw: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+    announcement_id = raw.get("announcement_id")
+    report_date = raw.get("report_date") or raw.get("date")
+    output_path = raw.get("output_path") or raw.get("path")
+    if not announcement_id and not report_date and not output_path:
+        return None
+    return {
+        "announcement_id": announcement_id,
+        "report_date": report_date,
+        "report_type": raw.get("report_type"),
+        "paired_previous_announcement_id": raw.get("paired_previous_announcement_id") or raw.get("previous_announcement_id"),
+        "paired_previous_report_date": raw.get("paired_previous_report_date") or raw.get("previous_report_date"),
+        "output_path": output_path,
+        "generated_at": raw.get("generated_at"),
+    }
+
+
+def _summary_entry_identity(entry: Dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(entry.get("announcement_id") or ""),
+        str(entry.get("report_date") or ""),
+        str(entry.get("output_path") or ""),
+    )
+
+
+def _merge_summary_entry(base: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base)
+    for key, value in incoming.items():
+        if merged.get(key) in (None, "") and value not in (None, ""):
+            merged[key] = value
+    return merged
+
+
+def _summary_entry_sort_key(entry: Dict[str, Any]) -> tuple[str, str, str]:
+    report_date = str(entry.get("report_date") or "").replace("-", "")
+    generated_at = str(entry.get("generated_at") or "")
+    announcement_id = str(entry.get("announcement_id") or "")
+    return report_date, generated_at, announcement_id
+
+
+def normalize_summary_index_payload(symbol: str, payload: Any) -> Dict[str, Any]:
+    stock_name = None
+    raw_entries: List[Dict[str, Any]] = []
+
+    if isinstance(payload, dict):
+        stock_name = payload.get("stock_name")
+        latest_entry = _normalize_summary_entry(payload.get("latest_completed_report") or payload.get("latest"))
+        if latest_entry is not None:
+            raw_entries.append(latest_entry)
+        for key in ("history", "records", "reports"):
+            items = payload.get(key)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                normalized = _normalize_summary_entry(item)
+                if normalized is not None:
+                    raw_entries.append(normalized)
+    elif isinstance(payload, list):
+        for item in payload:
+            normalized = _normalize_summary_entry(item)
+            if normalized is not None:
+                raw_entries.append(normalized)
+
+    canonical = _empty_summary_index(symbol, stock_name=stock_name)
+    merged_entries: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    for entry in raw_entries:
+        identity = _summary_entry_identity(entry)
+        if identity in merged_entries:
+            merged_entries[identity] = _merge_summary_entry(merged_entries[identity], entry)
+        else:
+            merged_entries[identity] = entry
+
+    history = sorted(merged_entries.values(), key=_summary_entry_sort_key, reverse=True)[:20]
+    canonical["history"] = history
+    canonical["latest_completed_report"] = history[0] if history else None
+    return canonical
+
+
 def load_summary_index(symbol: str) -> Dict[str, Any]:
     path = _summary_index_path(symbol)
     if not path.exists():
-        return {}
+        return _empty_summary_index(symbol)
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return normalize_summary_index_payload(symbol, json.loads(path.read_text(encoding="utf-8")))
     except Exception:
-        return {}
+        return _empty_summary_index(symbol)
 
 
-def save_summary_index(symbol: str, payload: Dict[str, Any]) -> Path:
+def save_summary_index(symbol: str, payload: Any) -> Path:
     path = _summary_index_path(symbol)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    normalized = normalize_summary_index_payload(symbol, payload)
+    path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
 

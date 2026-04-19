@@ -142,13 +142,13 @@ def _select_reports(files: List[Path], today_dt: datetime) -> Tuple[ReportMeta, 
         key=lambda m: (m.release_date, m.fiscal_year, m.fiscal_quarter, m.stem),
         reverse=True,
     )
-    latest_past = next((m for m in metas if m.release_date < today_dt.date()), None)
-    if latest_past is None:
-        raise FileNotFoundError(f"没有早于 today_time:{today_dt} 的财报文件。")
+    latest_available = next((m for m in metas if m.release_date <= today_dt.date()), None)
+    if latest_available is None:
+        raise FileNotFoundError(f"没有早于或等于 today_time:{today_dt} 的财报文件。")
 
     future_candidates = sorted([m for m in metas if m.release_date > today_dt.date()], key=lambda m: m.release_date)
     next_future = future_candidates[0] if future_candidates else None
-    return latest_past, next_future
+    return latest_available, next_future
 
 
 def _load_latest_forecast_markdown(symbol_info: SymbolInfo, today_dt: datetime) -> tuple[str, Optional[Path]]:
