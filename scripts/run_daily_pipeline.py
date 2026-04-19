@@ -44,6 +44,12 @@ def main() -> None:
         default="auto",
         help="Run manifest path or 'auto' to build from selection outputs.",
     )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Max concurrent workers for snapshot/research generation.",
+    )
     args = parser.parse_args()
 
     prompt_config = args.prompt_config
@@ -56,6 +62,7 @@ def main() -> None:
         prompt_config=prompt_config,
         signature=args.signature,
         manifest_path=args.manifest,
+        max_workers=args.max_workers,
     )
 
 

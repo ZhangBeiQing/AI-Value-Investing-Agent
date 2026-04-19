@@ -2,16 +2,31 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 from datetime import datetime
 from pathlib import Path
+import threading
 from typing import Any, Iterable, List, Mapping, Optional
 
+from core.logging import init_component_logger
 from services.research.financial_report import get_financial_report_summary
 from services.research.news_summary import search_stock_news
 from services.research.stock_analysis import analyze_stock_dynamics_and_valuation
 from services.trading.trade_summary import get_historical_context
 from utlity import ensure_stock_subdir, get_stock_data_dir, parse_symbol
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+RESEARCH_ARTIFACT_CACHE_ROOT = PROJECT_ROOT / "data" / "research_artifact_cache"
+RESEARCH_ARTIFACT_SCHEMA_VERSION = 1
+LOGGER = init_component_logger(
+    "BuildStockResearch",
+    group="services/pipeline",
+    filename_prefix="build_stock_research",
+)
+_ARTIFACT_LOCKS: dict[str, threading.Lock] = {}
+_ARTIFACT_LOCKS_GUARD = threading.Lock()
 
 
 def _json_block(obj: Any) -> str:
@@ -106,6 +121,87 @@ def _format_history_entry(entry: Mapping[str, Any]) -> List[str]:
     return [header, *details]
 
 
+def _artifact_lock(cache_path: Path) -> threading.Lock:
+    key = str(cache_path.resolve())
+    with _ARTIFACT_LOCKS_GUARD:
+        lock = _ARTIFACT_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _ARTIFACT_LOCKS[key] = lock
+        return lock
+
+
+def _artifact_cache_path(symbol: str, run_date: str) -> Path:
+    symbol_info = parse_symbol(symbol)
+    stock_root = get_stock_data_dir(symbol_info)
+    cache_dir = RESEARCH_ARTIFACT_CACHE_ROOT / run_date
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"{stock_root.name}_{run_date}_artifact.json"
+
+
+def _load_base_artifact(cache_path: Path) -> Optional[Dict[str, Any]]:
+    if not cache_path.exists():
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        LOGGER.warning("研究缓存读取失败，忽略并重建: %s (%s)", cache_path, exc)
+        return None
+    if payload.get("schema_version") != RESEARCH_ARTIFACT_SCHEMA_VERSION:
+        return None
+    if not isinstance(payload.get("price_payload"), dict):
+        return None
+    if not isinstance(payload.get("news_payload"), dict):
+        return None
+    if not isinstance(payload.get("financial_payload"), dict):
+        return None
+    return payload
+
+
+def _build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        price_future = executor.submit(analyze_stock_dynamics_and_valuation, symbol, run_date)
+        news_future = executor.submit(search_stock_news, symbol, run_date)
+        financial_future = executor.submit(get_financial_report_summary, symbol, run_date)
+
+        price_payload = price_future.result()
+        news_raw = news_future.result()
+        financial_payload = financial_future.result()
+
+    try:
+        news_payload = json.loads(news_raw)
+    except Exception:
+        news_payload = {"raw_text": news_raw}
+
+    return {
+        "schema_version": RESEARCH_ARTIFACT_SCHEMA_VERSION,
+        "symbol": symbol,
+        "run_date": run_date,
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "price_payload": price_payload,
+        "news_payload": news_payload,
+        "financial_payload": financial_payload,
+    }
+
+
+def _load_or_build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
+    cache_path = _artifact_cache_path(symbol, run_date)
+    lock = _artifact_lock(cache_path)
+    with lock:
+        cached = _load_base_artifact(cache_path)
+        if cached is not None:
+            LOGGER.info("复用研究缓存: %s", cache_path)
+            return cached
+
+        built = _build_base_artifact(symbol, run_date)
+        cache_path.write_text(
+            json.dumps(built, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        LOGGER.info("写入研究缓存: %s", cache_path)
+        return built
+
+
 def build_research_markdown(
     symbol: str,
     run_date: str,
@@ -117,15 +213,11 @@ def build_research_markdown(
     symbol_info = parse_symbol(symbol)
     stock_name = symbol_info.stock_name or symbol_info.symbol
     _ = snapshot_payload
-    price_payload = analyze_stock_dynamics_and_valuation(symbol_info.symbol, run_date)
-    news_raw = search_stock_news(symbol_info.symbol, run_date)
-    financial_payload = get_financial_report_summary(symbol_info.symbol, run_date)
+    base_artifact = _load_or_build_base_artifact(symbol_info.symbol, run_date)
+    price_payload = base_artifact.get("price_payload") or {}
+    news_payload = base_artifact.get("news_payload") or {}
+    financial_payload = base_artifact.get("financial_payload") or {}
     historical_entries = get_historical_context(signature, symbol_info.symbol, 1) if signature else []
-
-    try:
-        news_payload = json.loads(news_raw)
-    except Exception:
-        news_payload = {"raw_text": news_raw}
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines: List[str] = []
@@ -208,9 +300,11 @@ def write_stock_research_bundle(
     snapshot_payload: Mapping[str, Any] | None = None,
     signature: str = "",
     book_type: str = "fixed_tracked",
+    max_workers: int = 1,
 ) -> None:
     target_symbols = list(symbols) if symbols is not None else []
-    for symbol in target_symbols:
+
+    def _build_and_write(symbol: str) -> None:
         content = build_research_markdown(
             symbol,
             run_date,
@@ -219,3 +313,14 @@ def write_stock_research_bundle(
             book_type=book_type,
         )
         research_output_path(symbol, run_date, output_dir).write_text(content, encoding="utf-8")
+
+    worker_count = max(1, min(int(max_workers or 1), len(target_symbols) or 1))
+    if worker_count <= 1 or len(target_symbols) <= 1:
+        for symbol in target_symbols:
+            _build_and_write(symbol)
+        return
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {executor.submit(_build_and_write, symbol): symbol for symbol in target_symbols}
+        for future in as_completed(futures):
+            future.result()

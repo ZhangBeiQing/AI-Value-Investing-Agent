@@ -22,6 +22,7 @@ from utlity.stock_utils import get_latest_trading_day, parse_symbol
 
 TRACKED_SYMBOLS_LIST = TRACKED_SYMBOLS
 LOGGER = get_logger("PriceTools")
+MANUAL_POSITION_OVERRIDE_FILENAME = "manual_position_override.json"
 
 
 def _load_position_records(position_file: Path) -> List[Dict]:
@@ -64,6 +65,121 @@ def _load_position_records(position_file: Path) -> List[Dict]:
     return records
 
 
+def _manual_position_override_file(modelname: str) -> Path:
+    base_dir = Path(__file__).resolve().parents[1]
+    return (
+        base_dir
+        / "data"
+        / "agent_data"
+        / modelname
+        / "position"
+        / MANUAL_POSITION_OVERRIDE_FILENAME
+    )
+
+
+def _safe_float(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return None
+    return None
+
+
+def _safe_int(value: object) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if value.is_integer():
+            return int(value)
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None
+        if parsed.is_integer():
+            return int(parsed)
+    return None
+
+
+def _load_manual_position_override(modelname: str) -> Optional[Dict[str, object]]:
+    override_file = _manual_position_override_file(modelname)
+    if not override_file.exists():
+        return None
+    try:
+        payload = json.loads(override_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        LOGGER.warning("manual_position_override 读取失败: %s (%s)", override_file, exc)
+        return None
+
+    if not isinstance(payload, dict):
+        LOGGER.warning("manual_position_override 结构非法(非对象): %s", override_file)
+        return None
+
+    as_of_date_raw = payload.get("as_of_date")
+    if not isinstance(as_of_date_raw, str):
+        LOGGER.warning("manual_position_override 缺少 as_of_date: %s", override_file)
+        return None
+    try:
+        as_of_date = datetime.strptime(as_of_date_raw, "%Y-%m-%d").date()
+    except ValueError:
+        LOGGER.warning("manual_position_override as_of_date 非法: %s", as_of_date_raw)
+        return None
+
+    positions_raw = payload.get("positions")
+    if not isinstance(positions_raw, dict):
+        LOGGER.warning("manual_position_override 缺少 positions 对象: %s", override_file)
+        return None
+
+    flat_positions: Dict[str, float] = {}
+    avg_costs: Dict[str, float] = {}
+
+    cash_value = _safe_float(payload.get("cash"))
+    if cash_value is None and isinstance(positions_raw.get("CASH"), dict):
+        cash_value = _safe_float((positions_raw.get("CASH") or {}).get("shares"))
+    if cash_value is None and not isinstance(positions_raw.get("CASH"), dict):
+        cash_value = _safe_float(positions_raw.get("CASH"))
+    flat_positions["CASH"] = round(float(cash_value or 0.0), 4)
+
+    for symbol, raw_entry in positions_raw.items():
+        if symbol == "CASH":
+            continue
+        shares: Optional[int] = None
+        avg_cost: Optional[float] = None
+
+        if isinstance(raw_entry, dict):
+            shares = _safe_int(raw_entry.get("shares"))
+            avg_cost = _safe_float(raw_entry.get("avg_cost"))
+        else:
+            shares = _safe_int(raw_entry)
+
+        if shares is None:
+            continue
+        flat_positions[symbol] = float(shares)
+        if avg_cost is not None:
+            avg_costs[symbol] = round(float(avg_cost), 4)
+
+    return {
+        "as_of_date": as_of_date,
+        "positions": flat_positions,
+        "avg_costs": avg_costs,
+        "path": str(override_file),
+    }
+
+
 def _pick_latest_record_on_or_before(
     records: List[Dict],
     target_date: str,
@@ -85,6 +201,102 @@ def _pick_latest_record_on_or_before(
     if not candidates:
         return None
     return max(candidates, key=lambda record: (record["_parsed_date"], record["id"]))
+
+
+def _resolve_position_state_on_or_before(
+    target_date: str,
+    modelname: str,
+    *,
+    preferred_dates: Optional[List[str]] = None,
+) -> Tuple[Dict[str, float], int, Optional[date], str]:
+    base_dir = Path(__file__).resolve().parents[1]
+    position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
+
+    records = _load_position_records(position_file)
+    latest_record = _pick_latest_record_on_or_before(
+        records,
+        target_date,
+        preferred_dates=preferred_dates,
+    )
+    latest_positions = latest_record["positions"] if latest_record is not None else {}
+    latest_id = latest_record["id"] if latest_record is not None else -1
+    latest_date = latest_record["_parsed_date"] if latest_record is not None else None
+
+    override = _load_manual_position_override(modelname)
+    if override is None:
+        return latest_positions, latest_id, latest_date, "position_jsonl"
+
+    override_date = override["as_of_date"]
+    try:
+        target_dt = datetime.strptime(target_date, "%Y-%m-%d").date()
+    except ValueError:
+        return latest_positions, latest_id, latest_date, "position_jsonl"
+
+    if not isinstance(override_date, date) or override_date > target_dt:
+        return latest_positions, latest_id, latest_date, "position_jsonl"
+
+    if latest_date is not None and latest_date > override_date:
+        return latest_positions, latest_id, latest_date, "position_jsonl"
+
+    return (
+        dict(override.get("positions") or {}),
+        latest_id,
+        override_date,
+        "manual_position_override",
+    )
+
+
+def _resolve_manual_avg_costs(
+    today_date: str,
+    modelname: str,
+) -> Optional[Tuple[Dict[str, float], Dict[str, float]]]:
+    override = _load_manual_position_override(modelname)
+    if override is None:
+        return None
+
+    try:
+        target_dt = datetime.strptime(today_date, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+    override_date = override.get("as_of_date")
+    if not isinstance(override_date, date) or override_date > target_dt:
+        return None
+
+    _, _, resolved_date, source = _resolve_position_state_on_or_before(today_date, modelname)
+    if source != "manual_position_override" or resolved_date != override_date:
+        return None
+
+    flat_positions = dict(override.get("positions") or {})
+    avg_costs = dict(override.get("avg_costs") or {})
+    active_costs: Dict[str, float] = {}
+    for symbol, shares in flat_positions.items():
+        if symbol == "CASH":
+            continue
+        share_count = float(shares or 0.0)
+        if share_count <= 0:
+            continue
+        avg_cost = _safe_float(avg_costs.get(symbol))
+        if avg_cost is None or avg_cost <= 0:
+            continue
+        active_costs[symbol] = round(float(avg_cost), 4)
+
+    if not active_costs:
+        return {}, {}
+
+    today_price_map = get_prev_close_prices(today_date, list(active_costs.keys()))
+    profits: Dict[str, float] = {}
+    for symbol, cost in active_costs.items():
+        shares = float(flat_positions.get(symbol, 0.0) or 0.0)
+        if shares <= 0:
+            continue
+        price = today_price_map.get(f"{symbol}_price")
+        if price is None:
+            profits[symbol] = 0.0
+        else:
+            profits[symbol] = round((float(price) - float(cost)) * shares, 4)
+
+    return active_costs, profits
 
 
 @lru_cache(maxsize=256)
@@ -206,19 +418,13 @@ def get_today_init_position(today_date: str, modelname: str) -> Dict[str, float]
     Returns:
         {symbol: weight} 的字典；若未找到对应日期，则返回空字典。
     """
-    base_dir = Path(__file__).resolve().parents[1]
-    position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
-
-    if not position_file.exists():
-        LOGGER.warning("Position file %s does not exist", position_file)
-        return {}
-
-    records = _load_position_records(position_file)
     yesterday_date = get_yesterday_date(today_date)
-    latest_record = _pick_latest_record_on_or_before(records, yesterday_date, preferred_dates=[yesterday_date])
-    if latest_record is None:
-        return {}
-    return latest_record["positions"]
+    positions, _, _, _ = _resolve_position_state_on_or_before(
+        yesterday_date,
+        modelname,
+        preferred_dates=[yesterday_date],
+    )
+    return positions or {}
 
 
 def compute_total_value(today_date: str, positions: Dict[str, float]) -> float:
@@ -273,13 +479,25 @@ def get_prev_trading_day_total_value(today_date: str, modelname: str) -> Optiona
     Returns:
         如果找到记录则返回浮点值，否则返回 None。
     """
+    prev_date = get_yesterday_date(today_date)
+    positions, _, resolved_date, source = _resolve_position_state_on_or_before(
+        prev_date,
+        modelname,
+        preferred_dates=[prev_date],
+    )
+    if not positions:
+        return None
+    if source == "manual_position_override":
+        try:
+            when = resolved_date.strftime("%Y-%m-%d") if isinstance(resolved_date, date) else prev_date
+            return compute_total_value(when, positions)
+        except Exception:
+            return None
 
     base_dir = Path(__file__).resolve().parents[1]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
     if not position_file.exists():
         return None
-
-    prev_date = get_yesterday_date(today_date)
     records = _load_position_records(position_file)
     latest_record = _pick_latest_record_on_or_before(records, prev_date, preferred_dates=[prev_date])
     if latest_record is None:
@@ -290,15 +508,12 @@ def get_prev_trading_day_total_value(today_date: str, modelname: str) -> Optiona
     if isinstance(total_value, (int, float)):
         return float(total_value)
 
-    positions = latest_record.get("positions")
     record_date = latest_record.get("date") or prev_date
-    if isinstance(positions, dict) and positions:
-        try:
-            when = record_date if isinstance(record_date, str) else prev_date
-            return compute_total_value(when, positions)
-        except Exception:
-            return None
-    return None
+    try:
+        when = record_date if isinstance(record_date, str) else prev_date
+        return compute_total_value(when, positions)
+    except Exception:
+        return None
 
 def get_latest_position(today_date: str, modelname: str) -> Dict[str, float]:
     """
@@ -316,22 +531,15 @@ def get_latest_position(today_date: str, modelname: str) -> Dict[str, float]:
           - positions: {symbol: weight} 的字典；若未找到任何记录，则为空字典。
           - max_id: 选中记录的最大 id；若未找到任何记录，则为 -1。
     """
-    base_dir = Path(__file__).resolve().parents[1]
-    position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
-
-    if not position_file.exists():
-        return {}, -1
-
-    records = _load_position_records(position_file)
     prev_date = get_yesterday_date(today_date)
-    latest_record = _pick_latest_record_on_or_before(
-        records,
+    positions, record_id, _, source = _resolve_position_state_on_or_before(
         today_date,
+        modelname,
         preferred_dates=[today_date, prev_date],
     )
-    if latest_record is None:
-        return {}, -1
-    return latest_record["positions"], latest_record["id"]
+    if source == "manual_position_override":
+        LOGGER.info("get_latest_position 使用 manual_position_override: signature=%s, today=%s", modelname, today_date)
+    return positions or {}, record_id
 
 def add_no_trade_record(today_date: str, modelname: str):
     """
@@ -384,6 +592,11 @@ def compute_position_costs_and_profit(
     - 加权成本通过回放 position.jsonl 中截至昨日的所有买卖操作得到，采用买入额加权、卖出优先用现有成本法（与主流券商APP一致）。
     - 浮动盈亏 = （今日开盘价 - 平均成本） * 当前持股数量；若无持仓或价格缺失则记 0。
     """
+    manual_override_result = _resolve_manual_avg_costs(today_date, modelname)
+    if manual_override_result is not None:
+        LOGGER.info("compute_position_costs_and_profit 使用 manual_position_override: signature=%s, today=%s", modelname, today_date)
+        return manual_override_result
+
     base_dir = Path(__file__).resolve().parents[1]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
     if not position_file.exists():

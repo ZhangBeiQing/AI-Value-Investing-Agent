@@ -1293,8 +1293,9 @@ def update_all_tracked_stocks(tracked: List[SymbolInfo], model: str, lookback_da
     """
     _log(f"开始批量并发更新 {len(tracked)} 只股票")
     out: Dict[str, int] = {}
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+
+    worker_count = max(1, min(os.cpu_count() or 1, len(tracked) or 1))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
         future_to_stock = {
             executor.submit(
                 update_disclosures_for_stock,
@@ -1316,6 +1317,66 @@ def update_all_tracked_stocks(tracked: List[SymbolInfo], model: str, lookback_da
                 out[stock_symbol] = -1  # 标记为失败
 
     return out
+
+
+def update_selected_stocks(
+    tracked: List[SymbolInfo],
+    model: str,
+    *,
+    lookback_days: int = 365,
+    max_workers: int | None = None,
+) -> Dict[str, int]:
+    _log(f"开始批量并发更新 {len(tracked)} 只股票")
+    out: Dict[str, int] = {}
+    worker_count = max(1, min(int(max_workers or 1), len(tracked) or 1))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+        future_to_stock = {
+            executor.submit(
+                update_disclosures_for_stock,
+                symbol_info,
+                model=model,
+                lookback_days=lookback_days,
+            ): symbol_info for symbol_info in tracked
+        }
+
+        for future in concurrent.futures.as_completed(future_to_stock):
+            stock_info = future_to_stock[future]
+            stock_symbol = stock_info.symbol
+            try:
+                cnt = future.result()
+                out[stock_symbol] = cnt
+                _log(f"批量更新完成: {stock_info.stock_name}({stock_symbol}) 新增={cnt}")
+            except Exception as exc:
+                _log(f"股票 {stock_symbol} 在并发更新中产生异常: {exc}")
+                out[stock_symbol] = -1
+
+    return out
+
+
+def audit_selected_stocks(
+    tracked: List[SymbolInfo],
+    audit_model: str,
+    *,
+    max_workers: int | None = None,
+) -> None:
+    if not tracked:
+        return
+    worker_count = max(1, min(int(max_workers or 1), len(tracked) or 1))
+    _log(f"开始并发审计 {len(tracked)} 只股票，worker={worker_count}")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+        future_to_stock = {
+            executor.submit(audit_news_json, info, audit_model): info
+            for info in tracked
+        }
+        for future in concurrent.futures.as_completed(future_to_stock):
+            stock_info = future_to_stock[future]
+            stock_symbol = stock_info.symbol
+            try:
+                future.result()
+                _log(f"股票 {stock_symbol} 的审计任务完成")
+            except Exception as exc:
+                _log(f"股票 {stock_symbol} 在并发审计中产生异常: {exc}")
 
 
 def audit_news_json(symbol_info: SymbolInfo, audit_model: str) -> None:
@@ -1525,38 +1586,41 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description="构建/更新/审计上市公司公告新闻")
     parser.add_argument("--symbol", type=str, help="标准股票代码，如 002371.SZ")
+    parser.add_argument("--symbols", nargs="*", help="批量指定多个标准股票代码，如 002371.SZ 300750.SZ")
     parser.add_argument("--lookback", type=int, default=120, help="首次入池回溯天数，默认365")
     parser.add_argument("--all", action="store_true", help="批量更新 TRACKED_A_STOCKS")
     parser.add_argument("--model", type=str, default="qwen-doc-turbo", help="用于原子摘要的AI模型")
     parser.add_argument("--audit-model", default="deepseek-v3.2-exp", type=str, help="（可选）用于战略审计的AI模型，提供此参数将触发审计流程")
+    parser.add_argument("--max-workers", type=int, default=4, help="批量更新/审计时的最大并发数")
     args = parser.parse_args()
 
     _log("命令启动")
-    if args.all:
-        tracked_infos = [parse_symbol(entry.symbol) for entry in TRACKED_A_STOCKS]
-        stats = update_all_tracked_stocks(tracked_infos, model=args.model, lookback_days=args.lookback)
+    if args.all or args.symbols:
+        if args.all:
+            tracked_infos = [parse_symbol(entry.symbol) for entry in TRACKED_A_STOCKS]
+        else:
+            seen: set[str] = set()
+            tracked_infos = []
+            for raw_symbol in args.symbols or []:
+                if not raw_symbol or raw_symbol in seen:
+                    continue
+                seen.add(raw_symbol)
+                tracked_infos.append(parse_symbol(raw_symbol))
+        stats = update_selected_stocks(
+            tracked_infos,
+            model=args.model,
+            lookback_days=args.lookback,
+            max_workers=args.max_workers,
+        )
         LOGGER.info("--- 摘要提取阶段完成 ---")
         LOGGER.info("%s", json.dumps(stats, ensure_ascii=False, indent=2))
         
         if args.audit_model:
-            _log(f"开始对所有跟踪的股票进行并发审计，使用模型: {args.audit_model}")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-                future_to_stock = {
-                    executor.submit(
-                        audit_news_json,
-                        info,
-                        args.audit_model
-                    ): info for info in tracked_infos
-                }
-                
-                for future in concurrent.futures.as_completed(future_to_stock):
-                    stock_info = future_to_stock[future]
-                    stock_symbol = stock_info.symbol
-                    try:
-                        future.result()  # 检查是否有异常
-                        _log(f"股票 {stock_symbol} 的审计任务完成")
-                    except Exception as exc:
-                        _log(f"股票 {stock_symbol} 在并发审计中产生异常: {exc}")
+            audit_selected_stocks(
+                tracked_infos,
+                args.audit_model,
+                max_workers=args.max_workers,
+            )
             _log("--- 并发审计阶段完成 ---")
         return 0
 
