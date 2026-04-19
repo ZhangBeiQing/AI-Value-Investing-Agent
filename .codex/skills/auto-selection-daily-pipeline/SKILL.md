@@ -173,6 +173,7 @@ python scripts/manage_selection_system.py --base-dir data build-candidate-pools 
 - 主输入：
   - `08_short_book_input.json`
   - `08_short_book_input.md`
+  - `data/selection_runs/<上一交易日>/08_short_book_candidates.json`（若存在，必须读取）
 - 目标输出：
   - `08_short_book_candidates.json`
 
@@ -180,21 +181,26 @@ short-book subagent 的强制要求：
 
 1. 先完整阅读 `08_short_book_input.md`
 2. 再完整阅读 `08_short_book_input.json`
-3. 以 `08_short_book_input.json` 中的 `shared_context_excerpt` 作为共享上下文主来源
-4. 不要默认回头重读 `07_shared_selection_context.md` 或更早的原始中间文件
-5. 若需要补充板块细节，只使用：
+3. 再直接回看上一交易日的 `08_short_book_candidates.json`；这一步属于强制连续性检查，不视为回读 01-07 原始中间文件
+4. 以 `08_short_book_input.json` 中的 `shared_context_excerpt` 作为共享上下文主来源
+5. 不要默认回头重读 `07_shared_selection_context.md` 或更早的原始中间文件
+6. 短期池对上一交易日结果只采用“弱先验”口径，必须先判断：昨天的催化今天是强化、兑现中、钝化还是证伪
+7. 只有当昨日催化仍在强化或仍在扩散时，昨日入池股票才应优先保留；若昨日只是单日脉冲、今天没有延续，应快速出池
+8. 新进票可以大量替换昨日旧票，不要求短期池名单高稳定性；但新进票必须能回答：它为何比被替换的昨日旧票更值得占用今天的 short-book 名额
+9. 若需要补充板块细节，只使用：
 
 ```bash
 python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A"
 ```
 
-6. 若需要补充单股 snapshot，只使用：
+10. 若需要补充单股 snapshot，只使用：
 
 ```bash
 python scripts/query_stock_snapshot.py --date YYYY-MM-DD --symbol 000977.SZ
 ```
 
-7. 输出必须写到：
+11. 若上一交易日 `08_short_book_candidates.json` 缺失，允许按冷启动口径筛选，但必须在最终分析中显式说明昨日短期池锚点缺失，今天无法做连续性比较
+12. 输出必须写到：
 
 - `data/selection_runs/YYYY-MM-DD/08_short_book_candidates.json`
 
@@ -205,6 +211,7 @@ python scripts/query_stock_snapshot.py --date YYYY-MM-DD --symbol 000977.SZ
 - 主输入：
   - `09_long_book_input.json`
   - `09_long_book_input.md`
+  - `data/selection_runs/<上一交易日>/09_long_book_candidates.json`（若存在，必须读取）
 - 目标输出：
   - `09_long_book_candidates.json`
 
@@ -212,10 +219,15 @@ long-book subagent 的强制要求：
 
 1. 先完整阅读 `09_long_book_input.md`
 2. 再完整阅读 `09_long_book_input.json`
-3. 以 `09_long_book_input.json` 中的 `shared_context_excerpt` 作为共享上下文主来源
-4. 不要默认回头重读 `07_shared_selection_context.md` 或更早的原始中间文件
-5. 若需要补充板块或 snapshot，优先使用查询脚本，而不是回退到原始中间文件
-6. 输出必须写到：
+3. 再直接回看上一交易日的 `09_long_book_candidates.json`，并把它作为今日长期池筛选的主锚；这一步属于强制连续性检查，不视为回读 01-07 原始中间文件
+4. 以 `09_long_book_input.json` 中的 `shared_context_excerpt` 作为共享上下文主来源
+5. 不要默认回头重读 `07_shared_selection_context.md` 或更早的原始中间文件
+6. 长期池必须把昨日入池结果视为强先验，默认先问：昨天为什么选它，今天这些理由是否仍成立
+7. 若昨日逻辑仍成立，优先保留并只调整排序；若逻辑加强，升级优先级；若逻辑弱化但未证伪，降级观察；若逻辑被证伪，再移出池子
+8. 新进票必须回答：它为什么比某个昨日老票更值得占用今天的 long-book 名额
+9. 若需要补充板块或 snapshot，优先使用查询脚本，而不是回退到原始中间文件
+10. 若上一交易日 `09_long_book_candidates.json` 缺失，允许按冷启动口径筛选，但必须在最终分析中显式说明昨日长期池主锚缺失，今天无法做连续性比较
+11. 输出必须写到：
 
 - `data/selection_runs/YYYY-MM-DD/09_long_book_candidates.json`
 
@@ -284,7 +296,9 @@ python scripts/manage_selection_system.py --base-dir data merge-candidates --dat
 
 ```text
 请只基于 data/selection_runs/YYYY-MM-DD/08_short_book_input.md 和
-data/selection_runs/YYYY-MM-DD/08_short_book_input.json 完成今日 short book 选股，
+data/selection_runs/YYYY-MM-DD/08_short_book_input.json 完成今日 short book 选股。
+另外，必须直接回看上一交易日的 08_short_book_candidates.json，判断昨日催化今天是强化、兑现中、钝化还是证伪；
+这一步属于连续性检查，不属于回读 07 或更早的原始中间文件。
 并把结果写入 data/selection_runs/YYYY-MM-DD/08_short_book_candidates.json。
 除非需要补充板块或 snapshot 细节，否则不要回读 07 或更早的中间文件。
 ```
@@ -293,7 +307,9 @@ data/selection_runs/YYYY-MM-DD/08_short_book_input.json 完成今日 short book 
 
 ```text
 请只基于 data/selection_runs/YYYY-MM-DD/09_long_book_input.md 和
-data/selection_runs/YYYY-MM-DD/09_long_book_input.json 完成今日 long book 选股，
+data/selection_runs/YYYY-MM-DD/09_long_book_input.json 完成今日 long book 选股。
+另外，必须直接回看上一交易日的 09_long_book_candidates.json，并把它作为今日 long book 的主锚；
+默认先问昨天为什么选它、今天这些理由是否仍成立。
 并把结果写入 data/selection_runs/YYYY-MM-DD/09_long_book_candidates.json。
 除非需要补充板块或 snapshot 细节，否则不要回读 07 或更早的中间文件。
 ```
@@ -303,6 +319,7 @@ data/selection_runs/YYYY-MM-DD/09_long_book_input.json 完成今日 long book �
 - 不要在 08/09 生成前就启动选股 subagent
 - 不要让 short-book subagent 负责 long-book，反之亦然
 - 不要在选股 subagent 阶段默认重读 01-07 原始文件
+- 不要把“直接回看上一交易日 08/09 候选池”误判成回读 01-07 原始中间文件；这是强制连续性检查步骤
 - 缺少宏观总结时，不要跳过 `daily-macro-summary`
 - 缺少 `06_hot_news_state.json` 时，不要跳过板块热度层
 - 不要手工拼接 08/09；统一走 `build-candidate-pools`

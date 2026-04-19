@@ -533,6 +533,16 @@ def _build_local_agent_markdown(
         role_text = "短期选股头"
         style_text = "更关注主题强化、板块确认、公告催化、量价与流动性、近端风险。"
         fixed_horizon = "1-2个月"
+        previous_candidates_name = "08_short_book_candidates.json"
+        continuity_block = f"""## 连续性要求
+
+1. 必须直接回看上一交易日的 `data/selection_runs/<上一交易日>/{previous_candidates_name}`；这一步属于强制连续性检查，不视为回读 01-07 原始中间文件。
+2. 昨日入池结果只是弱先验，不得因为昨天入池就机械保留。
+3. 默认先问：昨天的催化今天是强化、兑现中、钝化，还是证伪？
+4. 只有当昨日催化仍在强化或仍在扩散时，昨日入池股票才应优先保留；若昨天只是单日脉冲、今天没有延续，应快速出池。
+5. 新进票仍然可以大量替换昨日旧票，不要求短期池名单高稳定性；但你必须能回答：这个新进票为何比被替换的昨日旧票更值得占用今天的 short-book 名额。
+6. 若上一交易日 `{previous_candidates_name}` 缺失，允许按冷启动口径筛选，但必须在你的分析过程中显式说明昨日短期池锚点缺失，无法做连续性比较。
+"""
     else:
         output_fields = [
             "symbol",
@@ -551,6 +561,15 @@ def _build_local_agent_markdown(
         role_text = "长期选股头"
         style_text = "更关注公司质量、增长持续性、估值赔率、跨季度 thesis 和财报/治理风险。"
         fixed_horizon = "3-12个月"
+        previous_candidates_name = "09_long_book_candidates.json"
+        continuity_block = f"""## 连续性要求
+
+1. 必须直接回看上一交易日的 `data/selection_runs/<上一交易日>/{previous_candidates_name}`，并把它作为今日 long-book 筛选的主锚；这一步属于强制连续性检查，不视为回读 01-07 原始中间文件。
+2. 昨日入池结果是强先验，默认先问：昨天为什么选它，今天这些理由是否仍成立？
+3. 若昨日逻辑仍成立，优先保留并只调整排序；若逻辑加强，升级优先级；若逻辑弱化但未证伪，降级观察；若逻辑被证伪，再移出池子。
+4. 新进票必须回答：它为什么比某个昨日老票更值得占用今天的 long-book 名额。
+5. 若上一交易日 `{previous_candidates_name}` 缺失，允许按冷启动口径筛选，但必须在你的分析过程中显式说明昨日长期池主锚缺失，无法做连续性比较。
+"""
 
     fields_block = "\n".join(f"- `{field}`" for field in output_fields)
     return f"""# {role_text} 本地 Agent 输入
@@ -571,12 +590,15 @@ def _build_local_agent_markdown(
 ## 读取顺序
 
 1. 先阅读 `{payload_path.name}`
-2. 如有需要，可使用本地 snapshot 查询脚本：
+2. 再直接回看上一交易日的 `{previous_candidates_name}`
+3. 如有需要，可使用本地 snapshot 查询脚本：
    - `python scripts/query_stock_snapshot.py --date {run_date} --symbol 000977.SZ`
    - `python scripts/rank_stock_snapshot.py --date {run_date} --field roe --top 20`
    - `python scripts/filter_stock_snapshot.py --date {run_date} --expr 'liquidity_score >= 0.6 and pe_ttm <= 25'`
-3. 若需要补看板块，可使用：
+4. 若需要补看板块，可使用：
    - `python scripts/query_board_snapshot.py --date {run_date} --board-name "通信设备"`
+
+{continuity_block}
 
 ## 板块热点使用方法
 
