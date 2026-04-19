@@ -133,7 +133,38 @@ data/stock_info/{stock_name}_{symbol}/financial_reports/summary_index.json
 
 更新要求：
 
-- 必须按照已有`summary_index.json`格式，把本次更新的最新财报对应的 `announcement_id`、`report_date`、输出 markdown 路径写入 `summary_index.json`
+- 禁止“沿用各股票当前已有格式”自由发挥，必须统一写成如下 canonical 结构：
+
+```json
+{
+  "symbol": "300750.SZ",
+  "stock_name": "宁德时代",
+  "latest_completed_report": {
+    "announcement_id": "1225107946",
+    "report_date": "2026-04-16",
+    "report_type": "q1",
+    "paired_previous_announcement_id": "1225002213",
+    "paired_previous_report_date": "2026-03-10",
+    "output_path": ".../financial_reports/20260416.md",
+    "generated_at": "2026-04-19T12:08:40+08:00"
+  },
+  "history": [
+    {
+      "announcement_id": "1225107946",
+      "report_date": "2026-04-16",
+      "report_type": "q1",
+      "paired_previous_announcement_id": "1225002213",
+      "paired_previous_report_date": "2026-03-10",
+      "output_path": ".../financial_reports/20260416.md",
+      "generated_at": "2026-04-19T12:08:40+08:00"
+    }
+  ]
+}
+```
+
+- `latest_completed_report` 必须与 `history[0]` 指向同一条最新记录。
+- `history` 必须按最新在前排序，最多保留 20 条。
+- 输出路径字段统一使用 `output_path`，不要再写 `path`、`reports`、`records`、数组顶层等变体。
 
 ## 8. 跳过规则
 
