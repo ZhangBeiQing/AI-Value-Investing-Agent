@@ -1,7 +1,7 @@
 # Agent 输入
 
 - 生成日期: 2026-04-18
-- 生成时间: 2026-04-19 15:41:21
+- 生成时间: 2026-04-19 16:26:28
 - BOOK_TYPE: short_book
 - PROMPT_FLOW_CONFIG: /home/zhangbeiqing/programer/AI-Value-Investing-Agent/configs/prompt_flow/skill_flow_short_book.json
 - SIGNATURE: book-short_book
