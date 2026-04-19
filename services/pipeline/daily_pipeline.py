@@ -50,6 +50,15 @@ def _load_selection_symbols(path: Path) -> List[str]:
     return symbols
 
 
+def _collect_manifest_symbols(manifest: Dict[str, Any]) -> List[str]:
+    symbols: List[str] = []
+    for book in manifest.get("books") or []:
+        for symbol in book.get("symbols") or []:
+            if isinstance(symbol, str) and symbol and symbol not in symbols:
+                symbols.append(symbol)
+    return symbols
+
+
 def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, Any]:
     base_path = Path(base_dir)
     selection_dir = base_path / "selection_runs" / run_date
@@ -150,7 +159,11 @@ def run_daily_pipeline_from_manifest(
     _write_manifest(output_dir, manifest)
 
     if refresh_data:
-        run_refresh_data(run_date, signature=_book_signature("fixed_tracked"))
+        run_refresh_data(
+            run_date,
+            signature=_book_signature("fixed_tracked"),
+            symbols=_collect_manifest_symbols(manifest),
+        )
 
     books = manifest.get("books") or []
     for book in books:

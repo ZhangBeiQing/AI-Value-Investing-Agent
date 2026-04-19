@@ -19,10 +19,43 @@ from services.trading.trade_summary import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+VALID_BOOK_TYPES = {"fixed_tracked", "short_book", "long_book"}
 
 
-def resolve_output_dir(base_dir: str, run_date: str) -> Path:
-    return Path(base_dir) / "skill_runs" / run_date
+def _normalize_book_type(book_type: str | None) -> str:
+    raw = (book_type or "").strip()
+    if not raw:
+        return ""
+    if raw not in VALID_BOOK_TYPES:
+        raise ValueError(f"Unsupported book_type: {raw}")
+    return raw
+
+
+def _default_signature(book_type: str | None) -> str:
+    normalized = _normalize_book_type(book_type)
+    return f"book-{normalized}" if normalized else "book-fixed_tracked"
+
+
+def resolve_output_dir(base_dir: str, run_date: str, book_type: str = "") -> Path:
+    base_output_dir = Path(base_dir) / "skill_runs" / run_date
+    normalized_book_type = _normalize_book_type(book_type)
+    return base_output_dir / normalized_book_type if normalized_book_type else base_output_dir
+
+
+def _infer_book_type_from_output_dir(output_dir: Path) -> str:
+    return output_dir.name if output_dir.name in VALID_BOOK_TYPES else ""
+
+
+def _resolve_output_dir(
+    run_date: str,
+    *,
+    base_dir: str,
+    output_dir: str | Path | None = None,
+    book_type: str = "",
+) -> Path:
+    if output_dir:
+        return Path(output_dir)
+    return resolve_output_dir(base_dir, run_date, book_type=book_type)
 
 
 def load_json(path: Path) -> dict:
@@ -42,6 +75,45 @@ def _decision_entries(decision: dict) -> List[dict]:
 def _entry_symbol(entry: dict) -> str | None:
     symbol = entry.get("symbol") or entry.get("stock_code")
     return symbol if isinstance(symbol, str) and symbol.strip() else None
+
+
+def _collect_decision_symbols(decision: dict) -> List[str]:
+    symbols: List[str] = []
+    for entry in _decision_entries(decision):
+        symbol = _entry_symbol(entry)
+        if symbol and symbol not in symbols:
+            symbols.append(symbol)
+    return symbols
+
+
+def _load_expected_symbols_from_snapshot(output_dir: Path) -> List[str]:
+    snapshot_path = output_dir / "02_basic_snapshot_payload.json"
+    if not snapshot_path.exists():
+        return []
+    try:
+        payload = load_json(snapshot_path)
+    except Exception:
+        return []
+
+    stocks = payload.get("stocks")
+    if isinstance(stocks, dict):
+        return [symbol for symbol in stocks.keys() if isinstance(symbol, str) and symbol.strip()]
+    return []
+
+
+def _resolve_expected_symbols(output_dir: Path, decision: dict) -> List[str]:
+    snapshot_symbols = _load_expected_symbols_from_snapshot(output_dir)
+    if snapshot_symbols:
+        return snapshot_symbols
+    decision_symbols = _collect_decision_symbols(decision)
+    if decision_symbols:
+        return decision_symbols
+    try:
+        from configs.stock_pool import TRACKED_A_STOCKS
+
+        return [entry.symbol for entry in TRACKED_A_STOCKS]
+    except Exception:
+        return []
 
 
 def ensure_runtime_env(output_dir: Path, signature: str, today_date: str) -> Path:
@@ -84,9 +156,7 @@ def load_initial_cash(default_value: float = 500000.0) -> float:
         return default_value
 
 
-def ensure_position_file(signature: str, today_date: str) -> Path:
-    from configs.stock_pool import TRACKED_A_STOCKS
-
+def ensure_position_file(signature: str, today_date: str, *, symbols: List[str] | None = None) -> Path:
     position_file = (
         PROJECT_ROOT / "data" / "agent_data" / signature / "position" / "position.jsonl"
     )
@@ -95,7 +165,12 @@ def ensure_position_file(signature: str, today_date: str) -> Path:
 
     position_file.parent.mkdir(parents=True, exist_ok=True)
     initial_cash = load_initial_cash()
-    positions = {entry.symbol: 0 for entry in TRACKED_A_STOCKS}
+    target_symbols = [symbol for symbol in (symbols or []) if symbol]
+    if not target_symbols:
+        from configs.stock_pool import TRACKED_A_STOCKS
+
+        target_symbols = [entry.symbol for entry in TRACKED_A_STOCKS]
+    positions = {symbol: 0 for symbol in target_symbols}
     positions["CASH"] = initial_cash
     record = {
         "date": today_date,
@@ -126,7 +201,7 @@ def extract_trades(decision: dict) -> Tuple[Dict[str, int], Dict[str, int]]:
     return buys, sells
 
 
-def validate_decision_json(decision: dict) -> List[str]:
+def validate_decision_json(decision: dict, *, expected_symbols: List[str] | None = None) -> List[str]:
     errors: List[str] = []
     if not isinstance(decision, dict):
         return ["decision 不是有效的 JSON 对象"]
@@ -185,16 +260,12 @@ def validate_decision_json(decision: dict) -> List[str]:
         elif action in {"BUY", "SELL"} and qty <= 0:
             errors.append(f"stock_decisions[{idx}] {action} 时 action_num 必须大于 0")
 
-    try:
-        from configs.stock_pool import TRACKED_A_STOCKS
-
-        tracked = {entry.symbol for entry in TRACKED_A_STOCKS}
+    target_symbols = [symbol for symbol in (expected_symbols or []) if symbol]
+    if target_symbols:
         present = {_entry_symbol(op) for op in ops if isinstance(op, dict)}
-        missing = sorted(sym for sym in tracked if sym not in present)
+        missing = sorted(sym for sym in target_symbols if sym not in present)
         if missing:
             errors.append(f"缺少股票池标的: {', '.join(missing)}")
-    except Exception:
-        pass
 
     return errors
 
@@ -240,9 +311,13 @@ def execute_trade_from_decision(
     decision_file: str | Path | None = None,
     skip_validate: bool = False,
     signature: str = "",
+    book_type: str = "",
 ) -> Path:
-    resolved_output_dir = (
-        Path(output_dir) if output_dir else resolve_output_dir(base_dir, run_date)
+    resolved_output_dir = _resolve_output_dir(
+        run_date,
+        base_dir=base_dir,
+        output_dir=output_dir,
+        book_type=book_type,
     )
     decision_path = (
         Path(decision_file)
@@ -253,18 +328,28 @@ def execute_trade_from_decision(
         raise SystemExit(f"Decision file not found: {decision_path}")
 
     decision = load_json(decision_path)
+    inferred_book_type = _normalize_book_type(
+        book_type or _infer_book_type_from_output_dir(resolved_output_dir)
+    )
+    expected_symbols = _resolve_expected_symbols(resolved_output_dir, decision)
     if not skip_validate:
-        validation_errors = validate_decision_json(decision)
+        validation_errors = validate_decision_json(
+            decision,
+            expected_symbols=expected_symbols,
+        )
         if validation_errors:
             msg = "决策 JSON 校验失败：\n- " + "\n- ".join(validation_errors)
             raise SystemExit(msg)
     summary_date = decision.get("summary_date") or run_date
 
-    resolved_signature = signature or (
-        get_config_value("SIGNATURE") or "book-fixed_tracked"
-    )
+    if signature:
+        resolved_signature = signature
+    elif inferred_book_type:
+        resolved_signature = _default_signature(inferred_book_type)
+    else:
+        resolved_signature = get_config_value("SIGNATURE") or "book-fixed_tracked"
     ensure_runtime_env(resolved_output_dir, resolved_signature, summary_date)
-    ensure_position_file(resolved_signature, summary_date)
+    ensure_position_file(resolved_signature, summary_date, symbols=expected_symbols)
 
     buys, sells = extract_trades(decision)
 
@@ -317,9 +402,13 @@ def merge_trade_summary(
     output_dir: str | Path | None = None,
     decision_file: str | Path | None = None,
     signature: str = "",
+    book_type: str = "",
 ) -> tuple[Path, Path]:
-    resolved_output_dir = (
-        Path(output_dir) if output_dir else resolve_output_dir(base_dir, run_date)
+    resolved_output_dir = _resolve_output_dir(
+        run_date,
+        base_dir=base_dir,
+        output_dir=output_dir,
+        book_type=book_type,
     )
     decision_path = (
         Path(decision_file)
@@ -331,12 +420,19 @@ def merge_trade_summary(
 
     decision = load_json(decision_path)
     summary_date = decision.get("summary_date") or run_date
-    resolved_signature = (
-        signature
-        or os.environ.get("SIGNATURE")
-        or get_config_value("SIGNATURE")
-        or "book-fixed_tracked"
+    inferred_book_type = _normalize_book_type(
+        book_type or _infer_book_type_from_output_dir(resolved_output_dir)
     )
+    if signature:
+        resolved_signature = signature
+    elif inferred_book_type:
+        resolved_signature = _default_signature(inferred_book_type)
+    else:
+        resolved_signature = (
+            os.environ.get("SIGNATURE")
+            or get_config_value("SIGNATURE")
+            or "book-fixed_tracked"
+        )
 
     initialize_data_files(resolved_signature)
     saved_operations = save_daily_operations(resolved_signature, decision)
@@ -372,12 +468,25 @@ def merge_trade_summary(
 
 
 def run_post_trade(
-    run_date: str, *, base_dir: str = "data", signature: str = ""
+    run_date: str,
+    *,
+    base_dir: str = "data",
+    signature: str = "",
+    output_dir: str | Path | None = None,
+    book_type: str = "",
 ) -> tuple[Path, Path, Path]:
     log_path = execute_trade_from_decision(
-        run_date, base_dir=base_dir, signature=signature
+        run_date,
+        base_dir=base_dir,
+        output_dir=output_dir,
+        signature=signature,
+        book_type=book_type,
     )
     daily_summary_path, history_path = merge_trade_summary(
-        run_date, base_dir=base_dir, signature=signature
+        run_date,
+        base_dir=base_dir,
+        output_dir=output_dir,
+        signature=signature,
+        book_type=book_type,
     )
     return log_path, daily_summary_path, history_path

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Iterable
+
 from services.data_refresh.daily_data_manager import run_manage_daily_data
 
 
-def run_refresh_data(run_date: str, signature: str = "") -> None:
-    run_manage_daily_data(run_date, signature=signature)
-
+def run_refresh_data(
+    run_date: str,
+    signature: str = "",
+    *,
+    symbols: Iterable[str] | None = None,
+) -> None:
+    run_manage_daily_data(run_date, signature=signature, symbols=symbols)

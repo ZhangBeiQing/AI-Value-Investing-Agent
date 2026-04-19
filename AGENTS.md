@@ -122,7 +122,10 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 ## Skills
 
-- `auto-trading-daily-pipeline`：用户手动准备好某日 `01-04` 产物后，Agent 读取资料、逐股分析、汇总庭审结果、经人工确认后生成 `05_decision.json` 并继续后续步骤
+- `auto-trading-daily-pipeline`：三账本交易公共模板与调度说明，负责定义 fixed_tracked / short_book / long_book 的共用流程与串行执行原则
+- `auto-trading-fixed-tracked`：固定股票池 `fixed_tracked` 的单账本交易分析与后处理 skill
+- `auto-trading-short-book`：短期股票池 `short_book` 的单账本交易分析与后处理 skill
+- `auto-trading-long-book`：长期股票池 `long_book` 的单账本交易分析与后处理 skill
 - `add-skill-pipeline-step`：新增或重构 `skill` 流水线步骤时使用
 - `extend-shared-data-access`：新增数据源、缓存目录或指标依赖时使用
 - `debug-skill-run`：`manage_daily_data` / `run_daily_pipeline` / `run_post_trade` 失败时使用

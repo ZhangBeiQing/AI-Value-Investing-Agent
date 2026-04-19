@@ -232,8 +232,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force-refresh-price",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Force refresh price cache for all target symbols (default: disabled)",
+        default=False,
+        help="Force refresh price cache for all target symbols (default: enabled)",
     )
     parser.add_argument("--max-workers", type=int, default=4, help="basic_stock_info max workers")
     parser.add_argument("--look-back-days", type=int, default=0, help="basic_stock_info look back days")
