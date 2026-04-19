@@ -3,7 +3,7 @@
 # AI-Trader 项目系统白皮书
 
 ## 1. 顶层流程与运行方式
-- **当前主入口**：项目当前主流程已经切换为 `skill-only`。日常运行顺序为：`scripts/manage_daily_data.py` → `scripts/run_daily_pipeline.py --date YYYY-MM-DD` → 本地 Agent 读取 `data/skill_runs/{date}/` → `scripts/run_post_trade.py --date YYYY-MM-DD`。
+- **当前主入口**：项目当前主流程已经切换为 `skill-only`。日常运行顺序为：`scripts/manage_daily_data.py` → `scripts/run_daily_pipeline.py --date YYYY-MM-DD` → 本地 Agent 读取 `data/skill_runs/{date}/` → `scripts/run_post_trade.py --date YYYY-MM-DD`。其中 `run_daily_pipeline` 在生成 `fixed_tracked`、`short_book`、`long_book` 前，会先按当日 manifest 汇总三个账本股票并集并触发一次统一数据刷新；若 `manage_daily_data` 的 `--force-refresh-price` 为 `true`，则该并集内所有股票的价格缓存都会强制刷新。
 - **旧入口状态**：`main.sh`、`main.py` 与 `agent/base_agent/base_agent.py` 等旧主入口已从仓库中清理，不再保留。
 - **交易结果落地**：`tools.price_tools` 提供 `get_latest_position`、`get_open_prices`、`add_no_trade_record`、`compute_total_value` 等函数，所有买卖最终写入 `data/agent_data/{signature}/position/position.jsonl` 并更新 `IF_TRADE` 标记。
 - **运行前置与依赖**：`pip install -r requirements.txt` 安装依赖，`cp .env.example .env` 并填写密钥；当前主流程默认不再依赖启动 MCP 服务。

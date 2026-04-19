@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 from tools.price_tools import (
+    compute_total_value,
     get_open_prices,
     get_today_init_position,
     get_yesterday_open_and_close_price,
@@ -413,6 +414,11 @@ def get_agent_system_prompt(
         historical_summary_value = SUMMARY_PLACEHOLDER
 
     prev_total_value = get_prev_trading_day_total_value(today_date, signature)
+    if prev_total_value is None and today_init_position:
+        try:
+            prev_total_value = compute_total_value(today_date, today_init_position)
+        except Exception:
+            prev_total_value = None
     if prev_total_value is None:
         fallback_cash = get_config_value("INITIAL_CASH") or get_config_value("INIT_CASH") or 500000.0
         try:
