@@ -43,9 +43,12 @@ SUMMARY_DETAIL_FIELDS = [
     "allow_reanchor_today",
     "forecast_reliability",
     "valuation_mode",
+    "catalyst_and_momentum",
+    "trading_mode",
     "key_facts",
     "inferences",
     "valuation_conclusion",
+    "risk_reward_setup",
     "motion",
     "court",
     "recommended_action",
@@ -99,6 +102,7 @@ def _apply_reason_normalization(entry: dict, reference_date: Optional[str]) -> N
         "history_anchor",
         "allow_reanchor_today",
         "valuation_conclusion",
+        "risk_reward_setup",
         "recommended_action",
     ]:
         entry[field] = _normalize_relative_reason(entry.get(field), reference_date)

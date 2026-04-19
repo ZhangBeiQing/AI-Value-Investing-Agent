@@ -201,7 +201,34 @@ def extract_trades(decision: dict) -> Tuple[Dict[str, int], Dict[str, int]]:
     return buys, sells
 
 
-def validate_decision_json(decision: dict, *, expected_symbols: List[str] | None = None) -> List[str]:
+def _analysis_profile_fields(book_type: str, entry: dict | None = None) -> List[str]:
+    normalized = (book_type or "").strip().lower()
+    legacy_fields = [
+        "forecast_reliability",
+        "valuation_mode",
+        "valuation_conclusion",
+    ]
+    short_book_fields = [
+        "catalyst_and_momentum",
+        "trading_mode",
+        "risk_reward_setup",
+    ]
+    if normalized == "short_book":
+        return short_book_fields
+    if normalized:
+        return legacy_fields
+    probe = entry or {}
+    if any(field in probe for field in short_book_fields):
+        return short_book_fields
+    return legacy_fields
+
+
+def validate_decision_json(
+    decision: dict,
+    *,
+    expected_symbols: List[str] | None = None,
+    book_type: str = "",
+) -> List[str]:
     errors: List[str] = []
     if not isinstance(decision, dict):
         return ["decision 不是有效的 JSON 对象"]
@@ -216,18 +243,15 @@ def validate_decision_json(decision: dict, *, expected_symbols: List[str] | None
         errors.append("stock_decisions 必须是非空数组")
         return errors
 
-    required_fields = [
+    common_required_fields = [
         "symbol",
         "stock_name",
         "scan",
         "analysis_type",
         "history_anchor",
         "allow_reanchor_today",
-        "forecast_reliability",
-        "valuation_mode",
         "key_facts",
         "inferences",
-        "valuation_conclusion",
         "motion",
         "court",
         "recommended_action",
@@ -244,6 +268,9 @@ def validate_decision_json(decision: dict, *, expected_symbols: List[str] | None
         if not isinstance(op, dict):
             errors.append(f"stock_decisions[{idx}] 不是对象")
             continue
+        required_fields = common_required_fields.copy()
+        insert_at = required_fields.index("key_facts")
+        required_fields[insert_at:insert_at] = _analysis_profile_fields(book_type, op)
         for field in required_fields:
             if field == "symbol":
                 if not _entry_symbol(op):
@@ -336,6 +363,7 @@ def execute_trade_from_decision(
         validation_errors = validate_decision_json(
             decision,
             expected_symbols=expected_symbols,
+            book_type=inferred_book_type,
         )
         if validation_errors:
             msg = "决策 JSON 校验失败：\n- " + "\n- ".join(validation_errors)

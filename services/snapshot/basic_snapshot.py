@@ -1114,10 +1114,12 @@ def build_basic_snapshot(
     run_date: str,
     *,
     price_lookback_days: int = DEFAULT_PRICE_LOOKBACK_DAYS,
+    max_workers: int = 1,
 ) -> Dict[str, Any]:
     return basic_info(
         symbols,
         today_time=run_date,
+        max_workers=max_workers,
         price_lookback_days=price_lookback_days,
         force_refresh=False,
         force_refresh_financials=False,

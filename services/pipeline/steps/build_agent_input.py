@@ -104,8 +104,13 @@ def build_agent_input(
     return "\n".join(sections)
 
 
-def build_snapshot_payload(run_date: str, symbols: List[str]) -> Dict[str, Any]:
-    return build_basic_snapshot(symbols, run_date)
+def build_snapshot_payload(
+    run_date: str,
+    symbols: List[str],
+    *,
+    max_workers: int = 1,
+) -> Dict[str, Any]:
+    return build_basic_snapshot(symbols, run_date, max_workers=max_workers)
 
 
 def write_agent_input_bundle(
@@ -117,13 +122,18 @@ def write_agent_input_bundle(
     signature: str = "",
     prompt_config: str | Path | None = None,
     snapshot_payload: Dict[str, Any] | None = None,
+    max_workers: int = 1,
 ) -> None:
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     resolved_signature = resolve_signature(signature)
     resolved_prompt_config = Path(prompt_config) if prompt_config else DEFAULT_PROMPT_CONFIG
 
-    snapshot_payload = snapshot_payload or build_snapshot_payload(run_date, symbols)
+    snapshot_payload = snapshot_payload or build_snapshot_payload(
+        run_date,
+        symbols,
+        max_workers=max_workers,
+    )
     (target_dir / "02_basic_snapshot_payload.json").write_text(
         json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
