@@ -27,6 +27,7 @@ import pandas as pd
 
 from indicator_library.calculators.fundamental import calculate_rolling_ttm_profit
 from shared_data_access.data_access import SharedDataAccess
+from shared_data_access.exceptions import CacheIntegrityError
 from shared_data_access.models import PreparedData
 from utlity import (
     SymbolInfo,
@@ -477,7 +478,7 @@ class EnhancedPEPBAnalyzer:
                 )
                 snap.reason = entry.get("reason", "")
                 snapshots.append(snap)
-            except DataQualityError as exc:
+            except (DataQualityError, CacheIntegrityError) as exc:
                 LOGGER.warning("相似股票 %s 数据不足: %s", similar_info.symbol, exc)
         return snapshots
 
