@@ -77,14 +77,15 @@ logs/
 **/*.pdf
 
 # 临时文件/目录
+tmp/
 test/
 **/test_*
 *.html
 *.jpg
 *.jpeg
-data/daily_prices_*.json
-data/basic_info_cache/*.json
-data/merged.jsonl
+# ---- 运行数据目录（已拆分为独立 git 仓库，见 data/.git） ----
+data/
+
 # ---- 项目运行缓存/生成数据 ----
 **/.cache_registry_meta.json
 **/__pycache__/
@@ -94,28 +95,3 @@ data/merged.jsonl
 
 .env
 *:Zone.Identifier
-
-!/data/macro_economy/*.md
-!/data/universe/master_universe.json
-!/data/skill_runs/**/05_decision.json
-!/data/agent_data/
-!/data/agent_data/deepseek-reasoner/
-!/data/agent_data/deepseek-reasoner/**
-!/data/stock_info/
-!/data/stock_info/**
-data/stock_info/*/financials_cache/
-data/stock_info/*/financials_cache/**
-data/stock_info/*/prices/
-data/stock_info/*/prices/**
-data/stock_info/*/share_info/
-data/stock_info/*/share_info/**
-data/stock_info/*/disclosures/
-data/stock_info/*/disclosures/**
-data/stock_info/*/analysis/
-data/stock_info/*/analysis/**
-data/stock_info/*/pe_pb_analysis/
-data/stock_info/*/pe_pb_analysis/**
-data/stock_info/*/profit_forecast/
-data/stock_info/*/profit_forecast/**
-data/0_transaction_package/
-data/0_transaction_package/**
