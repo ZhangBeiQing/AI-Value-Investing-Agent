@@ -76,23 +76,26 @@ def build_board_heat_state(
     top_n: int = DEFAULT_TOP_N,
     stocks_per_board: int = DEFAULT_STOCKS_PER_BOARD,
     model: str = DEFAULT_RESEARCH_MODEL,
+    force_refresh: bool = False,
 ) -> Dict[str, Path]:
     paths = SelectionSystemPaths.from_base_dir(base_dir)
     paths.ensure_directories()
     paths.ensure_run_dir(run_date)
 
     LOGGER.info(
-        "开始生成板块热度层: run_date=%s top_n=%d stocks_per_board=%d model=%s",
+        "开始生成板块热度层: run_date=%s top_n=%d stocks_per_board=%d model=%s force_refresh=%s",
         run_date,
         top_n,
         stocks_per_board,
         model,
+        force_refresh,
     )
 
     quant_snapshot = build_board_quant_snapshot(
         run_date,
         base_dir=base_dir,
         stocks_per_board=stocks_per_board,
+        force_refresh_snapshot=force_refresh,
     )
     LOGGER.info(
         "板块量化快照已就绪: run_date=%s price_as_of_date=%s board_count=%s",
