@@ -10,7 +10,12 @@ from typing import Any, Dict, Iterable, List, Mapping
 import pandas as pd
 
 from core.logging import get_logger
-from services.snapshot.basic_snapshot import basic_info, load_basic_snapshot_from_cache
+from services.selection_system.announcement_summary import load_or_build_recent_company_announcements
+from services.snapshot.basic_snapshot import (
+    DEFAULT_PRICE_LOOKBACK_DAYS,
+    basic_info,
+    load_basic_snapshot_from_cache,
+)
 from shared_data_access.data_access import SharedDataAccess
 from utlity.stock_utils import parse_symbol
 
@@ -22,6 +27,7 @@ from .store import load_json_file, save_json_file
 LOGGER = get_logger("SelectionCandidates")
 SHORT_BOOK_ANNOUNCEMENT_LOOKBACK_DAYS = 3
 LONG_BOOK_ANNOUNCEMENT_LOOKBACK_DAYS = 30
+SNAPSHOT_PRICE_LOOKBACK_DAYS = DEFAULT_PRICE_LOOKBACK_DAYS
 
 POSITIVE_ANNOUNCEMENT_KEYWORDS = (
     "回购",
@@ -126,7 +132,11 @@ def collect_candidate_pool_inputs(
     universe = load_master_universe(paths)
     hot_news_state = load_json_file(paths.run_hot_news_state_path(run_date), default={}) or {}
     board_heat_state = load_json_file(paths.run_board_heat_state_path(run_date), default={}) or {}
-    announcements_payload = load_json_file(paths.run_recent_company_announcements_path(run_date), default={}) or {}
+    announcements_payload = load_or_build_recent_company_announcements(
+        run_date,
+        base_dir=base_dir,
+        refresh_missing=False,
+    )
     short_announcements_payload = _filter_announcements_payload(
         announcements_payload,
         run_date=run_date,
@@ -1019,6 +1029,7 @@ def _ensure_universe_snapshot_coverage(
         today_time=run_date,
         use_cache=True,
         max_workers=4,
+        price_lookback_days=SNAPSHOT_PRICE_LOOKBACK_DAYS,
     )
     reloaded = load_basic_snapshot_from_cache(
         universe_symbols,
@@ -1044,7 +1055,11 @@ def _prepare_missing_snapshot_inputs(
     base_dir: str | Path,
 ) -> None:
     LOGGER.info("开始补齐缺失 snapshot 依赖数据: missing_symbols=%d", len(missing_symbols))
-    sda = SharedDataAccess(base_dir=base_dir, logger=LOGGER)
+    sda = SharedDataAccess(
+        base_dir=base_dir,
+        logger=LOGGER,
+        price_lookback_days=SNAPSHOT_PRICE_LOOKBACK_DAYS,
+    )
     for symbol in missing_symbols:
         info = parse_symbol(symbol)
         sda.prepare_dataset(
