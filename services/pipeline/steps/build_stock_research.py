@@ -142,7 +142,49 @@ def _artifact_cache_path(symbol: str, run_date: str) -> Path:
     return cache_dir / f"{stock_root.name}_{run_date}_artifact.json"
 
 
-def _load_base_artifact(cache_path: Path) -> Optional[Dict[str, Any]]:
+def _path_mtime_ns(path: Path) -> int:
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
+def _directory_fingerprint(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "path": str(path),
+            "exists": False,
+            "entry_count": 0,
+            "latest_mtime_ns": 0,
+        }
+
+    latest_mtime_ns = _path_mtime_ns(path)
+    entry_count = 0
+    for child in path.iterdir():
+        if child.is_file():
+            entry_count += 1
+            latest_mtime_ns = max(latest_mtime_ns, _path_mtime_ns(child))
+    return {
+        "path": str(path),
+        "exists": True,
+        "entry_count": entry_count,
+        "latest_mtime_ns": latest_mtime_ns,
+    }
+
+
+def _artifact_input_fingerprint(symbol: str) -> Dict[str, Any]:
+    symbol_info = parse_symbol(symbol)
+    stock_root = get_stock_data_dir(symbol_info)
+    return {
+        "stock_root": str(stock_root),
+        "financial_reports": _directory_fingerprint(stock_root / "financial_reports"),
+        "forecast": _directory_fingerprint(stock_root / "forecast"),
+        "news_json_mtime_ns": _path_mtime_ns(stock_root / "news" / "news.json"),
+        "news_audited_mtime_ns": _path_mtime_ns(stock_root / "news" / "news_audited.json"),
+    }
+
+
+def _load_base_artifact(cache_path: Path, symbol: str) -> Optional[Dict[str, Any]]:
     if not cache_path.exists():
         return None
     try:
@@ -157,6 +199,9 @@ def _load_base_artifact(cache_path: Path) -> Optional[Dict[str, Any]]:
     if not isinstance(payload.get("news_payload"), dict):
         return None
     if not isinstance(payload.get("financial_payload"), dict):
+        return None
+    if payload.get("input_fingerprint") != _artifact_input_fingerprint(symbol):
+        LOGGER.info("研究缓存输入已变更，忽略并重建: %s", cache_path)
         return None
     return payload
 
@@ -181,6 +226,7 @@ def _build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
         "symbol": symbol,
         "run_date": run_date,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "input_fingerprint": _artifact_input_fingerprint(symbol),
         "price_payload": price_payload,
         "news_payload": news_payload,
         "financial_payload": financial_payload,
@@ -191,7 +237,7 @@ def _load_or_build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
     cache_path = _artifact_cache_path(symbol, run_date)
     lock = _artifact_lock(cache_path)
     with lock:
-        cached = _load_base_artifact(cache_path)
+        cached = _load_base_artifact(cache_path, symbol)
         if cached is not None:
             LOGGER.info("复用研究缓存: %s", cache_path)
             return cached
