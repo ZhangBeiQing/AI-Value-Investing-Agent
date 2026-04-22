@@ -33,7 +33,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 - `07_daily_summary.json`（每日操盘总结）
 - `08_history_merge.json`（合并后的历史操盘总结）
 
-# 4. 标准工作流（多 subagent 版，半自动确认）
+# 4. 标准工作流（优先级队列 + P0 并行 subagent，半自动确认）
 
 ## 日期选择说明
 - **用户在触发 Skill 时会提供日期**（格式：`YYYY-MM-DD`）
@@ -41,13 +41,15 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 - 所有文件读取和决策输出都基于该日期目录
 
 ## 执行模式说明（重要）
-本技能采用“主 agent + 多 subagent 并行逐股”的方式，以降低单上下文拥堵、提升逐股深度。
+本技能采用"主 agent 建立优先级队列 + 仅对 P0 并行派发 subagent"的方式，以控制 Opus 等高成本模型的 token 消耗并提升逐股深度。
 
 **上下文共享边界（必须理解）**：
-- 主agent读取SKILL.md、03_agent_input.md、02_basic_snapshot_payload.json、01_global_context.md。然后根据打算分析的股票，建立subagent。
-- 每个subagent也必须先完整读取共享输入文件，顺序固定为：`03_agent_input.md -> 01_global_context.md -> 本股 04_stock_research/{symbol}_research.md`。该股票对应的 snapshot 已写入本股研究包，因此 subagent 不再单独读取 `02_basic_snapshot_payload.json`。
-- `03_agent_input.md` 中要求的“强制输出”仍由主agent对用户执行；subagent需要完整阅读并继承其中规则，但不需要重复向用户输出同一段强制输出。
-- subagent只允许读取共享输入文件 `01/03` 与自己负责的那一只 `04_stock_research/{symbol}_research.md`，不得读取其他股票研究包。然后把按照规则分析的股票结果庭审后完整的传递给主agent。主agent收集每只股票的完整的分析结果，统一输出到端口，给用户确定
+- 主 agent 只读取 `SKILL.md`、`03_agent_input.md`、`02_basic_snapshot_payload.json`、`01_global_context.md`（含末尾 `yesterday_digest` 表）。**主 agent 禁止读任何股票的 `_research.md`**——深度阅读是 subagent 的工作。
+- 主 agent 基于上述输入建立 P0（并行深度分析，≤5 只）/ P1（主 agent 快扫结论）/ P2（跳过）三档队列，仅对 P0 派发并行 subagent。
+- 每个 subagent 读取共享输入顺序固定为：`03_agent_input.md -> 01_global_context.md -> 本股 04_stock_research/{symbol}_research.md`。该股 snapshot 已写入研究包，subagent 不单独读 `02_basic_snapshot_payload.json`。
+- **主 agent 派发 P0 subagent 时不要预写 `search_brief`**——subagent 在读完自己那只股的研究包后自行整理自检清单（至少覆盖该股 `next_day_watchlist` 遗留跟踪点、今日异常涨跌/放量待解释问题、需要核验的高时效事实）。
+- `03_agent_input.md` 中"强制输出"仍由主 agent 对用户执行；subagent 须完整阅读规则，但不需重复向用户输出同一段。
+- subagent 只能读 `01/03` + 自己那只 `_research.md`，不得读其他股票研究包；分析完后把完整庭审底稿传回主 agent；主 agent 负责汇总 P0 详细底稿 + P1 快扫 + P2 跳过记录，最终写入 `05_decision.json`。
 
 ## 阶段 A（自动，由主 agent 完成统筹）
 
@@ -63,45 +65,45 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 ### 步骤 3：读取基本面数据概览
 主 agent 阅读 `02_basic_snapshot_payload.json`，用于快速扫描各股最新快照、仓位、初始定价锚点。
 
-说明：`02_basic_snapshot_payload.json` 仍由主 agent 在 Step 0 使用，但不再要求 subagent 逐股重复阅读；每只股票对应的 snapshot 会写入自己的研究包文件。
+说明：`02_basic_snapshot_payload.json` 仅由主 agent 使用；subagent 不读取，每只股票对应的 snapshot 已在研究包中。
 
-### 步骤 4：读取宏观和大盘信息
-主 agent 阅读 `01_global_context.md`，提炼本轮共享的宏观、指数、流动性、事件风险背景。
+### 步骤 4：读取宏观、大盘与昨日账本摘要
+主 agent 阅读 `01_global_context.md`，提炼：
+- 宏观、指数、流动性、事件风险背景（第 1–2 节）
+- 末尾 `yesterday_digest` 表（第 3 节）：每股 `last_deep_scan_date` / `last_action_type` / `price_target` / `stop_loss`，供 Step 2 建立优先级队列与防饥饿机制使用
+- 若 yesterday_digest 缺失（首次运行或无历史决策），P0 筛选退化为"仅基于今日量价 + 持仓异动"，防饥饿机制本日不触发
 
-### 步骤 5：主 agent 构造共享 briefing
-主 agent 在启动 subagent 前，先形成一份统一共享 briefing，至少包含：
-- 当前日期、组合约束、现金与持仓摘要
-- `03_agent_input.md` 的核心规则与 `05_decision.json` 输出契约
-- `01_global_context.md` 的宏观与市场摘要
-- 主agent从 `02_basic_snapshot_payload.json` 提炼出的该股票快照锚点
-- 主agent对该股指定的 `search_brief`：至少包括今天异常涨跌/放量需要解释的现象、研究包里可能过时或矛盾的事实、以及必须联网确认的高时效问题
-- 本轮分析的统一口径：事实与推断分离、先判断今日是否允许重算估值锚、估值写法、庭审写法、禁止事项
-- 主agent必须要求子agent查看股票具体研究包后，对于"最近一次交易日历史交易总结"中的"next_day_watchlist"中今天必须核验的遗留跟踪点（如果存在）继续跟踪，研究包里没有相关内容时需要联网搜索
-- 主agent必须要求子agent查看股票具体研究包后，对于"最近一次交易日历史交易总结"进行反复揣摩，看看今天股票基本面/宏观情况是否发生了显著变化，是否需要修改上一交易日的历史估值锚
+### 步骤 5：主 agent 建立 P0/P1/P2 优先级队列
+结合当日持仓、`02_basic_snapshot_payload.json` 的量价扫描、Step 0 + Step 1 的宏观判定、以及 `01_global_context.md` 末尾的 `yesterday_digest`，主 agent 把股票池分成三档：
 
-说明：共享 briefing 仍然需要提供，因为它负责压缩主agent视角下的重点和连续性；但 briefing 不能替代 subagent 对 `03/01/本股04` 原文的完整阅读。
+- **P0 级（并行深度分析，≤ 5 只）**：
+  1. 昨日持仓且今日跌幅 / 波动异常
+  2. 未持仓但今日波动异常（大涨 >5% / 大跌 >5%，涨停跌停优先）
+  3. 处于"财报危险期"的持仓股
+  4. Step 0 / Step 1 识别到的极具吸引力潜在买入目标
+  5. **【防饥饿机制】** 对照 `yesterday_digest`，若某股 `last_deep_scan_date` 距今 >10 天未深度分析，今日强制升 P0（**一天最多强制一只**）
+- **P1 级（主 agent 快扫结论）**：股价平稳的持仓股、观察仓。主 agent 不派 subagent，也不读 `_research.md`；仅基于 snapshot + yesterday_digest + 01 宏观，直接在 05 中给出 HOLD / FLAT 简明底稿（允许沿用上一次锚点并写明"逻辑未变"）。
+- **P2 级（记录跳过）**：无持仓且无明显机会，`last_deep_scan_date` 距今 ≤10 天的股票，05 中记一行"已略过，理由：近期已深度分析"。
 
-### 步骤 7：主 agent 启动多个 subagent 逐股并行分析
-当股票数量较多时，主 agent 可以启动多个 subagent 并行分析，例如 11 只股票可按 11 个 subagent 处理；若机器负载或上下文压力较大，也可分批并行。
+若 P0 候选过多（>5 只），按"昨日持仓异动 > 财报危险期 > 强催化非持仓 > 防饥饿触发"顺序择优裁剪到 5 只以内。
 
-每个 subagent 的任务边界必须严格固定：
+### 步骤 6：主 agent 对 P0 队列并行派发 subagent
+主 agent 对 P0 队列中的每只股票分配一个独立 subagent 并行执行。每个 subagent 的任务边界：
 - 只负责 1 只股票
-- 必须先按顺序完整读取 `03_agent_input.md`、`01_global_context.md`
-- 再读取自己的 `04_stock_research/{symbol}_research.md`
-- 以上 3 份输入都必须完整读完；若文件过长，必须分段顺序读到末尾
-- 必须继承主 agent 的共享 briefing
-- 在完整读完本股研究包后，必须先对照‘{symbol}_research.md`中的next_day_watchlist逐项判断是否需要联网补证；若命中硬触发条件则联网是强制步骤
-- 不得擅自读取其他股票的研究包，不得改写最终 `05_decision.json`
+- 必须先按顺序完整读取 `03_agent_input.md` → `01_global_context.md` → 自己那只 `04_stock_research/{symbol}_research.md`；如文件较长必须分段顺序读到末尾
+- 读完本股研究包后**自行整理 `search_brief` 自检清单**（主 agent 不会下发 brief），至少覆盖：① 研究包中已载明的上一交易日 `next_day_watchlist` 遗留跟踪点；② 今日异常涨跌 / 放量待解释问题；③ 需要核验的高时效事实
+- 逐项判断自检清单后决定是否联网补证；若清单中有待核验目标或命中任一硬触发条件，联网是强制步骤
+- 不得读其他股票研究包；不得改写最终 `05_decision.json`
 
 subagent 联网补证的硬触发条件至少包括：
 - "最近一次交易日历史交易总结" `next_day_watchlist` 有今天应跟踪的遗留问题
-- 今日或最近一日出现明显大涨大跌、放量异动，但研究包现有新闻/公告/财报无法解释
+- 今日或最近一日出现明显大涨大跌、放量异动，但研究包现有新闻 / 公告 / 财报无法解释
 - 研究包中的新闻、公告、经营数据存在明显滞后、缺失、未知或相互矛盾
 - 你准备提出 `BUY` / `SELL`，但关键论据依赖可能已变化的外部事实
-- 你自己在阅读后明确感到“这里如果不联网，我无法区分是正常波动还是新的基本面/事件驱动”
+- 你自己在阅读后明确感到"这里如果不联网，我无法区分是正常波动还是新的基本面 / 事件驱动"
 
-### 步骤 8：subagent 逐股输出标准化结果
-每个 subagent 完成以下内容后，把结果返回给主 agent：
+### 步骤 7：subagent 逐股输出标准化结果
+每个 P0 subagent 完成以下内容后，把结果返回给主 agent：
 - 该股票的五维透视分析
 - 今日是否允许重算估值锚，以及触发器是否成立
 - 盈利预测可靠度与估值模式
@@ -140,11 +142,11 @@ subagent 回传结果必须结构化包含以下字段：
 - 必须区分“已核实事实”和“基于事实的推断”
 - 必须显式引用上一交易日的该股估值锚是否变化
 - 若没有触发估值锚重算条件，必须明确写出“沿用昨日锚点，仅更新验证结果”，不得因为价格涨跌直接改目标价
-- 若主agent在 `search_brief` 中下发了待核验目标，subagent 必须在回传内容里明确体现这些目标是否已有新进展；不能跳过不答
-- 若今日存在异常涨跌或放量，且研究包本地材料不足以解释，subagent 必须先联网补证，再决定是“事件驱动”还是“高波动正常波动”
+- subagent 必须在回传内容里明确体现自行整理的 `search_brief` 自检清单每一项是否已有新进展；不能跳过不答
+- 若今日存在异常涨跌或放量，且研究包本地材料不足以解释，subagent 必须先联网补证，再决定是"事件驱动"还是"高波动正常波动"
 
-### 步骤 9：主 agent 汇总全部 subagent 结果
-主 agent 收集所有 subagent 返回结果后，统一完成：
+### 步骤 8：主 agent 汇总 P0 底稿 + P1 快扫 + P2 跳过记录
+主 agent 收集所有 P0 subagent 返回结果后，再叠加自己对 P1 的快扫结论与 P2 跳过记录，统一完成：
 - 检查是否所有股票都覆盖
 - 检查是否满足 `03_agent_input.md` 的输出契约
 - 发现不同股票间的逻辑冲突时，由主 agent 二次裁决并回写
@@ -153,8 +155,8 @@ subagent 回传结果必须结构化包含以下字段：
 - 向用户展示“逐股分析 + 逐股庭审”的汇总结果
 - **⚠️ 到此必须停住，等待人工确认**
 
-### 步骤 10：人工确认后生成决策文件
-**⚠️ 只有在用户明确回复“OK 生成决策”或类似确认后，主 agent 才执行此步骤**
+### 步骤 9：人工确认后生成决策文件
+**⚠️ 只有在用户明确回复"OK 生成决策"或类似确认后，主 agent 才执行此步骤**
 - 将所有 subagent 结果整理成 JSON 格式
 - **严格遵守** `03_agent_input.md` 中的【最终总结生成规则】格式
 - 生成 `data/skill_runs/YYYY-MM-DD/fixed_tracked/05_decision.json`
@@ -273,6 +275,6 @@ subagent 回传给主 agent 时，至少包含以下 21 个字段：
 
 
 
-##### **必须启动多个 subagent 逐股并行分析**
-##### **必须启动多个 subagent 逐股并行分析**
-##### **必须启动多个 subagent 逐股并行分析**
+##### **必须先建 P0/P1/P2 优先级队列，再仅对 P0 并行派发 subagent（上限 5 只）**
+##### **必须先建 P0/P1/P2 优先级队列，再仅对 P0 并行派发 subagent（上限 5 只）**
+##### **必须先建 P0/P1/P2 优先级队列，再仅对 P0 并行派发 subagent（上限 5 只）**
