@@ -52,7 +52,18 @@ Edit `.env` and set your model API keys and base URLs (e.g., OPENAI_API_KEY, DEE
 
 ### 3. Data Management
 
-Run the daily data management script to update all necessary data (prices, financials, news, etc.):
+Recommended daily entry point (run in the morning after the market has closed the day before):
+
+```bash
+# --date defaults to yesterday. Use the most recent trading day on weekends/holidays.
+python scripts/refresh_all_for_date.py
+python scripts/refresh_all_for_date.py --date 2026-04-21
+python scripts/refresh_all_for_date.py --fresh-heavy   # also force-refresh financials and other heavy caches
+```
+
+This orchestrates the full Python refresh chain (macro panel, per-symbol snapshots, news, board heat, announcements, shared context, candidate-pool inputs) and then prints the ordered checklist of follow-up skills / scripts (macro summary, hot-news summary, auto-selection, financial reports, 01–04 pipeline, per-book trading skills, post-trade processing).
+
+You can still call the individual steps when debugging a single stage:
 
 ```bash
 python scripts/manage_daily_data.py
