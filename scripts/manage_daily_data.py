@@ -226,7 +226,12 @@ def manage_daily_data(args: argparse.Namespace) -> int:
         # 如果 args.symbols 被指定，或者 symbols 列表数量少于 TRACKED_A_STOCKS 总数，
         # 则说明是部分更新，应该逐个调用（或修改 builder 支持列表，但这里我们先逐个调用以支持现有逻辑）
         # 注意：disclosures_builder 目前只支持 --all 或 --symbol 单个
-        
+
+        if args.skip_disclosures:
+            LOGGER.info("按 --skip-disclosures 跳过 disclosures_builder；公告刷新由上层模块（如 manage_selection_system build-announcements）单独负责")
+            steps.append({"name": "disclosures_builder", "status": "skipped", "message": "--skip-disclosures 指定，跳过"})
+            return 0
+
         # 简单判断：如果 args.symbols 或 args.symbols_file 存在，则视为部分更新
         try:
             if args.symbols or args.symbols_file:
@@ -292,6 +297,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-workers", type=int, default=4, help="basic_stock_info max workers")
     parser.add_argument("--look-back-days", type=int, default=0, help="basic_stock_info look back days")
+    parser.add_argument(
+        "--skip-disclosures",
+        action="store_true",
+        help="跳过 disclosures_builder 阶段；用于公告由上层模块（如 manage_selection_system build-announcements）单独负责的场景",
+    )
     return parser
 
 

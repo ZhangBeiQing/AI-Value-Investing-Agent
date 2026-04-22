@@ -1001,6 +1001,14 @@ def _ensure_universe_snapshot_coverage(
     *,
     base_dir: str | Path,
 ) -> Dict[str, Any]:
+    """【兜底路径】确保 master_universe 每只股票都有可用的 basic snapshot 缓存。
+
+    设计归属：**每日 fresh 数据的主刷新责任在 `services/data_refresh/refresh_orchestrator.py`**
+    ——它每天把 TRACKED_A_STOCKS ∪ master_universe 全部传给 manage_daily_data 强刷价格与
+    basic_info。本函数只作为"安全网"：正常情况下缓存应当全量命中，missing_symbols 列表
+    应为空。若触发补齐分支（有 missing），说明上游 refresh 有遗漏或 universe 被动态扩展
+    但 orchestrator 尚未跟上，需要排查。
+    """
     snapshot_payload = load_basic_snapshot_from_cache(
         universe_symbols,
         run_date,
@@ -1013,7 +1021,10 @@ def _ensure_universe_snapshot_coverage(
         return snapshot_payload
 
     LOGGER.warning(
-        "master_universe snapshot 覆盖不足，开始按选股系统模式补齐: universe=%d cached=%d missing=%d",
+        "[兜底触发] master_universe snapshot 覆盖不足，开始按选股系统模式补齐: "
+        "universe=%d cached=%d missing=%d。"
+        "正常每日刷新流程应由 refresh_orchestrator 负责强刷 universe 所有股票；"
+        "此处触发通常意味着上游 refresh_all_for_date.py 未运行或 universe 刚被扩展。",
         len(universe_symbols),
         len(cached_symbols),
         len(missing_symbols),

@@ -112,6 +112,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 时间因果：抓取时面向真实时间拿足历史，回测或复盘只在读取阶段裁剪
 - Symbol 传递：除纯字符串处理外，优先传 `SymbolInfo`
 - 输出目录：写 `analysis/`、`pe_pb_analysis/` 等目录前要清旧文件，仅保留 `.cache_registry_meta.json`
+- 每日 fresh 策略：由 `services/data_refresh/refresh_orchestrator.py` 唯一决定；每日刷新股票范围 = `TRACKED_A_STOCKS` ∪ `master_universe`；价格/财报/basic_info 归 `manage_daily_data`，公告归 `build-announcements`。上层模块不得私设 `force_refresh_*=True`，发现缓存过期时应向 orchestrator 反馈。详见 `docs/share_data_access/README.md`。
 
 ## 日志规则
 
