@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 from core.logging import get_logger
 
+from .announcement_summary import load_or_build_recent_company_announcements
 from .master_universe import load_master_universe
 from .paths import SelectionSystemPaths
 from .store import load_json_file
@@ -27,12 +28,17 @@ def build_shared_selection_context(
     paths = SelectionSystemPaths.from_base_dir(base_dir)
     paths.ensure_directories()
     paths.ensure_run_dir(run_date)
+    announcements = announcements_payload_override or load_or_build_recent_company_announcements(
+        run_date,
+        base_dir=base_dir,
+        refresh_missing=False,
+    )
 
     content = render_shared_selection_context(
         run_date,
         base_dir=base_dir,
         announcement_limit=announcement_limit,
-        announcements_payload_override=announcements_payload_override,
+        announcements_payload_override=announcements,
     )
     target = paths.run_shared_selection_context_path(run_date)
     target.write_text(content, encoding="utf-8")

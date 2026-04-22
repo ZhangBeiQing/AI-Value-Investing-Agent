@@ -56,6 +56,40 @@ def build_recent_company_announcements(
     }
 
 
+def load_or_build_recent_company_announcements(
+    run_date: str,
+    *,
+    base_dir: str | Path = "data",
+    lookback_days: int = DEFAULT_ANNOUNCEMENT_LOOKBACK_DAYS,
+    max_items_per_symbol: int = 6,
+    refresh_missing: bool = False,
+    force_refresh_disclosures: bool = False,
+) -> Dict[str, Any]:
+    paths = SelectionSystemPaths.from_base_dir(base_dir)
+    payload_path = paths.run_recent_company_announcements_path(run_date)
+    payload = load_json_file(payload_path, default={}) or {}
+    if payload_path.exists() and _is_valid_announcements_payload(payload, run_date):
+        return payload
+
+    LOGGER.warning(
+        "最近公告摘要缺失或无效，开始补生成: run_date=%s path=%s refresh_missing=%s",
+        run_date,
+        payload_path,
+        refresh_missing,
+    )
+    payload = collect_recent_company_announcements(
+        run_date,
+        base_dir=base_dir,
+        lookback_days=lookback_days,
+        max_items_per_symbol=max_items_per_symbol,
+        refresh_missing=refresh_missing,
+        force_refresh_disclosures=force_refresh_disclosures,
+    )
+    save_json_file(payload_path, payload)
+    LOGGER.info("最近公告摘要补生成完成: %s", payload_path)
+    return payload
+
+
 def collect_recent_company_announcements(
     run_date: str,
     *,
@@ -72,13 +106,20 @@ def collect_recent_company_announcements(
     window_start = run_dt - timedelta(days=max(int(lookback_days), 1) - 1)
     window_end = run_dt + timedelta(days=1)
 
-    _ensure_news_summaries(
-        symbol_info_map,
-        base_dir=base_dir,
-        lookback_days=lookback_days,
-        refresh_missing=refresh_missing,
-        force_refresh_disclosures=force_refresh_disclosures,
-    )
+    if refresh_missing:
+        _ensure_news_summaries(
+            symbol_info_map,
+            base_dir=base_dir,
+            lookback_days=lookback_days,
+            refresh_missing=refresh_missing,
+            force_refresh_disclosures=force_refresh_disclosures,
+        )
+    else:
+        LOGGER.info(
+            "按本地已审计公告聚合最近公告摘要，不执行全量公告刷新: symbols=%d lookback_days=%d",
+            len(symbol_info_map),
+            int(lookback_days),
+        )
 
     items: list[dict[str, Any]] = []
     for stock in universe.stocks:
@@ -167,6 +208,17 @@ def _ensure_news_summaries(
             LOGGER.info("公告摘要准备完成: symbol=%s added=%s", symbol, added)
 
     LOGGER.info("股票宇宙公告摘要补齐完成: total=%d failures=%d", len(tasks), failures)
+
+
+def _is_valid_announcements_payload(payload: Any, run_date: str) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    if str(payload.get("run_date") or "") != run_date:
+        return False
+    items = payload.get("items")
+    if items is None:
+        return False
+    return isinstance(items, list)
 
 
 def _news_json_path(symbol_info: Any, *, base_dir: str | Path) -> Path:
@@ -293,4 +345,5 @@ def _normalize_summary(value: Any) -> str:
 __all__ = [
     "build_recent_company_announcements",
     "collect_recent_company_announcements",
+    "load_or_build_recent_company_announcements",
 ]
