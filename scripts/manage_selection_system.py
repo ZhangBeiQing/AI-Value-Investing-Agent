@@ -99,6 +99,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="deepseek-v3.2-exp",
         help="Deep research model name.",
     )
+    board_heat_parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Force refresh the board metrics cache snapshot.",
+    )
 
     announcements_parser = subparsers.add_parser(
         "build-announcements",
@@ -237,6 +242,7 @@ def _handle_build_board_heat_state(
     top_n: int,
     stocks_per_board: int,
     model: str,
+    force_refresh: bool,
 ) -> int:
     from services.selection_system.board_heat import build_board_heat_state
 
@@ -246,6 +252,7 @@ def _handle_build_board_heat_state(
         top_n=top_n,
         stocks_per_board=stocks_per_board,
         model=model,
+        force_refresh=force_refresh,
     )
     LOGGER.info("board heat state 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
     return 0
@@ -352,6 +359,7 @@ def main() -> int:
             args.top_n,
             args.stocks_per_board,
             args.model,
+            args.force_refresh,
         )
     if args.command == "build-announcements":
         return _handle_build_announcements(
