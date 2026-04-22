@@ -236,8 +236,30 @@ def collect_news_candidates(
     max_items_per_source: Dict[str, int] | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     run_day = str(run_date).strip()[:10]
-    run_end = datetime.strptime(run_day, "%Y-%m-%d") + timedelta(days=1) - timedelta(seconds=1)
-    window_start = run_end - timedelta(hours=max(int(recent_hours), 1))
+    today_date = datetime.now().date()
+    run_date_parsed = datetime.strptime(run_day, "%Y-%m-%d").date()
+
+    if run_date_parsed == today_date:
+        window_start = datetime.now() - timedelta(hours=24)
+        run_end = datetime.now()
+        LOGGER.info(
+            "当日窗口模式: run_date %s == 今天 %s，抓取过去24h %s ~ 现在 %s 的新闻",
+            run_day,
+            today_date.strftime("%Y-%m-%d"),
+            window_start.strftime("%Y-%m-%d %H:%M"),
+            run_end.strftime("%Y-%m-%d %H:%M"),
+        )
+    else:
+        target_eve = run_date_parsed - timedelta(days=1)
+        window_start = datetime.combine(target_eve, datetime.min.time())
+        run_end = datetime.combine(target_eve, datetime.max.time())
+        LOGGER.info(
+            "夜间/回测窗口模式: run_date %s != 今天 %s，抓取 %s 00:00~23:59:59 的新闻",
+            run_day,
+            today_date.strftime("%Y-%m-%d"),
+            target_eve.strftime("%Y-%m-%d"),
+        )
+
     source_limits = dict(SOURCE_BATCH_LIMITS)
     if max_items_per_source:
         source_limits.update(max_items_per_source)
