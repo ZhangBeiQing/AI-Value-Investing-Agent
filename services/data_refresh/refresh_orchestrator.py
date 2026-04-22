@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import time
@@ -22,6 +23,39 @@ from core.logging import get_logger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGGER = get_logger("RefreshOrchestrator")
+
+
+def _load_daily_refresh_symbols(base_dir: str = "data") -> List[str]:
+    """合并 TRACKED_A_STOCKS ∪ master_universe，得到"今日应刷新股票清单"。
+
+    设计归属：本编排层是**每日刷新策略的唯一决策源**——回答"今天哪些股票
+    需要 fresh 的价格 / 财报 / basic_info 数据"。下游 `selection_system`
+    只做缓存消费者，不再承担 universe 的主刷新责任。
+    """
+    from configs.stock_pool import TRACKED_A_STOCKS
+
+    ordered: List[str] = []
+    seen: set = set()
+    for entry in TRACKED_A_STOCKS:
+        if entry.symbol and entry.symbol not in seen:
+            ordered.append(entry.symbol)
+            seen.add(entry.symbol)
+
+    universe_path = PROJECT_ROOT / base_dir / "universe" / "master_universe.json"
+    if universe_path.exists():
+        try:
+            payload = json.loads(universe_path.read_text(encoding="utf-8"))
+            for stock in payload.get("stocks") or []:
+                symbol = (stock or {}).get("symbol")
+                if isinstance(symbol, str) and symbol and symbol not in seen:
+                    ordered.append(symbol)
+                    seen.add(symbol)
+        except Exception as exc:  # pragma: no cover - defensive
+            LOGGER.warning("读取 master_universe.json 失败，仅使用 TRACKED 列表: %s", exc)
+    else:
+        LOGGER.warning("未找到 master_universe.json，仅使用 TRACKED 列表: %s", universe_path)
+
+    return ordered
 
 
 @dataclass
@@ -72,6 +106,7 @@ def _manage_daily_data_cmd(
     max_workers: int,
     look_back_days: int,
     signature: str,
+    symbols: Sequence[str],
 ) -> List[str]:
     cmd = [
         sys.executable,
@@ -83,11 +118,13 @@ def _manage_daily_data_cmd(
         "--look-back-days",
         str(look_back_days),
         "--force-refresh-price",
+        "--skip-disclosures",
     ]
     if fresh_heavy:
         cmd.append("--force-refresh")
     if signature:
         cmd.extend(["--signature", signature])
+    cmd.extend(["--symbols", *symbols])
     return cmd
 
 
@@ -108,7 +145,7 @@ def run_refresh_pipeline(
     run_date: str,
     *,
     fresh_heavy: bool = False,
-    max_workers: int = 4,
+    max_workers: int = 8,
     look_back_days: int = 0,
     signature: str = "",
     base_dir: str = "data",
@@ -116,8 +153,14 @@ def run_refresh_pipeline(
 ) -> OrchestratorResult:
     """按固定顺序刷新每日分析所需数据。
 
+    **策略归属**：本编排层是"每日 fresh 数据"策略的唯一决策源。它决定：
+    - 每日应刷新的股票范围 = TRACKED_A_STOCKS ∪ master_universe（约 11 + 105 ≈ 116 只）
+    - 价格 / 财报结构化 / basic_info 由 manage_daily_data 负责
+    - 公告由 selection_system.build-announcements 单独负责（增量 + audit），
+      因此 manage_daily_data 以 --skip-disclosures 跳过重复扫描
+
     顺序依赖解释：
-    1. manage_daily_data：宏观客观面板 + 行情快照 + basic_stock_info + 公告同步，
+    1. manage_daily_data：宏观客观面板 + 行情快照 + basic_stock_info（TRACKED ∪ universe），
        是后续所有模块的上游。
     2. run-news：当日新闻抓取/去重/富化，产出 03_news_prompt_input.json。
     3. run-signals：板块变动 + 个股热度，产出 05_market_signals 基础数据。
@@ -128,6 +171,12 @@ def run_refresh_pipeline(
     """
     result = OrchestratorResult(run_date=run_date, fresh_heavy=fresh_heavy)
 
+    refresh_symbols = _load_daily_refresh_symbols(base_dir=base_dir)
+    LOGGER.info(
+        "本次一键刷新覆盖 %d 只股票（TRACKED_A_STOCKS ∪ master_universe）",
+        len(refresh_symbols),
+    )
+
     steps: List[tuple[str, List[str]]] = [
         (
             "manage_daily_data",
@@ -137,6 +186,7 @@ def run_refresh_pipeline(
                 max_workers=max_workers,
                 look_back_days=look_back_days,
                 signature=signature,
+                symbols=refresh_symbols,
             ),
         ),
         (

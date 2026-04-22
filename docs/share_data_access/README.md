@@ -45,6 +45,27 @@ prepare_dataset(
 - 若需要更长窗口，可以通过 `SharedDataAccess` 初始化参数或缓存策略配置（如 LOOKBACK_PRICE_DAYS、disclosure_lookback_days）集中放大抓取范围，而不是在 update 阶段依赖 as_of。  
 - 这种分层策略既保证了回测的严格因果性，也避免了每次回测都重新向 akshare 请求历史数据。
 
+## 每日刷新策略归属（重要）
+
+`shared_data_access` 是**机制层**——只负责"抓、缓存、切片"，不决定"今天哪些股票该被强刷"。
+**策略由 `services/data_refresh/refresh_orchestrator.py` 唯一决定**：
+
+- **每日刷新股票范围** = `TRACKED_A_STOCKS` ∪ `master_universe`（约 116 只）
+  由 orchestrator 在启动时读取 `configs/stock_pool.py` 与 `data/universe/master_universe.json`，合并去重。
+- **价格 / 财报结构化 / basic_info** 由 `manage_daily_data`（接收 orchestrator 传入的扩展 symbol 列表）统一负责。
+  - 轻量档：`--force-refresh-price`（默认开）
+  - 重量档：`--force-refresh`（`--fresh-heavy` 开启，强刷财报结构化）
+- **公告（disclosures）** 由 `services/selection_system/announcement_summary.py` 的 `build-announcements` 子命令按 universe 增量负责；
+  因此 orchestrator 调用 `manage_daily_data` 时传入 `--skip-disclosures`，避免两层重复扫描。
+- **选股系统侧的 `_ensure_universe_snapshot_coverage` 是纯兜底路径**（只在缓存缺失时补抓）。
+  正常情况应全量命中缓存；若触发兜底分支并打印 warning，说明上游 refresh 有遗漏，需要排查而不是默认接受。
+
+规则沉淀：
+1. 任何新增数据集（比如新的选股因子、新的快照字段）都要回答"谁负责它的每日 fresh"——
+   答案应当是 `services/data_refresh/`，而不是消费端。
+2. 上层模块不得私下做 `force_refresh_*=True` 的调用；如果消费路径发现缓存过期，
+   应向 orchestrator 反馈（加一条 warning 或异常），由策略层统一修正，而不是就地绕过。
+
 ## 项目规范
 1. 禁止在 Analyzer、Tool、Agent 层直接调用 akshare。凡涉及外部行情、财报、股本、指标的请求，一律走 SharedDataAccess。
 2. 若 prepare_dataset 尚无法提供某字段，应：

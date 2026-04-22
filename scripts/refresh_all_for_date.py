@@ -56,8 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-workers",
         type=int,
-        default=4,
-        help="basic_stock_info / 共享数据刷新并发度，默认 4。",
+        default=8,
+        help="basic_stock_info / 共享数据刷新并发度，默认 8（覆盖 TRACKED ∪ universe 约 116 只股票）。",
     )
     parser.add_argument(
         "--look-back-days",
