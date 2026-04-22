@@ -29,6 +29,7 @@ description: >
 - `data/selection_runs/YYYY-MM-DD/05_board_heat_state.json`
 - `data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
 - `data/selection_runs/YYYY-MM-DD/06_hot_news_state_ops.json`
+- `data/selection_runs/YYYY-MM-DD/04_recent_company_announcements.json`
 - `data/selection_runs/YYYY-MM-DD/07_shared_selection_context.md`
 - `data/selection_runs/YYYY-MM-DD/08_short_book_input.json`
 - `data/selection_runs/YYYY-MM-DD/08_short_book_input.md`
@@ -63,13 +64,12 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 规则：
 
 - 若当天宏观总结存在，直接使用
-- 若不存在，必须先按 `daily-macro-summary` skill 更新当天宏观总结
+- 若不存在，沿用昨天的宏观总结
 - 生成逻辑与要求复用：`.codex/skills/daily-macro-summary/SKILL.md`
 
 说明：
 
 - 宏观总结是新闻主题状态和后续选股的上游校准器，不要跳过
-- 若今天文件缺失，不要试图用昨天文件直接代替
 
 ### Step 2. 检查渐进式新闻主题总结
 
@@ -115,12 +115,18 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 
 目标文件：
 
+- `data/selection_runs/YYYY-MM-DD/04_recent_company_announcements.json`
 - `data/selection_runs/YYYY-MM-DD/07_shared_selection_context.md`
 
 规则：
 
-- 若存在，直接使用
-- 若缺失，生成：
+- 若 `04_recent_company_announcements.json` 缺失，先生成：
+
+```bash
+python scripts/manage_selection_system.py --base-dir data build-announcements --date YYYY-MM-DD
+```
+
+- 若 `07_shared_selection_context.md` 缺失，或 `04_recent_company_announcements.json` 是本轮刚补生成的，生成：
 
 ```bash
 python scripts/manage_selection_system.py --base-dir data build-shared-context --date YYYY-MM-DD
