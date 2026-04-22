@@ -102,10 +102,4 @@ You can view the example results in the `data/agent_data/deepseek-reasoner/v2.1�
 
 [MIT License](LICENSE)
 
-
- 等每个账本的 05_decision.json 人工确认后，再分别执行：
-  python scripts/run_post_trade.py --date 2026-04-18 --book-type fixed_tracked --signature book-fixed_tracked
-  python scripts/run_post_trade.py --date 2026-04-18 --book-type short_book --signature book-short_book
-  python scripts/run_post_trade.py --date 2026-04-18 --book-type long_book --signature book-long_book
-
-  python scripts/run_daily_pipeline.py --date 2026-04-18 --max-workers 6
+  
