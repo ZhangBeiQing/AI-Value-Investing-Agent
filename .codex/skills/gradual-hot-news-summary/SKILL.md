@@ -12,9 +12,16 @@ description: >
 - 用户要更新当天的渐进式新闻总结
 - 用户要把“今日新闻 + 最近一天主题状态 + 最近一天宏观总结 + 最近一天板块热点状态”合并成新的主题级研究记忆
 
+## 日期语义（必读）
+
+- 本 skill 所有路径、命令、`run_date` 字段中的 `YYYY-MM-DD` 与 `AGENTS.md` 的 `--date` 口径完全一致，指**要分析的交易日**，即**最近一个已收盘的交易日**，默认 `today - 1`
+- 典型节奏：第二天早 7 点跑，此时 `YYYY-MM-DD = 昨天`；周一或节假日后的第一个早上应手动传上一个交易日（例如周一早上传上周五）
+- 文中出现的「今日」「当天」「今天」在本 skill 上下文里都指这个「要分析的交易日」，不是日历上的 `today`
+- 开始执行前，如果用户没有显式指定日期，先用 `date -d 'yesterday' +%F` 或等价方式推导出目标交易日，并向用户确认一次再继续
+
 ## 输出路径
 
-- 主输出：`data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
+- 主输出：`data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`（`YYYY-MM-DD` = 要分析的交易日）
 - 操作日志：`data/selection_runs/YYYY-MM-DD/06_hot_news_state_ops.json`
 
 当前 skill 按 "上游准备步骤 + file-only 的总结步骤" 方式工作：
@@ -34,27 +41,12 @@ description: >
 
 ## 固定流程
 
-### 1. 准备输入
+> **前置约定**：本 skill 默认用户已经运行过 `python scripts/refresh_all_for_date.py`，
+> `data/selection_runs/YYYY-MM-DD/` 下的 `01-05` 文件与板块层数据已就绪。
+> Skill 本体只读文件、跑 LLM，不应触发任何中国 API 调用。
+> 若发现输入文件缺失，直接提示用户回去跑 `refresh_all_for_date.py`，不要自己跑补齐脚本。
 
-先激活虚拟环境：
-
-```bash
-source /home/zhangbeiqing/venv/ai_stock/bin/activate
-```
-
-运行新闻链：
-
-```bash
-python scripts/manage_selection_system.py --base-dir data run-news --date YYYY-MM-DD
-```
-
-运行当天板块热点状态：
-
-```bash
-python scripts/manage_selection_system.py --base-dir data build-board-heat-state --date YYYY-MM-DD
-```
-
-### 2. 读取主输入
+### 1. 读取主输入
 
 严格按 [输入约定](references/input-contract.md) 读取：
 
@@ -64,7 +56,7 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 4. 今日板块信息层
 5. 当前股票宇宙 `data/universe/master_universe.json`
 
-### 3. 生成主题级研究记忆
+### 2. 生成主题级研究记忆
 
 不是做新闻摘要，而是更新主题。
 
@@ -90,7 +82,7 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 2. 但必须在 `06_hot_news_state_ops.json` 中留下完整轨迹
 3. 若未来又被重新激活，可以作为新一轮主上下文主题重新进入
 
-### 4. 必要时联网补证
+### 3. 必要时联网补证
 
 如果上述主输入仍不足以支撑某个高权重主题判断，可以联网补证。
 
@@ -102,7 +94,7 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 2. 高权重旧主题在准备移出前，建议联网补证
 3. 若最近几天已无新增事实、无板块确认、无扩散影响，可移出今天主上下文
 
-### 5. 按输出契约落盘
+### 4. 按输出契约落盘
 
 严格按 [输出契约](references/output-contract.md) 生成：
 
@@ -120,4 +112,5 @@ python scripts/manage_selection_system.py --base-dir data build-board-heat-state
 - `linked_boards` 必须使用 [输入约定](references/input-contract.md) 中的标准板块名清单
 - 不要把昨天出现过的主题机械地全部延续到今天
 - 不要把已结束、已证伪、已完全失去交易性的主题继续保留在今天的 `06_hot_news_state.json`
+- 主题降级到 `cooling_themes` 前必须满足 strength 阶梯约束：`strengthening` 或 `stable` 的主题当天不能直接降为 cooling，必须先将 strength 降一级并继续保留在 `active_themes`；只有 strength 已处于 `weakening` 且连续无增量 ≥1 个交易日，才允许降级（详见输出契约 6.6.2）
 - 任何被移出今天主上下文的主题，都必须在 `06_hot_news_state_ops.json` 中写明移出日期、原因、最后一次保留日期、是否做过联网复核

@@ -14,13 +14,47 @@ description: >
 - 用户要生成 `data/macro_economy/YYYYMMDD.md`
 - 用户要做“渐进式宏观新闻总结”而不是一次性长篇宏观研报
 
+## 日期语义（必读）
+
+- 本 skill 所有路径、文件名、正文日期与 `AGENTS.md` 的 `--date` 口径完全一致，指**要分析的交易日**，即**最近一个已收盘的交易日**，默认 `today - 1`
+- 典型节奏：第二天早 7 点跑，此时 `YYYYMMDD = 昨天`；周一或节假日后的第一个早上应手动传上一个交易日（例如周一早上传上周五）
+- 下文中所有「今天」「当天」「今日文件」「今日」指的都是这个「要分析的交易日」，不是日历上的 `today`；「昨天的状态机」指的是要分析日之前的最近一份文件
+- 开始执行前，如果用户没有显式指定日期，先用 `date -d 'yesterday' +%F` 或等价方式推导出目标交易日，并向用户确认一次再继续
+- 输出文件名的 `YYYYMMDD` 与宏观客观数据面板日快照的 `YYYY-MM-DD` 都使用这个日期
+
 ## 输出路径
 
-- 输出到：`data/macro_economy/YYYYMMDD.md`
-- 若今日文件已存在，先读取并判断是覆盖更新还是保留原文
+- 输出到：`data/macro_economy/YYYYMMDD.md`（`YYYYMMDD` = 要分析的交易日）
 - 宏观客观数据面板缓存位于：`data/global_cache/macro_objective_panel/`
-  - 日快照：`data/global_cache/macro_objective_panel/daily_snapshots/YYYY-MM-DD.json`
+  - 日快照：`data/global_cache/macro_objective_panel/daily_snapshots/YYYY-MM-DD.json`（同样 = 要分析的交易日）
   - 最新快照：`data/global_cache/macro_objective_panel/latest.json`
+
+## 文件操作规则（重要）
+
+**根据当日文件是否存在，采用不同策略：**
+
+### 情形 A：当日文件已存在（最常见）
+
+1. 用 `cp data/macro_economy/YYYYMMDD.md data/macro_economy/YYYYMMDD.md.bak` 备份原文
+2. 完整读取原文，理解现有内容和数据来源
+3. 读取面板快照，比对哪些数字需要更新
+4. 搜索当日新增事件
+5. **只用 `Edit` 工具对需要修改的段落做定点替换**，不要全量 Write 重写
+   - 修改面板表格中的数字行
+   - 补充新增事件到对应章节
+   - 更新数据口径说明头部
+6. 备份文件 `*.md.bak` 确认无误后可删除，或保留供比对
+
+### 情形 B：当日文件不存在，但前一日文件存在
+
+1. 用 `cp data/macro_economy/YYYYMMDD_prev.md data/macro_economy/YYYYMMDD.md` 以前日文件为模板
+2. 完整读取，再按情形 A 流程用 Edit 做增量更新
+3. 重点：修改文件标题日期、数据口径说明、面板数字、今日变化摘要
+
+### 情形 C：基线重建（`data/macro_economy/` 为空 或 最近文件超过 7 天）
+
+- 直接用 `Write` 全量生成新的高信噪比基线文件
+- 参考"三种运行模式 → 基线重建模式"的流程
 
 ## 先读什么
 

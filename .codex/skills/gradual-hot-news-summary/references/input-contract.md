@@ -8,7 +8,9 @@
 3. 最近一天宏观总结
 4. 今日板块信息层
 5. 当前股票宇宙 `data/universe/master_universe.json`
-其中今日 `03_news_prompt_input.json`和 `今日板块信息层 `需要你自己运行脚本生成。
+
+这些输入均由 `python scripts/refresh_all_for_date.py` 预先生成，skill 本体只读、不再触发抓取。
+若发现任一文件缺失，直接提示用户回去跑 `refresh_all_for_date.py`，不要自己跑补齐脚本。
 
 ## 读取顺序
 
