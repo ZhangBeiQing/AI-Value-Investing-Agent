@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 import shutil
-from typing import Any
+from typing import Any, List, Optional
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +17,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.logging import init_component_logger
-from services.research.financial_report_skill import build_stock_report_bundles, financial_report_workdir
+from services.research.financial_report_skill import (
+    build_stock_report_bundles,
+    financial_report_workdir,
+    load_tracked_items,
+    synthesize_manual_item,
+)
 from services.research.financial_report_summary_prompts import (
     FUTURE_OUTLOOK_PROMPT_TEMPLATE,
     REPORT_ANALYSIS_PROMPT_TEMPLATE,
@@ -218,11 +223,57 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="先同步财报公告到 disclosures，再准备输入。",
     )
+    parser.add_argument(
+        "--symbols",
+        help="额外要处理的股票代码，逗号分隔；可用于 queue 与 TRACKED_A_STOCKS 之外的股票。",
+    )
+    parser.add_argument(
+        "--include-tracked",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="是否把 configs.stock_pool.TRACKED_A_STOCKS 的全部股票也加入处理列表（默认启用，用 --no-include-tracked 关闭）。",
+    )
+    parser.add_argument(
+        "--no-queue",
+        action="store_true",
+        help="跳过 deep research queue，仅处理 --symbols / --include-tracked 指定的股票。",
+    )
     return parser
+
+
+def _parse_symbol_list(raw: Optional[str]) -> List[str]:
+    if not raw:
+        return []
+    return [token.strip() for token in raw.split(",") if token.strip()]
+
+
+def _collect_extra_items(args: argparse.Namespace) -> List[dict]:
+    extra: List[dict] = []
+    seen: set[str] = set()
+    if args.include_tracked:
+        for item in load_tracked_items():
+            symbol = item.get("symbol")
+            if symbol and symbol not in seen:
+                extra.append(item)
+                seen.add(symbol)
+    for symbol in _parse_symbol_list(args.symbols):
+        if symbol in seen:
+            continue
+        tracked_match = next(
+            (entry for entry in load_tracked_items() if entry.get("symbol") == symbol),
+            None,
+        )
+        if tracked_match is not None:
+            extra.append(tracked_match)
+        else:
+            extra.append(synthesize_manual_item(symbol))
+        seen.add(symbol)
+    return extra
 
 
 def main() -> int:
     args = build_parser().parse_args()
+    extra_symbols = _parse_symbol_list(args.symbols)
     if args.sync_first:
         sync_cmd = [
             sys.executable,
@@ -233,12 +284,23 @@ def main() -> int:
         ]
         if args.date:
             sync_cmd.extend(["--date", args.date])
+        if args.no_queue:
+            sync_cmd.append("--no-queue")
+        sync_cmd.append("--include-tracked" if args.include_tracked else "--no-include-tracked")
+        if extra_symbols:
+            sync_cmd.extend(["--symbols", ",".join(extra_symbols)])
         subprocess.run(
             sync_cmd,
             cwd=PROJECT_ROOT,
             check=True,
         )
-    bundles = build_stock_report_bundles(args.date, mandate=args.mandate)
+    extra_items = _collect_extra_items(args)
+    bundles = build_stock_report_bundles(
+        args.date,
+        mandate=args.mandate,
+        extra_items=extra_items or None,
+        skip_queue=args.no_queue,
+    )
     ready = []
     skipped = []
     for bundle in bundles:
