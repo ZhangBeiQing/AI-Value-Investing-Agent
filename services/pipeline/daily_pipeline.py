@@ -155,8 +155,6 @@ def run_book_pipeline(
     write_global_context(
         run_date,
         target_dir,
-        signature=signature,
-        symbols=target_symbols,
     )
     global_context_sec = perf_counter() - stage_start
 

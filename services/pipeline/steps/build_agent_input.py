@@ -35,7 +35,7 @@ def _build_stock_pool_block(symbols: Iterable[str]) -> str:
 
 def build_user_query(research_files: List[Path], run_date: str, book_type: str) -> str:
     lines = [
-        f"今天是 {run_date} 早上，股市还没开盘。",
+        f"今天是 {run_date} 晚上，股市已经收盘。你需要复盘今天的股票，然后为明天的交易做决策",
         f"当前分析账本为 `{book_type}`。你只能基于当前账本的持仓、研究包和历史交易总结做决策，不能把其他账本的仓位或锚点混入本账本。",
         "请遵循 SYSTEM_PROMPT 的规范和价值投资原则，基于已提供的输入文件进行分析并决策今日的持仓调整。",
         "",
