@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Mapping
 
 import pandas as pd
 
+from configs.stock_pool import TRACKED_A_STOCKS, TRACKED_SYMBOLS
 from core.logging import get_logger
 from services.selection_system.announcement_summary import load_or_build_recent_company_announcements
 from services.snapshot.basic_snapshot import (
@@ -503,7 +504,7 @@ def _build_local_agent_input_payload(
     required_count: int,
 ) -> Dict[str, Any]:
     compact_rows = _build_compact_candidate_rows(pool_type, snapshot_frame, universe, context)
-    return {
+    payload: Dict[str, Any] = {
         "schema_version": 1,
         "run_date": run_date,
         "pool_type": pool_type,
@@ -516,6 +517,14 @@ def _build_local_agent_input_payload(
         },
         "candidate_rows": compact_rows,
     }
+    if pool_type == "long_book":
+        excluded = [
+            {"symbol": e.symbol, "name": e.name, "description": e.description}
+            for e in TRACKED_A_STOCKS
+        ]
+        payload["excluded_symbols"] = excluded
+        payload["exclusion_rule"] = "以上 excluded_symbols 对应固定跟踪池（fixed_tracked），这些股票由固定池交易系统独立管理。长期池选股时不得包含这些股票，已按需从 candidate_rows 移除。"
+    return payload
 
 
 def _build_local_agent_markdown(
@@ -582,6 +591,23 @@ def _build_local_agent_markdown(
 """
 
     fields_block = "\n".join(f"- `{field}`" for field in output_fields)
+    if pool_type == "long_book":
+        excluded_symbols_list = "\n".join(
+            f"  - `{e.symbol}` ({e.name}, {e.description})" for e in TRACKED_A_STOCKS
+        )
+        exclusion_block = f"""## 固定跟踪池排除名单
+
+以下股票属于固定跟踪池（fixed_tracked），由独立的固定跟踪交易系统管理。**长期池选股时必须严格排除这些股票，不得纳入 long_book 候选结果。**
+
+{excluded_symbols_list}
+
+"""
+        exclusion_constraint = "8. 长期池不得包含固定跟踪池（fixed_tracked）的股票。这些股票的 symbol 已列在上方「固定跟踪池排除名单」中，由独立交易系统管理，不得出现在 long_book 候选结果中。\n"
+        json_constraint_num = "9"
+    else:
+        exclusion_block = ""
+        exclusion_constraint = ""
+        json_constraint_num = "8"
     return f"""# {role_text} 本地 Agent 输入
 
 - run_date: {run_date}
@@ -609,8 +635,7 @@ def _build_local_agent_markdown(
    - `python scripts/query_board_snapshot.py --date {run_date} --board-name "通信设备"`
 
 {continuity_block}
-
-## 板块热点使用方法
+{exclusion_block}## 板块热点使用方法
 
 板块信息层不要只看一个榜单，应合并理解：
 
@@ -643,7 +668,7 @@ python scripts/query_board_snapshot.py --date {run_date} --board-name "能源金
 5. `holding_horizon` 必须写 `{fixed_horizon}`
 6. `main_risks` 必须是字符串数组
 7. 若发现某些股票虽然优秀，但不符合 `{pool_type}` 的 mandate，必须舍弃
-8. 输出必须是唯一 JSON 对象，顶层结构如下：
+{exclusion_constraint}{json_constraint_num}. 输出必须是唯一 JSON 对象，顶层结构如下：
 
 ```json
 {{
