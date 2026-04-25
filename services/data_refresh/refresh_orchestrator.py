@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -97,6 +98,46 @@ def _run_step(name: str, command: Sequence[str]) -> StepResult:
     duration = round(time.time() - start, 2)
     LOGGER.info("✓ [%s] 完成 (%.1fs)", name, duration)
     return StepResult(name=name, command=list(command), status="success", duration_sec=duration)
+
+
+def _clear_research_artifact_cache(run_date: str) -> StepResult:
+    """清理 `data/research_artifact_cache/{run_date}/`。
+
+    研究产物缓存（services/pipeline/steps/build_stock_research.py）的
+    input_fingerprint 不感知 prices 缓存的更新。一键刷新一旦执行就视为
+    上游数据已变，因此在所有数据刷新步骤之后无条件清理这层缓存，让
+    下一次 run_daily_pipeline 必然基于最新价格/财报/新闻重建 04 产物。
+    """
+    name = "clear_research_artifact_cache"
+    start = time.time()
+    cache_dir = PROJECT_ROOT / "data" / "research_artifact_cache" / run_date
+    command = ["rm", "-rf", str(cache_dir)]
+    LOGGER.info("▶ [%s] %s", name, " ".join(command))
+    try:
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+            message = "已清理过期 artifact 缓存"
+        else:
+            message = "缓存目录不存在，跳过"
+    except OSError as exc:
+        duration = round(time.time() - start, 2)
+        LOGGER.error("✘ [%s] 失败 (%s, %.1fs)", name, exc, duration)
+        return StepResult(
+            name=name,
+            command=command,
+            status="failed",
+            duration_sec=duration,
+            message=str(exc),
+        )
+    duration = round(time.time() - start, 2)
+    LOGGER.info("✓ [%s] 完成 (%.1fs) — %s", name, duration, message)
+    return StepResult(
+        name=name,
+        command=command,
+        status="success",
+        duration_sec=duration,
+        message=message,
+    )
 
 
 def _manage_daily_data_cmd(
@@ -222,6 +263,13 @@ def run_refresh_pipeline(
             result.overall_status = "failed"
             if stop_on_failure:
                 break
+
+    # 数据刷新一旦发生（即使中途失败），下游研究产物缓存都视为过期，
+    # 必须清掉以保证下一次 run_daily_pipeline 重建 04 产物。
+    cleanup_result = _clear_research_artifact_cache(run_date)
+    result.steps.append(cleanup_result)
+    if cleanup_result.status == "failed" and result.overall_status != "failed":
+        result.overall_status = "failed"
 
     return result
 

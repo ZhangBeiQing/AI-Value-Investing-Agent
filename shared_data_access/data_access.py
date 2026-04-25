@@ -262,8 +262,11 @@ class SharedDataAccess:
                 f"财报缓存缺失文件: {', '.join(status.missing_files)}"
             )
         if status.stale:
-            raise CacheIntegrityError(
-                f"财报缓存已过期 (last_updated={status.last_updated})"
+            self.logger.warning(
+                "%s %s 财报缓存已过期 (last_updated=%s)，使用已有数据；如需更新请运行 --fresh-heavy",
+                symbolInfo.stock_name,
+                symbolInfo.symbol,
+                status.last_updated,
             )
 
         frames: Dict[str, pd.DataFrame] = {}

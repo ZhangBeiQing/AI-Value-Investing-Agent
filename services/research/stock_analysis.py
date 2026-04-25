@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"py_mini_
 
 from enhanced_pe_pb_analyzer import EnhancedPEPBAnalyzer
 from stock_price_dynamics_summarizer import stock_price_dynamics_summarizer
-from utlity import SymbolInfo, get_last_trading_day, is_cn_etf_symbol, parse_symbol, resolve_base_dir
+from utlity import SymbolInfo, get_latest_trading_day, is_cn_etf_symbol, parse_symbol, resolve_base_dir
 
 
 logger = init_tool_logger("stock_analysis")
@@ -56,7 +56,7 @@ def _parse_datetime(value: str) -> pd.Timestamp:
 
 def _resolve_effective_trade_datetime(symbol_info: SymbolInfo, today_time: str) -> datetime:
     requested = _parse_datetime(today_time)
-    last_trade_date = get_last_trading_day(requested.date(), symbol_info.calendar)
+    last_trade_date = get_latest_trading_day(requested.date(), symbol_info.calendar)
     return datetime.combine(last_trade_date, datetime.min.time())
 
 
