@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from configs.stock_pool import TRACKED_A_STOCKS
 from news.disclosures_builder import AnnouncementMeta, load_index
 from utlity.stock_utils import parse_symbol
 
@@ -401,8 +402,61 @@ def _should_skip(symbol: str, latest: FinancialReportMeta) -> bool:
     return latest_completed.get("announcement_id") == latest.announcement_id
 
 
-def build_stock_report_bundles(run_date: Optional[str] = None, mandate: str = "all") -> List[StockReportBundle]:
-    items = load_deep_research_items(run_date, mandate)
+def synthesize_manual_item(
+    symbol: str,
+    *,
+    stock_name: Optional[str] = None,
+    industry: Optional[str] = None,
+    final_mandate: str = "manual",
+) -> Dict[str, Any]:
+    """Build a deep-research-queue-shaped item for stocks outside of the queue.
+
+    用于把 TRACKED_A_STOCKS 或用户通过 --symbols 指定的股票拼成与 queue items
+    兼容的字典，使其可直接喂给 build_stock_report_bundles。
+    """
+    resolved_name = stock_name or parse_symbol(symbol).stock_name or symbol
+    item: Dict[str, Any] = {
+        "symbol": symbol,
+        "stock_name": resolved_name,
+        "final_mandate": final_mandate,
+    }
+    if industry:
+        item["industry"] = industry
+    return item
+
+
+def load_tracked_items(final_mandate: str = "tracked") -> List[Dict[str, Any]]:
+    """TRACKED_A_STOCKS → queue-shaped items（描述字段当作 industry）。"""
+    return [
+        synthesize_manual_item(
+            entry.symbol,
+            stock_name=entry.name,
+            industry=entry.description,
+            final_mandate=final_mandate,
+        )
+        for entry in TRACKED_A_STOCKS
+    ]
+
+
+def build_stock_report_bundles(
+    run_date: Optional[str] = None,
+    mandate: str = "all",
+    *,
+    extra_items: Optional[List[Dict[str, Any]]] = None,
+    skip_queue: bool = False,
+) -> List[StockReportBundle]:
+    if skip_queue:
+        items: List[Dict[str, Any]] = []
+    else:
+        items = list(load_deep_research_items(run_date, mandate))
+    if extra_items:
+        seen = {item.get("symbol") for item in items if item.get("symbol")}
+        for extra in extra_items:
+            symbol = extra.get("symbol")
+            if not symbol or symbol in seen:
+                continue
+            items.append(extra)
+            seen.add(symbol)
     bundles: List[StockReportBundle] = []
     for item in items:
         symbol = item.get("symbol")

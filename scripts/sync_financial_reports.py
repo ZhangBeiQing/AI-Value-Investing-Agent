@@ -14,7 +14,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from news.disclosures_builder import sync_financial_reports_for_stock
-from services.research.financial_report_skill import load_deep_research_items
+from services.research.financial_report_skill import (
+    load_deep_research_items,
+    load_tracked_items,
+    synthesize_manual_item,
+)
 from utlity.stock_utils import parse_symbol
 
 
@@ -30,12 +34,53 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lookback-days", type=int, default=550, help="公告回溯天数。")
     parser.add_argument("--with-markdown", action="store_true", help="同步时立即转换 markdown。默认只下载 PDF。")
     parser.add_argument("--json", action="store_true", help="输出 JSON 结果。")
+    parser.add_argument(
+        "--symbols",
+        help="额外要同步的股票代码，逗号分隔；可用于 queue 与 TRACKED_A_STOCKS 之外的股票。",
+    )
+    parser.add_argument(
+        "--include-tracked",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="是否把 configs.stock_pool.TRACKED_A_STOCKS 的全部股票也加入同步列表（默认启用，用 --no-include-tracked 关闭）。",
+    )
+    parser.add_argument(
+        "--no-queue",
+        action="store_true",
+        help="跳过 deep research queue，仅同步 --symbols / --include-tracked 指定的股票。",
+    )
     return parser
+
+
+def _parse_symbol_list(raw):
+    if not raw:
+        return []
+    return [token.strip() for token in raw.split(",") if token.strip()]
+
+
+def _build_items(args) -> list:
+    if args.no_queue:
+        items: list = []
+    else:
+        items = list(load_deep_research_items(args.date, mandate=args.mandate))
+    seen = {item.get("symbol") for item in items if item.get("symbol")}
+    tracked_by_symbol = {entry.get("symbol"): entry for entry in load_tracked_items()}
+    if args.include_tracked:
+        for symbol, entry in tracked_by_symbol.items():
+            if symbol and symbol not in seen:
+                items.append(entry)
+                seen.add(symbol)
+    for symbol in _parse_symbol_list(args.symbols):
+        if symbol in seen:
+            continue
+        items.append(tracked_by_symbol.get(symbol) or synthesize_manual_item(symbol))
+        seen.add(symbol)
+    return items
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    items = load_deep_research_items(args.date, mandate=args.mandate)
+    items = _build_items(args)
     results = []
     for item in items:
         symbol = item.get("symbol")
