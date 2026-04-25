@@ -161,7 +161,13 @@ def load_or_build_board_market_snapshot(
     stocks_per_board: int = DEFAULT_STOCKS_PER_BOARD,
     force_refresh: bool = False,
 ) -> Dict[str, Any]:
-    """Load cached market snapshot or fetch today's live THS board overview."""
+    """Load cached market snapshot or fetch THS board overview.
+
+    允许两种实时抓取情形：
+    1. run_date == 今天（盘中或盘后）：页面反映今日数据
+    2. 今日开盘前（< 9:30）且 run_date 是早于今天的历史日：页面反映最近一次收盘数据
+    其他时刻（如盘中/盘后再次抓历史日期），直接降级为 warning 空负载。
+    """
 
     metrics_cache_dir = build_global_cache_dir(CacheKind.BOARD_METRICS_THS, base_dir=base_dir, ensure=True)
     market_snapshot_dir = metrics_cache_dir / "market_snapshots"
@@ -171,8 +177,18 @@ def load_or_build_board_market_snapshot(
     if snapshot_path.exists() and not force_refresh:
         return _load_json(snapshot_path, default={})
 
-    today_str = pd.Timestamp.now().strftime("%Y-%m-%d")
-    if run_date != today_str:
+    # THS 概览页显示「当前市场状态」：
+    #   - 盘中/盘后（>= 9:30）：反映今日实时/收盘数据，此时 run_date 必须是今天
+    #   - 盘前（< 9:30）：反映最近一次收盘数据，此时 run_date 必须是早于今天的历史日
+    # 其他组合抓下来的数据与 run_date 对不上，直接降级为 warning 空负载。
+    now = pd.Timestamp.now()
+    today_str = now.strftime("%Y-%m-%d")
+    market_open_today = now.normalize() + pd.Timedelta(hours=9, minutes=30)
+    run_date_ts = pd.Timestamp(run_date)
+    is_today = run_date == today_str
+    is_pre_market_historical = now < market_open_today and run_date_ts < now.normalize()
+    can_fetch_live = is_today or is_pre_market_historical
+    if not can_fetch_live:
         warning_payload = {
             "schema_version": 1,
             "run_date": run_date,
@@ -185,7 +201,11 @@ def load_or_build_board_market_snapshot(
                 {
                     "source": "ths_board_market_snapshot",
                     "status": "warning",
-                    "warning": f"缺少 {run_date} 的板块日度快照缓存，且该日期不是今天，宽度指标将回退为空。",
+                    "warning": (
+                        f"缺少 {run_date} 的板块日度快照缓存；当前时刻 {now.isoformat()} "
+                        "与 run_date 的对应关系不满足（需要 run_date=今天，或今日 9:30 前抓取历史日），"
+                        "宽度指标回退为空。"
+                    ),
                 }
             ],
         }
@@ -264,23 +284,25 @@ def select_board_candidates_from_snapshot(
     selected: List[Dict[str, Any]] = []
     for direction, items in (("up", top_up), ("down", top_down)):
         for rank, item in enumerate(items, start=1):
-            selected.append(
-                {
-                    "board_name": item.get("board_name"),
-                    "board_code": item.get("board_code"),
-                    "direction": direction,
-                    "rank": rank,
-                    "change_pct": item.get("change_pct"),
-                    "up_count": item.get("up_count"),
-                    "down_count": item.get("down_count"),
-                    "total_turnover": item.get("total_turnover"),
-                    "leading_stock_name": item.get("leading_stock_name"),
-                    "leading_stock_change_pct": item.get("leading_stock_change_pct"),
-                    "related_stock_hints": list(item.get("related_stock_hints") or []),
-                    "quant_metrics": dict(item.get("quant_metrics") or {}),
-                    "price_as_of_date": item.get("price_as_of_date"),
-                }
-            )
+            entry: Dict[str, Any] = {
+                "board_name": item.get("board_name"),
+                "board_code": item.get("board_code"),
+                "direction": direction,
+                "rank": rank,
+                "change_pct": item.get("change_pct"),
+                "price_as_of_date": item.get("price_as_of_date"),
+                "quant_metrics": dict(item.get("quant_metrics") or {}),
+            }
+            # 仅在有值时写入实时宽度字段，避免 null 浪费 token
+            for field in ("up_count", "down_count", "total_turnover",
+                          "leading_stock_name", "leading_stock_change_pct"):
+                val = item.get(field)
+                if val is not None:
+                    entry[field] = val
+            hints = list(item.get("related_stock_hints") or [])
+            if hints:
+                entry["related_stock_hints"] = hints
+            selected.append(entry)
 
     return {
         "schema_version": 1,

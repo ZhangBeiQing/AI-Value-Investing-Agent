@@ -1022,11 +1022,11 @@ def _fetch_hk_daily_from_sina(
 
 
 def fetch_hk_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end_date: str, adjust: str = "qfq", logger: logging.Logger = None) -> pd.DataFrame:
-    """优先使用东财港股历史接口，失败时回退到新浪港股日线接口。"""
+    """优先使用新浪港股日线接口，失败时回退到东财港股历史接口。"""
     adjust = adjust or ""
     resolved_logger = _resolve_logger(logger)
     try:
-        df = _fetch_hk_hist_from_eastmoney(
+        df = _fetch_hk_daily_from_sina(
             symbol_info=symbol_info,
             start_date=start_date,
             end_date=end_date,
@@ -1034,7 +1034,7 @@ def fetch_hk_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end
             logger=resolved_logger,
         )
         resolved_logger.info(
-            "港股东财历史行情获取成功: %s %s, 区间 %s-%s, %d 条",
+            "港股新浪日线获取成功: %s %s, 区间 %s-%s, %d 条",
             symbol_info.stock_name,
             symbol_info.symbol,
             start_date,
@@ -1044,13 +1044,13 @@ def fetch_hk_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end
         return df
     except Exception as exc:
         resolved_logger.warning(
-            "stock_hk_hist 获取 %s %s 失败，改用 stock_hk_daily: %s",
+            "stock_hk_daily 获取 %s %s 失败，改用 stock_hk_hist: %s",
             symbol_info.stock_name,
             symbol_info.symbol,
             exc,
         )
         try:
-            df = _fetch_hk_daily_from_sina(
+            df = _fetch_hk_hist_from_eastmoney(
                 symbol_info=symbol_info,
                 start_date=start_date,
                 end_date=end_date,
@@ -1058,7 +1058,7 @@ def fetch_hk_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end
                 logger=resolved_logger,
             )
             resolved_logger.info(
-                "港股新浪日线回退成功: %s %s, 区间 %s-%s, %d 条",
+                "港股东财历史回退成功: %s %s, 区间 %s-%s, %d 条",
                 symbol_info.stock_name,
                 symbol_info.symbol,
                 start_date,
@@ -1068,12 +1068,12 @@ def fetch_hk_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end
             return df
         except Exception as fallback_exc:
             resolved_logger.error(
-                "stock_hk_daily 获取 %s %s 也失败: %s",
+                "stock_hk_hist 获取 %s %s 也失败: %s",
                 symbol_info.stock_name,
                 symbol_info.symbol,
                 fallback_exc,
             )
             raise ValueError(
                 f"港股历史行情获取失败: {symbol_info.stock_name} {symbol_info.symbol}; "
-                f"stock_hk_hist={exc}; stock_hk_daily={fallback_exc}"
+                f"stock_hk_daily={exc}; stock_hk_hist={fallback_exc}"
             ) from fallback_exc

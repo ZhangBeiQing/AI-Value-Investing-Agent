@@ -250,14 +250,14 @@ def collect_news_candidates(
             run_end.strftime("%Y-%m-%d %H:%M"),
         )
     else:
-        target_eve = run_date_parsed - timedelta(days=1)
-        window_start = datetime.combine(target_eve, datetime.min.time())
-        run_end = datetime.combine(target_eve, datetime.max.time())
+        # run_date 指「要分析的交易日」，新闻窗口 = run_date 当天 00:00~23:59:59
+        window_start = datetime.combine(run_date_parsed, datetime.min.time())
+        run_end = datetime.combine(run_date_parsed, datetime.max.time())
         LOGGER.info(
-            "夜间/回测窗口模式: run_date %s != 今天 %s，抓取 %s 00:00~23:59:59 的新闻",
+            "历史窗口模式: run_date %s != 今天 %s，抓取 %s 00:00~23:59:59 的新闻",
             run_day,
             today_date.strftime("%Y-%m-%d"),
-            target_eve.strftime("%Y-%m-%d"),
+            run_date_parsed.strftime("%Y-%m-%d"),
         )
 
     source_limits = dict(SOURCE_BATCH_LIMITS)
