@@ -482,12 +482,32 @@
 
 #### 6.6.2 何时可以降级到 `cooling_themes`
 
-满足以下特征时，可从 `active_themes` 降到 `cooling_themes`：
+**降级需同时满足两个门槛，缺一不可。**
 
-1. 最近 1-3 个交易日没有明显新增事实
-2. 板块热度和资金确认开始减弱
-3. 主题尚未被证伪，也未完全结束
-4. 仍存在短期回流或二次强化可能
+**门槛一：strength 阶梯约束（防止跨越式降级）**
+
+主题必须已经处于 `weakening` 状态，才允许在当天降级到 `cooling_themes`。
+单次 run 内不允许跨越 strength 阶梯直接降级：
+
+- 上一日 strength 为 `strengthening` → 当天最多只能将 strength 调整为 `stable`，仍留在 `active_themes`
+- 上一日 strength 为 `stable` → 当天最多只能将 strength 调整为 `weakening`，仍留在 `active_themes`
+- 上一日 strength 已经是 `weakening` → 若同时满足门槛二，可降级到 `cooling_themes`
+
+**门槛二：连续无增量天数**
+
+"无增量"指：今日新闻中无该主题新增高质量事实、板块热度开始减弱、宏观层无新驱动。
+连续无增量天数要求视当前 strength 而定：
+
+| 当前 strength | 降级到 cooling 所需连续无增量交易日数 |
+|---|---|
+| `weakening` | ≥ 1 个交易日 |
+| `stable` | ≥ 2 个交易日（先降 strength 到 weakening，不直接 cooling） |
+| `strengthening` | ≥ 3 个交易日（先降 strength 到 stable，不直接 cooling） |
+
+**满足所有条件后，降级到 `cooling_themes` 还需满足：**
+
+1. 主题尚未被证伪，也未完全结束
+2. 仍存在短期回流或二次强化可能
 
 #### 6.6.3 何时可以从今天主上下文中移出
 
