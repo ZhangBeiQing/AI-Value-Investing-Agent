@@ -41,7 +41,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 本技能采用"主 agent 建立优先级队列 + 仅对 P0 并行派发 subagent"的方式，以控制 token 消耗并提升逐股深度。
 
 **上下文共享边界（必须理解）**：
-- 主 agent 只读取 `SKILL.md`、`03_agent_input.md`、`02_basic_snapshot_payload.json`、`01_global_context.md`。**主 agent 禁止读任何股票的 `_research.md`**——深度阅读是 subagent 的工作。
+- 主 agent 只读取 `SKILL.md`、`03_agent_input.md`、`02_basic_snapshot_payload.json`、`01_global_context.md`，以及 `data/selection_runs/{run_date}/06_hot_news_state.json`、`data/selection_runs/{run_date}/05_board_heat_digest.json`。**主 agent 禁止读任何股票的 `_research.md`**——深度阅读是 subagent 的工作。
 - 主 agent 基于上述输入建立 P0（并行深度分析，≤5 只）/ P1（主 agent 快扫结论）/ P2（跳过）三档队列，仅对 P0 派发并行 subagent。
 - 每个 subagent 读取共享输入顺序固定为：`03_agent_input.md -> 01_global_context.md -> 本股 04_stock_research/{symbol}_research.md`。该股 snapshot 已写入研究包，subagent 不单独读 `02_basic_snapshot_payload.json`。
 - subagent 只能读 `01/03` + 自己那只 `_research.md`，不得读其他股票研究包；分析完后把完整庭审底稿传回主 agent；主 agent 负责汇总 P0 详细底稿 + P1 快扫 + P2 跳过记录，最终写入 `05_decision.json`。
@@ -65,6 +65,20 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 ### 步骤 4：读取宏观、大盘上下文
 主 agent 阅读 `01_global_context.md`，提炼：
 - 宏观、指数、流动性、事件风险背景（第 1–2 节）
+
+### 步骤 4.5：读取热点新闻主题状态与板块热度
+
+主 agent 阅读 `data/selection_runs/{run_date}/06_hot_news_state.json` 和 `data/selection_runs/{run_date}/05_board_heat_digest.json`，提炼：
+
+- **热点新闻主题**（`active_themes` / `new_themes`）：当前市场正在交易的宏观/产业/政策叙事线，每条主题的 `linked_symbols_in_universe`、`linked_boards`、当前强化/钝化状态、`scenario_tree` 和 `next_day_watchlist`
+- **板块热度概览**：近期全局板块热度分布，哪些板块是当前的资金主战场、哪些在冷却
+
+**用途**：
+- 后续在步骤 6 确定 P0/P1/P2 时，将热点主题是否直接覆盖某只股票作为加分权重（提升该股 P0 优先级）
+- 后续在步骤 7 派发 subagent 时，若某 P0 股票落入热点主题的 `linked_symbols_in_universe` 或 `linked_boards`，将该主题的核心信息提炼后写入 subagent prompt，供其作为上下文辅助分析
+
+**文件不存在时的处理**：
+- 若 `06_hot_news_state.json` 或 `05_board_heat_digest.json` 不存在，跳过此步骤，在给 subagent 的 prompt 中注明"今日无热点主题状态数据"；不要因此中止流程
 
 ### 步骤 5：继承上一交易日决策基线（若存在）
 
@@ -126,6 +140,18 @@ cp data/skill_runs/<prev_trading_day>/short_book/05_decision.json data/skill_run
 **禁止**：在没有得到用户对 P0 队列的明确确认前直接派发 subagent。
 
 ### 步骤 7：主 agent 对 P0 队列并行派发 subagent
+
+主 agent 在派发每个 P0 subagent 前，**必须执行热点主题交叉匹配**：
+1. 检查当前 P0 股票的 symbol 是否出现在 `06_hot_news_state.json` 的任一 `active_themes` 或 `new_themes` 的 `linked_symbols_in_universe` 中
+2. 检查当前 P0 股票所在板块是否在 `06_hot_news_state.json` 的任一主题的 `linked_boards` 中，或在 `05_board_heat_digest.json` 中热度排名靠前
+3. 若匹配到热点主题，须将以下提炼信息写入该 subagent 的 prompt：
+   - 该主题的 `theme_name`、`strength`（强化/稳定/减弱）、`current_state`（市场在交易什么、不交易什么）
+   - 该股票/板块为何与该主题关联
+   - 该主题的 `scenario_tree` 主要演化路径中与这只股票相关的部分
+   - 该主题的 `next_day_watchlist` 中与这只股票相关的跟踪点
+
+**热点主题信息的用途**：让 subagent 知道"当前市场叙事正在交易什么"，帮助判断该股的催化剂是在强化还是钝化、量价异动是否有板块逻辑支撑、短期盈亏比是否受主题节奏影响，避免孤立的个股催化剂分析漏掉宏观主题驱动。
+
 主 agent 对 P0 队列中的每只股票分配一个独立 subagent 并行执行。每个 subagent 的任务边界：
 - 只负责 1 只股票
 - 必须先按顺序完整读取 `03_agent_input.md` → `01_global_context.md` → 自己那只 `04_stock_research/{symbol}_research.md`；如文件较长必须分段顺序读到末尾
@@ -151,7 +177,7 @@ subagent 联网补证的硬触发条件至少包括：
 - 明确的退出逻辑与次日继续跟踪变量
 - 若进行了联网补证，需把搜索问题、来源和结论吸收到 `key_facts` / `inferences` / `next_day_watchlist` 中；若命中强制触发条件却最终未能拿到有效外部证据，必须在结论中显式降低置信度
 
-subagent 回传结果必须结构化包含以下字段：
+subagent 写入文件的 JSON 必须结构化包含以下字段：
 1. `symbol`
 2. `stock_name`
 3. `scan`
@@ -179,55 +205,123 @@ subagent 回传结果必须结构化包含以下字段：
 - 必须区分"已核实事实"和"基于事实的推断"
 - 必须显式引用上一交易日的该股逻辑锚是否变化
 - 若没有触发逻辑锚重算条件，必须明确写出"沿用昨日锚点，仅更新验证结果"，不得因为价格涨跌直接改结论
-- subagent 必须在回传内容里明确体现自行整理的 `search_brief` 自检清单每一项是否已有新进展；不能跳过不答
+- subagent 必须在写入的文件内容中明确体现自行整理的 `search_brief` 自检清单每一项是否已有新进展；不能跳过不答
 - 若今日存在异常涨跌或放量，且研究包本地材料不足以解释，subagent 必须先联网补证，再决定是"事件驱动"还是"高波动正常波动"
 
-### 步骤 9：主 agent 汇总 P0 底稿 + P1 继承刷新 + P2 继承跳过
-主 agent 收集所有 P0 subagent 返回结果后，再叠加 P1 继承刷新计划与 P2 继承跳过计划，统一完成：
-- 检查是否所有股票都覆盖（含 P0 新底稿、P1 继承刷新、P2 继承跳过三类）
-- 检查是否满足 `03_agent_input.md` 的输出契约
-- 发现不同股票间的逻辑冲突时，由主 agent 二次裁决并回写
-- **强制要求：P0 股票写入 `05_decision.json` 时必须尽量保留 subagent 的完整底稿，不得为了省 token、图省事或追求简洁而自行压缩、改写、丢弃大量细节**
-- **强制要求：`key_facts`、`inferences`、`court`、`recommended_action`、`next_day_watchlist` 等字段应优先沿用 subagent 的详细结果；主 agent 只允许做必要的冲突裁决、字段补齐、少量措辞统一和执行字段补充，不得把完整底稿缩写成几句摘要**
-- 向用户展示汇总结果时，必须明确分类呈现：**P0 深度分析 X 只（今日新底稿）/ P1 继承刷新 Y 只（逻辑未变）/ P2 跳过 Z 只**，并逐股给出庭审裁决
-- **⚠️ 到此必须停住，等待人工确认**
+#### 8.1 subagent 分析完成后：文件落盘（强制）
 
-### 步骤 10：人工确认后生成决策文件
+subagent 完成上述 21 字段分析后，**必须将结果写入文件**，而不是通过对话上下文回传完整底稿给主 agent。
+
+**输出目录**：
+```bash
+mkdir -p data/skill_runs/{run_date}/short_book/subagent_result
+```
+
+**输出文件路径**：
+```
+data/skill_runs/{run_date}/short_book/subagent_result/{stock_name}_{symbol}_{run_date}_decision.json
+```
+
+例如：
+```
+data/skill_runs/2026-04-28/short_book/subagent_result/世运电路_603920.SH_2026-04-28_decision.json
+```
+
+**文件内容**：只写【单个 stock entry 对象】（21 字段），不要外层 `summary_date` / `stock_decisions` 包装。格式就是从属于 `stock_decisions` 数组的一个完整 JSON 对象。
+
+**写完后向主 agent 回传**：只回传一句简短确认，格式为：
+```
+{symbol} {stock_name} 分析完成 → {文件名} | action={action_type} | 置信度={confidence_score}
+```
+
+subagent **禁止**把完整 21 字段底稿塞进回传消息中——主 agent 不需要看到详细底稿，合并脚本会自动处理。
+
+### 步骤 9：主 agent 汇总 P0 底稿 + P1 继承刷新 + P2 继承跳过
+
+主 agent 等待所有 P0 subagent 完成并确认文件落盘后，按以下步骤操作：
+
+#### 9.1 确认所有 P0 文件已落盘
+
+检查每个 P0 symbol 对应的 `subagent_result/{stock_name}_{symbol}_{date}_decision.json` 是否已存在：
+```bash
+ls data/skill_runs/{run_date}/short_book/subagent_result/
+```
+
+若某 P0 symbol 缺失文件，立即追问对应 subagent，不要跳过。
+
+#### 9.2 执行合并脚本，将 P0 结果写入 05_decision.json
+
+```bash
+source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_subagent_decisions.py --date {run_date} --book-type short_book
+```
+
+该脚本会：
+- 读取已有的 `05_decision.json`（继承基线）
+- 遍历 `subagent_result/` 下所有 `*_decision.json` 文件
+- 按 symbol 匹配后**整条替换** `stock_decisions` 中的对应 entry（新 symbol 则追加）
+- 写入合并后的 `05_decision.json`
+- 输出替换/新增/保留的摘要
+
+#### 9.3 P1/P2 股票处理（主 agent 手动完成）
+
+合并脚本**不处理 P1/P2 股票**。主 agent 在合并完成后，用 Edit 工具处理：
+
+**P1 股票**（与之前流程完全一致）：
+- `scan`：更新今日量价、持仓、昨收对比
+- `action_type` / `action_num`：更新
+- `analysis_type`：改为 `"p1_inherited_from_<prev_date>"`
+- `inferences`：在列表末尾追加一行今日确认
+- 必要时微调 `confidence_score`
+- **其他字段一律不改**
+
+**P2 股票**：
+- 用 Edit 工具仅修改 `scan` 和 `analysis_type`（改为 `"p2_skipped_inherited_from_<prev_date>"`）
+- 其他字段原样保留
+
+**出池股票**：若基线中存在某只 symbol 但今日已不在股票池，从 `stock_decisions` 中删除该 entry。
+
+**新入池 P1/P2**（基线中不存在）：冷启动生成概览 entry，注明从未深度分析。
+
+#### 9.4 跨股票冲突裁决
+
+主 agent 检查不同股票间的逻辑冲突，二次裁决并回写。
+
+#### 9.5 向用户展示汇总结果
+
+明确分类呈现：
+- **P0 深度分析 X 只**：逐只列出 symbol + action 结论（从 subagent 回传的确认信息汇总即可）
+- **P1 继承刷新 Y 只**：逐只列出 symbol，注明逻辑未变
+- **P2 跳过 Z 只**：逐只列出 symbol
+- 逐股给出庭审裁决摘要
+
+### 步骤 10：人工确认后完成最终决策文件
 
 **⚠️ 只有在用户明确回复"OK 生成决策"或类似确认后，主 agent 才执行此步骤**
 
-写入策略分两条路径（由步骤 5 的结果决定）：
+此时 `05_decision.json` 中 P0 的 entry 已由合并脚本（步骤 9.2）写入，P1/P2 继承刷新也已由主 agent（步骤 9.3）通过 Edit 工具完成。步骤 10 只需完成收尾工作：
 
-#### 路径 A：步骤 5 已 `cp` 继承基线（`05_decision.json` 已存在于今日目录）
+#### 10.1 更新顶层字段（两条路径通用）
 
-这是常态路径，主目标是用 Edit 工具做**最小增量修改**，节省 token。
+用 Edit 工具修改 `05_decision.json` 的顶层字段：
+- `summary_date`：改为今日日期
+- `system_risk_notes`：写今日宏观风险提示（不继承昨日）
+- `system_focus_items`：写今日关注点（不继承昨日）
 
-1. **P0 股票（每只）**：用 Edit 工具**整条替换**该 symbol 在 `stock_decisions` 数组中的 entry 为 subagent 回传的完整底稿。整条替换保证 subagent 的详细内容原样进入决策文件。
-2. **P1 股票（每只）**：用 Edit 工具**仅修改**以下字段：
-   - `scan`（今日量价、持仓、昨收对比）
-   - `action_type` / `action_num`（今日执行动作）
-   - `analysis_type` 改为 `"p1_inherited_from_<prev_date>"`
-   - 在 `inferences` 列表末尾追加一行今日确认
-   - 必要时微调 `confidence_score`
-   - **其他字段一律不改**
-3. **P2 股票（每只）**：用 Edit 工具**仅修改** `scan` 和 `analysis_type`（改为 `"p2_skipped_inherited_from_<prev_date>"`），其他字段不改。
-4. **顶层字段**：
-   - Edit `summary_date` 为今日日期
-   - Edit `system_risk_notes` 为今日宏观风险提示（不继承昨日）
-   - Edit `system_focus_items` 为今日关注点（不继承昨日）
-5. **出池股票**：若基线中存在某只 symbol 但今日已不在股票池，从 `stock_decisions` 中删除该 entry。
+#### 10.2 新入池股票（冷启动）
 
-#### 路径 B：步骤 5 无继承基线（冷启动）
+基线中原本就没有该 symbol 的 P1/P2 股票，此时用 Write 工具**逐只 append** 到 `stock_decisions` 数组末尾，生成概览结果，注明从未深度分析。
 
-1. 用 Write 工具一次性生成 `05_decision.json`，严格遵守 `03_agent_input.md` 中【最终总结生成规则】格式。
-2. 建议分几只 / 几只地追加写入（先 Write 基础结构，再用 Edit 追加 `stock_decisions` 数组元素），防止一次性写入过大导致失败。
-3. 每只股票按 subagent（P0）或主 agent 快扫（P1/P2 冷启动）底稿填入。
+#### 路径 A / 路径 B 通用
+
+由于合并脚本已在步骤 9.2 统一处理了 P0 条目写入，两条路径的区别已大大缩小：
+- **路径 A（有继承基线）**：合并脚本替换了 P0 entry + 主 agent Edit 刷新了 P1/P2 entry → 步骤 10 只需收尾
+- **路径 B（冷启动）**：合并脚本从空基线写入了 P0 entry → 主 agent 补 P1/P2 冷启动 entry → 步骤 10 收尾
 
 #### 通用强制要求
 
-- **P0 entry 必须原样或近原样保留 subagent 完整底稿**，不得为省 token 压缩成短摘要；主 agent 仅允许做：补 `action_type` / `action_num`、跨股票冲突裁决、少量措辞统一、明显格式错误修正。
+- **P0 entry 是由 subagent 直接写入的完整底稿，合并脚本原样搬运到 05_decision.json**。主 agent 不得重新压缩、改写、丢弃细节。
 - **P1 entry 的 `key_facts`、`court`、`recommended_action`、`key_risks`、`next_day_watchlist` 等字段必须原样保留自继承基线**，禁止重写成更短版本；主 agent 若发现确有必要修改（如 thesis 明显弱化），说明该股应升格为 P0，不能在 P1 流程里暗改。
-- P1 / P2 的 `analysis_type` 必须显式包含 `inherited_from_<prev_date>` 标签，让后续复核能一眼看出这只股今日没做深度分析。
+- P1 / P2 的 `analysis_type` 必须显式包含 `inherited_from_<prev_date>` 标签。
 - **⚠️ 生成完毕后必须停住，等待人工检查决策文件**
 
 ## 阶段 B（人工确认）
@@ -241,7 +335,7 @@ subagent 回传结果必须结构化包含以下字段：
 # 5. 单股分析最小规则（强制）
 
 1. **单股负责制**：每个 subagent 只负责 1 只股票；允许读取 `03_agent_input.md`、`01_global_context.md` 这 2 份共享输入，以及自己负责的 `_research.md`；不得读取其他股票研究包。该股票 snapshot 已内嵌在 `_research.md` 中。
-2. **完整阅读优先**：读取顺序固定为 `03 -> 01 -> 本股 04`，且这 3 份输入都必须从头到尾完整读完；只有全部读完后，才允许补充搜索。
+2. **完整阅读优先**：读取顺序固定为 `03 -> 01 -> 本股 04`，且这 3 份输入都必须从头到尾完整读完；只有全部读完后，才允许补充搜索。若主 agent 在 prompt 中提供了热点主题上下文（提炼自 `06_hot_news_state.json` / `05_board_heat_digest.json`），应在阅读完本地文件后将该主题信息作为辅助分析背景。
 3. **先执行搜索next_day_watchlist，再下结论**：subagent 在完成本地阅读后，必须先核验 next_day_watchlist中列出的遗留跟踪点和疑点；不能直接跳过这些核验进入估值与动作判断。
 4. **先判断，再交易**：先回答以下问题，再决定交易动作：
    - 当前催化剂与动能评级（`high` / `medium` / `low`）：是否有明确近端事件催化、市场是否通过量价确认、是否面临近端重大风险
@@ -306,9 +400,9 @@ subagent 回传结果必须结构化包含以下字段：
 
 如果动能与催化可靠度为 `low`，买入动议通常应被驳回，除非出现极高确定性的预期差反转。
 
-# 8. subagent 回传最小结构
+# 8. subagent 文件输出规范
 
-subagent 回传给主 agent 时，至少包含以下 21 个字段：
+subagent **不通过对话上下文回传完整分析结果**。分析完成后必须将结果写入文件（见步骤 8.1），回传内容仅需简短确认。
 1. `symbol`
 2. `stock_name`
 3. `scan`
@@ -331,9 +425,9 @@ subagent 回传给主 agent 时，至少包含以下 21 个字段：
 20. `next_day_watchlist`
 21. `confidence_score`
 
-不要求额外包装复杂 JSON，但字段语义必须完整、可直接被主 agent 汇总进入最终 `05_decision.json`。
+不要求额外包装复杂 JSON，但字段语义必须完整、可直接被 `merge_subagent_decisions.py` 合并脚本读取并写入最终 `05_decision.json`。
 
 **主 agent 汇总约束（强制）**：
-- subagent 回传给主 agent 的结果默认视为 `05_decision.json` 的主体正文，而不是仅供主 agent 参考的草稿。
-- 只要 subagent 输出已经满足字段契约，主 agent 在写 `05_decision.json` 时应尽量保留原始详细内容。
-- 不得因为"担心文件太长""担心卡住""想节省篇幅"等原因，私自把 subagent 的详细结果压缩成简写版；若担心写入失败，应采用分批/逐只写入，而不是删细节。
+- subagent 写入文件的 JSON 是 `05_decision.json` 各股条目的唯一来源主体正文。
+- 合并脚本 (`merge_subagent_decisions.py`) 负责将文件原样搬运到 `05_decision.json` 的 `stock_decisions` 数组中。
+- 主 agent 不得因为担心文件太长、担心卡住、想节省篇幅等原因，私自修改 subagent 已写入的文件内容或合并后的 entry。

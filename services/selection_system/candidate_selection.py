@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta
+import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping
 
@@ -59,6 +60,92 @@ NEGATIVE_ANNOUNCEMENT_KEYWORDS = (
     "延期",
     "辞职",
 )
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
+def _resolve_previous_book_decision_path(
+    run_date: str,
+    *,
+    base_dir: Path,
+    book_type: str,
+) -> Path | None:
+    skill_runs_dir = base_dir / "skill_runs"
+    if not skill_runs_dir.exists():
+        return None
+
+    candidates = sorted(
+        path / book_type / "05_decision.json"
+        for path in skill_runs_dir.iterdir()
+        if path.is_dir()
+        and path.name < run_date
+        and (path / book_type / "05_decision.json").exists()
+    )
+    if not candidates:
+        return None
+    return candidates[-1]
+
+
+def _load_book_current_holdings(
+    *,
+    base_dir: Path,
+    signature: str,
+) -> tuple[Path, List[Dict[str, Any]]]:
+    position_path = base_dir / "agent_data" / signature / "position" / "position.jsonl"
+    if not position_path.exists():
+        return position_path, []
+
+    try:
+        lines = [
+            line.strip()
+            for line in position_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except OSError:
+        return position_path, []
+    if not lines:
+        return position_path, []
+
+    try:
+        latest_record = json.loads(lines[-1])
+    except Exception:
+        LOGGER.warning("读取持仓文件失败，忽略长期池持仓保留提示: %s", position_path)
+        return position_path, []
+
+    positions = latest_record.get("positions") if isinstance(latest_record, Mapping) else {}
+    if not isinstance(positions, Mapping):
+        return position_path, []
+
+    holdings: List[Dict[str, Any]] = []
+    for symbol, qty in positions.items():
+        normalized_symbol = str(symbol or "").strip()
+        if not normalized_symbol or normalized_symbol.upper() == "CASH":
+            continue
+        try:
+            shares = int(float(qty))
+        except (TypeError, ValueError):
+            continue
+        if shares <= 0:
+            continue
+        try:
+            stock_name = parse_symbol(normalized_symbol).stock_name
+        except Exception:
+            stock_name = normalized_symbol
+        holdings.append(
+            {
+                "symbol": normalized_symbol,
+                "stock_name": stock_name,
+                "shares": shares,
+            }
+        )
+
+    holdings.sort(key=lambda item: item["symbol"])
+    return position_path, holdings
 
 
 def build_candidate_pools(
@@ -130,6 +217,20 @@ def collect_candidate_pool_inputs(
     long_count: int = 15,
 ) -> Dict[str, Any]:
     paths = SelectionSystemPaths.from_base_dir(base_dir)
+    previous_short_book_decision = _resolve_previous_book_decision_path(
+        run_date,
+        base_dir=paths.base_dir,
+        book_type="short_book",
+    )
+    previous_long_book_decision = _resolve_previous_book_decision_path(
+        run_date,
+        base_dir=paths.base_dir,
+        book_type="long_book",
+    )
+    long_book_position_path, current_long_book_holdings = _load_book_current_holdings(
+        base_dir=paths.base_dir,
+        signature="book-long_book",
+    )
     universe = load_master_universe(paths)
     hot_news_state = load_json_file(paths.run_hot_news_state_path(run_date), default={}) or {}
     board_heat_state = load_json_file(paths.run_board_heat_state_path(run_date), default={}) or {}
@@ -196,6 +297,7 @@ def collect_candidate_pool_inputs(
             payload_path=paths.run_short_book_input_payload_path(run_date),
             output_path=paths.run_short_book_candidates_path(run_date),
             required_count=short_count,
+            previous_book_decision_path=previous_short_book_decision,
         ),
         "long_markdown": _build_local_agent_markdown(
             pool_type="long_book",
@@ -203,6 +305,9 @@ def collect_candidate_pool_inputs(
             payload_path=paths.run_long_book_input_payload_path(run_date),
             output_path=paths.run_long_book_candidates_path(run_date),
             required_count=long_count,
+            previous_book_decision_path=previous_long_book_decision,
+            current_holdings=current_long_book_holdings,
+            holdings_source_path=long_book_position_path,
         ),
     }
 
@@ -534,7 +639,11 @@ def _build_local_agent_markdown(
     payload_path: Path,
     output_path: Path,
     required_count: int,
+    previous_book_decision_path: Path | None = None,
+    current_holdings: List[Dict[str, Any]] | None = None,
+    holdings_source_path: Path | None = None,
 ) -> str:
+    current_holdings = current_holdings or []
     if pool_type == "short_book":
         output_fields = [
             "symbol",
@@ -553,14 +662,20 @@ def _build_local_agent_markdown(
         style_text = "更关注主题强化、板块确认、公告催化、量价与流动性、近端风险。"
         fixed_horizon = "1-2个月"
         previous_candidates_name = "08_short_book_candidates.json"
+        previous_decision_text = (
+            f"`{_display_path(previous_book_decision_path)}`"
+            if previous_book_decision_path is not None
+            else "未找到上一交易日 `short_book/05_decision.json`，只能按冷启动处理"
+        )
         continuity_block = f"""## 连续性要求
 
 1. 必须直接回看上一交易日的 `data/selection_runs/<上一交易日>/{previous_candidates_name}`；这一步属于强制连续性检查，不视为回读 01-07 原始中间文件。
-2. 昨日入池结果只是弱先验，不得因为昨天入池就机械保留。
-3. 默认先问：昨天的催化今天是强化、兑现中、钝化，还是证伪？
-4. 只有当昨日催化仍在强化或仍在扩散时，昨日入池股票才应优先保留；若昨天只是单日脉冲、今天没有延续，应快速出池。
-5. 新进票仍然可以大量替换昨日旧票，不要求短期池名单高稳定性；但你必须能回答：这个新进票为何比被替换的昨日旧票更值得占用今天的 short-book 名额。
-6. 若上一交易日 `{previous_candidates_name}` 缺失，允许按冷启动口径筛选，但必须在你的分析过程中显式说明昨日短期池锚点缺失，无法做连续性比较。
+2. 必须继续回看上一交易日 short_book 的逐股深度分析底稿：{previous_decision_text}。这份 `05_decision.json` 用来判断昨天入池股票的催化是否还在、是否已经变贵、以及是否仍值得继续跟踪。
+3. 昨日入池结果只是弱先验，不得因为昨天入池就机械保留。
+4. 默认先问：昨天的催化今天是强化、兑现中、钝化，还是证伪？
+5. 若昨日股票的催化仍在、价格不算贵、且后续还有跟踪价值，可以继续保留；若催化已证伪、明显走弱，或价格已明显透支短期赔率，应快速剔除。
+6. 新进票仍然可以大量替换昨日旧票，不要求短期池名单高稳定性；但你必须能回答：这个新进票为何比被替换的昨日旧票更值得占用今天的 short-book 名额。
+7. 若上一交易日 `{previous_candidates_name}` 或上一交易日 short_book `05_decision.json` 缺失，允许按冷启动口径筛选，但必须在你的分析过程中显式说明昨日短期池锚点缺失，无法做连续性比较。
 """
     else:
         output_fields = [
@@ -581,13 +696,44 @@ def _build_local_agent_markdown(
         style_text = "更关注公司质量、增长持续性、估值赔率、跨季度 thesis 和财报/治理风险。"
         fixed_horizon = "3-12个月"
         previous_candidates_name = "09_long_book_candidates.json"
+        previous_decision_text = (
+            f"`{_display_path(previous_book_decision_path)}`"
+            if previous_book_decision_path is not None
+            else "未找到上一交易日 `long_book/05_decision.json`，只能按冷启动处理"
+        )
+        if current_holdings:
+            holdings_lines = "\n".join(
+                f"  - `{item['symbol']}` ({item['stock_name']}，当前持仓 {item['shares']} 股)"
+                for item in current_holdings
+            )
+            holdings_block = f"""## 当前 long_book 持仓保留约束
+
+以下持仓来自 `{_display_path(holdings_source_path) if holdings_source_path else 'data/agent_data/book-long_book/position/position.jsonl'}` 的最新记录。**这些股票今天不得从 long_book 候选结果中剔除，只能保留并调整优先级、理由或风险描述。**
+
+{holdings_lines}
+
+"""
+            holding_constraint = "8. 上方「当前 long_book 持仓保留约束」中的股票今天不得从 long_book 候选结果中移除；若逻辑转弱，只能降级排序或在理由里明确风险，不能直接踢出池子。\n"
+            exclusion_constraint_num = "9"
+            json_constraint_num = "10"
+        else:
+            holdings_block = f"""## 当前 long_book 持仓保留约束
+
+未从 `{_display_path(holdings_source_path) if holdings_source_path else 'data/agent_data/book-long_book/position/position.jsonl'}` 读取到正股持仓。本轮长期池没有“已持仓必须保留”的硬约束，可按候选池口径筛选。
+
+"""
+            holding_constraint = ""
+            exclusion_constraint_num = "8"
+            json_constraint_num = "9"
         continuity_block = f"""## 连续性要求
 
 1. 必须直接回看上一交易日的 `data/selection_runs/<上一交易日>/{previous_candidates_name}`，并把它作为今日 long-book 筛选的主锚；这一步属于强制连续性检查，不视为回读 01-07 原始中间文件。
-2. 昨日入池结果是强先验，默认先问：昨天为什么选它，今天这些理由是否仍成立？
-3. 若昨日逻辑仍成立，优先保留并只调整排序；若逻辑加强，升级优先级；若逻辑弱化但未证伪，降级观察；若逻辑被证伪，再移出池子。
-4. 新进票必须回答：它为什么比某个昨日老票更值得占用今天的 long-book 名额。
-5. 若上一交易日 `{previous_candidates_name}` 缺失，允许按冷启动口径筛选，但必须在你的分析过程中显式说明昨日长期池主锚缺失，无法做连续性比较。
+2. 必须继续回看上一交易日 long_book 的逐股深度分析底稿：{previous_decision_text}。这份 `05_decision.json` 是你判断“旧 thesis 是否被证伪、哪些票该保留/降级/剔除”的逐股主依据。
+3. 昨日入池结果是强先验，默认先问：昨天为什么选它，今天这些理由是否仍成立？
+4. 若昨日逻辑仍成立，优先保留并只调整排序；若逻辑加强，升级优先级；若逻辑弱化但未证伪，降级观察；若逻辑被证伪，再移出池子。
+5. 对于当前已经真实持仓的 long_book 股票，不允许直接从长期池剔除；只能保留，并在排序、理由、风险提示上体现你的最新判断。
+6. 新进票必须回答：它为什么比某个昨日老票更值得占用今天的 long-book 名额；若要替换，优先替换“非持仓、且 thesis 已弱化或被证伪”的旧票。
+7. 若上一交易日 `{previous_candidates_name}` 或上一交易日 long_book `05_decision.json` 缺失，允许按冷启动口径筛选，但必须在你的分析过程中显式说明长期池历史锚点缺失，无法做连续性比较。
 """
 
     fields_block = "\n".join(f"- `{field}`" for field in output_fields)
@@ -602,9 +748,10 @@ def _build_local_agent_markdown(
 {excluded_symbols_list}
 
 """
-        exclusion_constraint = "8. 长期池不得包含固定跟踪池（fixed_tracked）的股票。这些股票的 symbol 已列在上方「固定跟踪池排除名单」中，由独立交易系统管理，不得出现在 long_book 候选结果中。\n"
-        json_constraint_num = "9"
+        exclusion_constraint = f"{exclusion_constraint_num}. 长期池不得包含固定跟踪池（fixed_tracked）的股票。这些股票的 symbol 已列在上方「固定跟踪池排除名单」中，由独立交易系统管理，不得出现在 long_book 候选结果中。\n"
     else:
+        holdings_block = ""
+        holding_constraint = ""
         exclusion_block = ""
         exclusion_constraint = ""
         json_constraint_num = "8"
@@ -635,6 +782,7 @@ def _build_local_agent_markdown(
    - `python scripts/query_board_snapshot.py --date {run_date} --board-name "通信设备"`
 
 {continuity_block}
+{holdings_block}
 {exclusion_block}## 板块热点使用方法
 
 板块信息层不要只看一个榜单，应合并理解：
@@ -668,7 +816,7 @@ python scripts/query_board_snapshot.py --date {run_date} --board-name "能源金
 5. `holding_horizon` 必须写 `{fixed_horizon}`
 6. `main_risks` 必须是字符串数组
 7. 若发现某些股票虽然优秀，但不符合 `{pool_type}` 的 mandate，必须舍弃
-{exclusion_constraint}{json_constraint_num}. 输出必须是唯一 JSON 对象，顶层结构如下：
+{holding_constraint}{exclusion_constraint}{json_constraint_num}. 输出必须是唯一 JSON 对象，顶层结构如下：
 
 ```json
 {{
