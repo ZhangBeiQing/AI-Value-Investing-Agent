@@ -492,14 +492,15 @@ class SharedDataAccess:
             if time_col:
                 normalized[time_col] = pd.to_datetime(normalized[time_col], errors="coerce")
                 normalized = normalized.dropna(subset=[time_col])
-                mask = (normalized[time_col] >= start_dt) & (normalized[time_col] <= as_of_dt)
+                end_dt = as_of_dt + timedelta(days=1)
+                mask = (normalized[time_col] >= start_dt) & (normalized[time_col] < end_dt)
                 normalized = normalized.loc[mask]
                 normalized = normalized.sort_values(time_col, ascending=False)
             frame = normalized.reset_index(drop=True)
         return DisclosureBundle(
             frame=frame,
             start=start_dt,
-            end=as_of_dt,
+            end=as_of_dt + timedelta(days=1),
             source_path=csv_path if csv_path.exists() else None,
         )
 

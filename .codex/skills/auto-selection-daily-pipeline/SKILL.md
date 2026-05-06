@@ -42,7 +42,6 @@ description: >
 - `data/selection_runs/YYYY-MM-DD/05_board_heat_digest.json`
 - `data/selection_runs/YYYY-MM-DD/05_board_heat_state.json`
 - `data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
-- `data/selection_runs/YYYY-MM-DD/06_hot_news_state_ops.json`
 - `data/selection_runs/YYYY-MM-DD/04_recent_company_announcements.json`
 - `data/selection_runs/YYYY-MM-DD/07_shared_selection_context.md`
 - `data/selection_runs/YYYY-MM-DD/08_short_book_input.json`
@@ -89,7 +88,6 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 目标文件：
 
 - `data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
-- `data/selection_runs/YYYY-MM-DD/06_hot_news_state_ops.json`
 
 依赖的输入（由 `python scripts/refresh_all_for_date.py` 预先生成，本 skill 不再补跑）：
 

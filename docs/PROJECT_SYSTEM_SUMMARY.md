@@ -25,6 +25,7 @@
 
 ## 4. 核心分析与研究模块
 - **一期选股系统基座**（`services/selection_system/`, `scripts/manage_selection_system.py`）：当前选股框架主线收敛到 `master_universe`、独立新闻链、渐进式新闻主题总结与 `board_heat_state`。其中 `04_recent_company_announcements.json` 已改为从各股票 `data/stock_info/<name_symbol>/news/news.json` 聚合最近 3 天公告 `summary`，仅保留选股阶段需要的轻量摘要字段。初始化后会在 `data/universe/master_universe.json` 写入主股票宇宙，并在 `data/market_state/`、`data/symbol_memory/`、`data/selection_runs/` 建立相关状态目录。
+- **短长池连续性约束**：`08_short_book_input.md` 会要求本地 agent 同时回看上一交易日的 `08_short_book_candidates.json` 与 `data/skill_runs/<prev>/short_book/05_decision.json`，用昨天的逐股分析判断短线催化是否还在、是否已经过贵、以及哪些票该剔除或继续跟踪；`09_long_book_input.md` 会同时回看上一交易日的 `09_long_book_candidates.json` 与 `data/skill_runs/<prev>/long_book/05_decision.json`，且若 `data/agent_data/book-long_book/position/position.jsonl` 中存在真实持仓，这些持仓股今日不得从 long_book 候选结果中剔除，只能保留并调整优先级或风险表述。
 - **基础指标批处理**（`basic_stock_info.py`）：`BasicStockInfoService` 会调用 `SharedDataAccess.prepare_dataset` + `IndicatorLibrary`，输出估值、财报增速、风险、流动性等字段并写入 `data/basic_info_cache/basic_info_{symbol}.json`（含历史快照）；CLI 支持 `--symbols`/`--history-days`。
 - **增强估值分析**（`enhanced_pe_pb_analyzer.py`）：以 `SymbolInfo` 为核心，串联财报/股本/价格缓存、TTM EPS、PEG、相似股比较、Markdown/CSV/JSON 报告写入。重构后通用指标计算迁移至 `indicator_library.calculators`，并通过 `cache_registry` 管理输出目录。
 - **股价动态总结**（`stock_price_dynamics_summarizer.py`）：围绕 `IndicatorLibrary` + `IndicatorBatchRequest` 计算 3/6/12 个月收益、夏普、相关性矩阵、MACD/RSI/MA、行业对比等信息，生成 Markdown + JSON 报告，供 `services/research/stock_analysis.py` 复用。
