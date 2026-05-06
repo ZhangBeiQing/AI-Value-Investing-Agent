@@ -6,11 +6,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping
 import json
+import os
 
 import akshare as ak
 import pandas as pd
+from dotenv import load_dotenv, find_dotenv
 
 from core.logging import get_logger
+
+load_dotenv(find_dotenv(usecwd=True))
 
 from .cache_registry import CacheKind, build_global_cache_dir, record_cache_refresh
 
@@ -18,6 +22,11 @@ try:  # pragma: no cover - optional fallback
     import yfinance as yf
 except Exception:  # pragma: no cover - optional fallback
     yf = None
+
+try:  # pragma: no cover - optional fallback
+    from fredapi import Fred
+except ImportError:
+    Fred = None
 
 
 LOGGER = get_logger("MacroObjectivePanel")
@@ -38,7 +47,6 @@ CENTRAL_BANK_ORDER = (
     "FED",
     "PBOC_LPR_1Y",
     "PBOC_LPR_5Y",
-    "BOJ",
     "ECB",
 )
 
@@ -60,18 +68,12 @@ def load_or_build_macro_objective_panel(
         return _load_json(snapshot_path, default=_warning_payload(run_date, "snapshot_exists_but_unreadable"))
 
     today_str = pd.Timestamp.now().strftime("%Y-%m-%d")
-    if run_date != today_str:
-        payload = _warning_payload(
-            run_date,
-            f"缺少 {run_date} 的宏观客观数据面板缓存，且该日期不是今天，跳过实时抓取。",
-        )
-        if not snapshot_path.exists():
-            _save_json(snapshot_path, payload)
-        return payload
 
     payload = _build_macro_objective_panel(run_date)
     _save_json(snapshot_path, payload)
-    _save_json(cache_dir / "latest.json", payload)
+    # 仅在 run_date 是今天时更新 latest.json，避免用历史日期的数据覆盖"今日最新"
+    if run_date == today_str:
+        _save_json(cache_dir / "latest.json", payload)
     record_cache_refresh(
         cache_dir,
         latest_run_date=run_date,
@@ -351,31 +353,22 @@ def _attach_futures_metrics(payload: Dict[str, Any], run_dt: pd.Timestamp) -> No
 
 def _attach_central_bank_metrics(payload: Dict[str, Any], run_dt: pd.Timestamp) -> None:
     _attach_lpr_metrics(payload, run_dt)
-    _attach_policy_metric(
+
+    _attach_central_bank_rate_via_fred(
         payload,
         metric_key="FED",
         label="Fed利率",
-        fetcher=ak.macro_bank_usa_interest_rate,
-        source="akshare.macro_bank_usa_interest_rate",
-        max_age_days=120,
+        series_id="DFEDTARU",
+        source="fredapi.DFEDTARU",
         run_dt=run_dt,
     )
-    _attach_policy_metric(
-        payload,
-        metric_key="BOJ",
-        label="BOJ利率",
-        fetcher=ak.macro_bank_japan_interest_rate,
-        source="akshare.macro_bank_japan_interest_rate",
-        max_age_days=120,
-        run_dt=run_dt,
-    )
-    _attach_policy_metric(
+
+    _attach_central_bank_rate_via_fred(
         payload,
         metric_key="ECB",
         label="ECB利率",
-        fetcher=ak.macro_bank_euro_interest_rate,
-        source="akshare.macro_bank_euro_interest_rate",
-        max_age_days=120,
+        series_id="ECBMRRFR",
+        source="fredapi.ECBMRRFR",
         run_dt=run_dt,
     )
 
@@ -425,43 +418,67 @@ def _attach_lpr_metrics(payload: Dict[str, Any], run_dt: pd.Timestamp) -> None:
         )
 
 
-def _attach_policy_metric(
+_fred_client: Fred | None = None
+
+
+def _get_fred_client() -> Fred | None:
+    global _fred_client
+    if _fred_client is not None:
+        return _fred_client
+    if Fred is None:
+        return None
+    api_key = os.getenv("FRED_API_KEY", "").strip()
+    if not api_key:
+        return None
+    try:
+        _fred_client = Fred(api_key=api_key)
+        LOGGER.info("fredapi 客户端初始化成功")
+        return _fred_client
+    except Exception as exc:
+        LOGGER.warning("fredapi 客户端初始化失败: %s", exc)
+        return None
+
+
+def _attach_central_bank_rate_via_fred(
     payload: Dict[str, Any],
     *,
     metric_key: str,
     label: str,
-    fetcher: Any,
+    series_id: str,
     source: str,
-    max_age_days: int,
     run_dt: pd.Timestamp,
-) -> None:
+) -> bool:
+    """通过 FRED 获取央行利率数据，成功返回 True，失败返回 False。"""
+    fred = _get_fred_client()
+    if fred is None:
+        return False
     try:
-        df = fetcher()
-        df = df.copy()
-        df["日期"] = pd.to_datetime(df["日期"], errors="coerce")
-        df["今值"] = pd.to_numeric(df["今值"], errors="coerce")
-        df = df.dropna(subset=["日期", "今值"])
-        if df.empty:
-            raise ValueError("返回空数据")
-        latest = df[df["日期"] <= run_dt].sort_values("日期").iloc[-1]
-        as_of_dt = pd.Timestamp(latest["日期"])
+        series = fred.get_series(series_id)
+        if series.empty:
+            raise ValueError("FRED 返回空数据")
+        series = series.dropna()
+        if series.empty:
+            raise ValueError("FRED 返回全空数据")
+        # 过滤 <= run_dt 的最新值
+        mask = series.index <= run_dt
+        if not mask.any():
+            raise ValueError(f"FRED {series_id} 在 {run_dt.date()} 之前无数据")
+        filtered = series[mask]
+        as_of_dt = pd.Timestamp(filtered.index[-1])
+        value = filtered.iloc[-1]
         age_days = int((pd.Timestamp.now().normalize() - as_of_dt.normalize()).days)
-        status = "ok" if age_days <= max_age_days else "stale"
+        status = "ok" if age_days <= 30 else "stale"
         note = None
         if status == "stale":
             note = f"最新记录距今 {age_days} 天，当前不宜作为唯一实时政策依据。"
         payload["central_banks"][metric_key] = _metric(
             label=label,
-            value=latest.get("今值"),
+            value=value,
             unit="%",
             as_of_date=as_of_dt.strftime("%Y-%m-%d"),
             source=source,
             status=status,
             note=note,
-            extra={
-                "forecast": _round_float(latest.get("预测值")),
-                "previous": _round_float(latest.get("前值")),
-            },
         )
         status_payload = {
             "source": source,
@@ -471,15 +488,10 @@ def _attach_policy_metric(
         if note:
             status_payload["warning"] = note
         payload["source_status"].append(status_payload)
+        return True
     except Exception as exc:
-        payload["central_banks"][metric_key] = _metric(label, None, "%", None, source, status="warning")
-        payload["source_status"].append(
-            {
-                "source": source,
-                "status": "warning",
-                "warning": f"{label} 抓取失败: {exc}",
-            }
-        )
+        LOGGER.warning("FRED %s 获取失败: %s", series_id, exc)
+        return False
 
 
 def _metric(
