@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -133,20 +133,30 @@ def _parse_report_meta(path: Path) -> Optional[ReportMeta]:
     return ReportMeta(path=path, release_date=release_dt, fiscal_year=fiscal_year, fiscal_quarter=fiscal_quarter)
 
 
-def _select_reports(files: List[Path], today_dt: datetime) -> Tuple[ReportMeta, Optional[ReportMeta]]:
+def _select_reports(
+    files: List[Path],
+    today_dt: datetime,
+    *,
+    available_cutoff_date: Optional[date] = None,
+) -> Tuple[ReportMeta, Optional[ReportMeta]]:
     metas = [meta for meta in (_parse_report_meta(p) for p in files) if meta]
     if not metas:
         raise FileNotFoundError("未能解析任何财报文件名。")
+
+    selection_cutoff = available_cutoff_date or today_dt.date()
 
     metas.sort(
         key=lambda m: (m.release_date, m.fiscal_year, m.fiscal_quarter, m.stem),
         reverse=True,
     )
-    latest_available = next((m for m in metas if m.release_date <= today_dt.date()), None)
+    latest_available = next((m for m in metas if m.release_date <= selection_cutoff), None)
     if latest_available is None:
-        raise FileNotFoundError(f"没有早于或等于 today_time:{today_dt} 的财报文件。")
+        raise FileNotFoundError(f"没有早于或等于 cutoff:{selection_cutoff.isoformat()} 的财报文件。")
 
-    future_candidates = sorted([m for m in metas if m.release_date > today_dt.date()], key=lambda m: m.release_date)
+    future_candidates = sorted(
+        [m for m in metas if m.release_date > latest_available.release_date],
+        key=lambda m: m.release_date,
+    )
     next_future = future_candidates[0] if future_candidates else None
     return latest_available, next_future
 
@@ -430,13 +440,17 @@ def _get_price_on_or_before(frame: pd.DataFrame, target: date) -> Optional[float
 
 
 def _compute_price_drift(symbol_info: SymbolInfo, today_time: str, release_day: date) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    today_date = datetime.strptime(today_time, "%Y-%m-%d").date()
+    if release_day > today_date:
+        return None, None, None
+
     accessor = SharedDataAccess(logger=logger)
     dataset = accessor.prepare_dataset(symbolInfo=symbol_info, as_of_date=today_time)
     frame = dataset.prices.frame
     if frame.empty:
         return None, None, None
     release_price = _get_price_on_or_after(frame, release_day)
-    today_price = _get_price_on_or_before(frame, datetime.strptime(today_time, "%Y-%m-%d").date())
+    today_price = _get_price_on_or_before(frame, today_date)
     if release_price is None or today_price is None or release_price == 0:
         return release_price, today_price, None
     pct = (today_price - release_price) / release_price * 100
@@ -455,7 +469,13 @@ def _decorate_content(
 ) -> Tuple[str, dict]:
     today_dt = datetime.strptime(today_time, "%Y-%m-%d").date()
     days_since = (today_dt - latest_meta.release_date).days
-    if change_pct is None:
+    report_is_after_today = days_since < 0
+    if report_is_after_today:
+        price_sentence = (
+            f"该研究包按 next-day 宽限窗口引用了 {latest_meta.release_date.isoformat()} 发布的财报总结，"
+            f"它相对当前请求日期晚 {abs(days_since)} 天发布，因此暂不计算“财报发布日至今”的股价变动。"
+        )
+    elif change_pct is None:
         price_sentence = "由于缺少有效的价格数据，暂时无法计算财报发布日至今的股价变动，请结合行情自行评估市场是否已经消化该信息。"
     else:
         direction = "上涨" if change_pct >= 0 else "下跌"
@@ -471,17 +491,19 @@ def _decorate_content(
         next_gap_val = None
         next_date_str = None
 
-    appendix = (
-        f"\n\n---\n"
-        f"当前日期是{today_time}，{stock_name}于{latest_meta.release_date.isoformat()}发布了最近季度的财报，"
-        f"现在{today_time}距离财报发布时间已经过去了{days_since}天，{price_sentence}\n"
-        f"{next_sentence}\n"
-    )
+    if report_is_after_today:
+        report_timing_text = (
+            f"当前日期是{today_time}，{stock_name}最近季度财报对应的总结文件日期为"
+            f"{latest_meta.release_date.isoformat()}，相对当前请求日期晚 {abs(days_since)} 天。"
+        )
+    else:
+        report_timing_text = (
+            f"当前日期是{today_time}，{stock_name}于{latest_meta.release_date.isoformat()}发布了最近季度的财报，"
+            f"现在{today_time}距离财报发布时间已经过去了{days_since}天。"
+        )
 
-    metadata_text = (
-        f"当前日期是{today_time}，{stock_name}于{latest_meta.release_date.isoformat()}发布了最近季度的财报，"
-        f"现在{today_time}距离财报发布时间已经过去了{days_since}天，{price_sentence}"
-    )
+    appendix = f"\n\n---\n{report_timing_text}{price_sentence}\n{next_sentence}\n"
+    metadata_text = report_timing_text + price_sentence
     if next_meta:
         metadata_text += f" 距离下一季度正式财报发行日预告还有{next_gap_val}天（参考 {next_date_str} ）, 公司也可能在这个正式日期之前提前发布财报预告，请注意查看公告新闻系统"
     else:
@@ -490,7 +512,7 @@ def _decorate_content(
     return content.rstrip() + appendix, metadata_text
 
 
-def get_financial_report_summary(symbol: str, today_time: str) -> dict:
+def get_financial_report_summary(symbol: str, today_time: str, *, report_release_slack_days: int = 0) -> dict:
     stock_code = symbol.strip()
     if is_cn_etf_symbol(stock_code):
         message = {"error": "ETF/基金类标的没有季度财报摘要数据，请选择股票标的。", "stock": stock_code}
@@ -539,8 +561,14 @@ def get_financial_report_summary(symbol: str, today_time: str) -> dict:
         logger.error("财报目录为空: %s", STOCK_BASE_DIR / f"{stock_name}_{stock_code}" / "financial_reports")
         return message
 
+    report_selection_cutoff = today_dt.date() + timedelta(days=max(0, int(report_release_slack_days or 0)))
+
     try:
-        latest_meta, next_meta = _select_reports(files, today_dt)
+        latest_meta, next_meta = _select_reports(
+            files,
+            today_dt,
+            available_cutoff_date=report_selection_cutoff,
+        )
     except FileNotFoundError as exc:
         message = {"error": str(exc), "stock": f"{stock_name} ({stock_code})"}
         if consensus_md or forecast_text:
@@ -609,6 +637,8 @@ def get_financial_report_summary(symbol: str, today_time: str) -> dict:
     result = {
         "stock": f"{stock_name} ({stock_code})",
         "today": today_time,
+        "report_selection_cutoff": report_selection_cutoff.isoformat(),
+        "report_release_slack_days": max(0, int(report_release_slack_days or 0)),
         "report_path": str(latest_meta.path),
         "forecast_path": str(forecast_path) if forecast_path else None,
         "content": enriched_content,

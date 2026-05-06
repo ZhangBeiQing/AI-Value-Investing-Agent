@@ -1216,6 +1216,7 @@ def sync_financial_reports_for_stock(
         as_of_date=datetime.now().strftime("%Y-%m-%d"),
         include_disclosures=True,
         disclosure_lookback_days=lookback_days,
+        force_refresh_disclosures=True,
     )
     disclosure_bundle = prepared.disclosures
     if disclosure_bundle is None or disclosure_bundle.frame.empty:
