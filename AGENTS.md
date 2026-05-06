@@ -70,9 +70,10 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 改代码前先读相关文件，不要凭印象改结构
 - 新业务逻辑优先写到 `services/`、`shared_data_access/`、`core/`
 - 任何外部行情、财报、股本、公告抓取都优先走 `shared_data_access`
-- 用户说“开始今天股票交易”时，优先按 `.codex/skills/auto-trading-daily-pipeline/SKILL.md` 执行，默认假设 `data/skill_runs/YYYY-MM-DD/` 的 `01-04` 已由用户手动准备完成
+- 用户说"开始今天股票交易"时，优先按 `.codex/skills/auto-trading-daily-pipeline/SKILL.md` 执行，默认假设 `data/skill_runs/YYYY-MM-DD/` 的 `01-04` 已由用户手动准备完成
 - 改主链路后至少给出对应验证证据：日志、输出文件或失败现场
 - 新增或修改核心组件时使用统一日志入口，不要直接散落 `print`
+- 需要联网搜索时优先使用 `WebSearch` 工具，不要使用 `WebFetch` 或其他工具
 
 ### Ask First
 
@@ -90,6 +91,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 不要把运行产物、临时调试文件、日志直接塞进源码目录
 - 不要用 `from x import *`
 - 用户未明确要求时，不要因为“开始今天股票交易”自动执行 `manage_daily_data`、`run_daily_pipeline`、`run_post_trade`
+- **禁止使用 Glob 工具搜索 `data/` 目录下的文件**。Glob 工具有 Bug：`data/` 下存在 `.git` 子目录会导致 Glob 对整个 `data/` 目录返回空结果。改用 `find` 或 `ls` 替代，例如 `find data/skill_runs -name "05_decision.json"` 或 `ls data/skill_runs/*/long_book/05_decision.json`
 
 ## Progressive Disclosure
 
