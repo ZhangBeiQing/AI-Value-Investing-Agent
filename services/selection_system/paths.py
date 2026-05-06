@@ -115,9 +115,6 @@ class SelectionSystemPaths:
     def run_hot_news_state_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "06_hot_news_state.json"
 
-    def run_hot_news_ops_path(self, run_date: str) -> Path:
-        return self.run_dir(run_date) / "06_hot_news_state_ops.json"
-
     def run_shared_selection_context_path(self, run_date: str) -> Path:
         return self.run_dir(run_date) / "07_shared_selection_context.md"
 

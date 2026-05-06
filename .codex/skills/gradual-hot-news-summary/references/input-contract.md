@@ -30,7 +30,7 @@
 
 - 视为首次运行或缺少历史主题状态
 - 允许从空历史状态启动
-- 必须在 `06_hot_news_state_ops.json` 的 `source_status` 中记录 `missing_previous_state_bootstrap`
+- 必须在 `source_status` 中记录 `missing_previous_state_bootstrap`
 
 ### 3. 最近一天宏观总结
 
