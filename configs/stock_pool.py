@@ -19,6 +19,10 @@ class StockEntry:
 
 TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
+    StockEntry("301358.SZ", "湖南裕能", "锂矿"),
+    StockEntry("002156.SZ", "通富微电", "封测"),
+    StockEntry("601138.SH", "工业富联", "加工"),
+    StockEntry("600584.SH", "长电科技", "封测龙头"),
     StockEntry("002714.SZ", "牧原股份", "生猪养殖"),
     StockEntry("603501.SH", "豪威集团", "半导体设计"),
     StockEntry("600276.SH", "恒瑞医药", "创新医药"),

@@ -294,7 +294,7 @@ def format_followup_checklist(run_date: str) -> str:
         "  3. /auto-selection-daily-pipeline    → 08/09/10/11 候选池 & 深研队列",
         "",
         "【财报 skill（依赖选股深研队列）】",
-        f"  4. python scripts/prepare_financial_report_skill.py --date {run_date} --mandate all --sync-first --json",
+        f"  4. python scripts/prepare_financial_report_skill.py --date {run_date} --mandate all --sync-first --json --include-tracked",
         "  5. /financial-report-summary         → 各股 financial_reports/*.md",
         "",
         "【三账本 01-04 产物】",

@@ -16,15 +16,21 @@ description: >
 
 ## 2. 股票从哪里来
 
-- 默认读取最近一个存在的：
+- 默认同时覆盖两类股票来源：
 
+1. 最近一个存在的选股深研队列：
 ```text
 data/selection_runs/YYYY-MM-DD/11_deep_research_queue.json
 ```
 
-- 若用户只要短期或长期股票，则按 `final_mandate` 过滤：
+2. 固定跟踪股池：`configs/stock_pool.py` 中的 `TRACKED_A_STOCKS`
+
+- 若用户只要特定账本的股票，则按 `final_mandate` 过滤：
   - `short_book`
   - `long_book`
+  - `tracked`
+
+- 若用户明确指定只处理深研队列（不要 tracked），则按 `mandate` 传 `all`/`short_book`/`long_book` 并加 `--no-include-tracked`
 
 
 ## 3. `financial_report_workdir/` 里有什么
@@ -60,7 +66,11 @@ data/stock_info/{stock_name}_{symbol}/financial_report_workdir/
 
 主 agent 必须：
 
-1. 先运行准备脚本
+1. 先运行准备脚本（**默认必须带 `--include-tracked`**，确保固定跟踪股池也被覆盖）：
+   ```bash
+   python scripts/prepare_financial_report_skill.py --json --include-tracked
+   ```
+   若用户明确只要深研队列不要 tracked，才使用 `--no-include-tracked`。
 2. 看脚本输出哪些股票是 `ready`，哪些是 `skipped`
 3. 对 `skipped` 股票直接跳过
 4. 对每只 `ready` 股票启动 1 个 subagent

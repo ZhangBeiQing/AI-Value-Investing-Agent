@@ -19,7 +19,8 @@ from utlity import ensure_stock_subdir, get_stock_data_dir, parse_symbol
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RESEARCH_ARTIFACT_CACHE_ROOT = PROJECT_ROOT / "data" / "research_artifact_cache"
-RESEARCH_ARTIFACT_SCHEMA_VERSION = 1
+RESEARCH_ARTIFACT_SCHEMA_VERSION = 2
+FINANCIAL_REPORT_SELECTION_SLACK_DAYS = 1
 LOGGER = init_component_logger(
     "BuildStockResearch",
     group="services/pipeline",
@@ -210,7 +211,13 @@ def _build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
     with ThreadPoolExecutor(max_workers=3) as executor:
         price_future = executor.submit(analyze_stock_dynamics_and_valuation, symbol, run_date)
         news_future = executor.submit(search_stock_news, symbol, run_date)
-        financial_future = executor.submit(get_financial_report_summary, symbol, run_date)
+        # 早盘生成前一交易日研究包时，允许引用次日补生成的财报总结文件。
+        financial_future = executor.submit(
+            get_financial_report_summary,
+            symbol,
+            run_date,
+            report_release_slack_days=FINANCIAL_REPORT_SELECTION_SLACK_DAYS,
+        )
 
         price_payload = price_future.result()
         news_raw = news_future.result()
