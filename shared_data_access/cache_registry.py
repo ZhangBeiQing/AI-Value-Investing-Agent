@@ -1273,24 +1273,35 @@ def ensure_symbol_data(
     is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(('51', '58', '15', '16', '50', '53'))
     
     # 对于普通股票，获取所有数据
-    if not is_index and not is_etf and not skip_financial_refresh:
-        # 第一步：获取并缓存财务数据
-        # 调用 EnhancedPEPBAnalyzer 获取完整的财务数据（利润表、资产负债表、现金流量表、财务摘要表）
-        update_financial_data_cached(
-            symbolInfo,
-            base_data_dir,
-            force_refresh=force_refresh,
-            force_refresh_financials=force_refresh_financials,
-            logger=logger,
+    if not is_index and not is_etf:
+        financial_cache_dir = build_cache_dir(
+            symbolInfo, CacheKind.FINANCIALS, base_dir=base_data_dir, ensure=False
         )
+        financial_cache_exists = financial_cache_dir.exists()
 
-        # 第二步：获取并缓存股本数据
-        update_share_info_cached(
-            symbolInfo,
-            base_data_dir=base_data_dir,
-            force_refresh=force_refresh or force_refresh_financials,
-            logger=logger,
-        )
+        if not skip_financial_refresh or not financial_cache_exists:
+            if skip_financial_refresh and not financial_cache_exists:
+                logger.info(
+                    "%s %s 财报缓存目录不存在，忽略 skip_financial_refresh 执行初始化抓取",
+                    symbolInfo.stock_name,
+                    symbolInfo.symbol,
+                )
+            # 第一步：获取并缓存财务数据
+            update_financial_data_cached(
+                symbolInfo,
+                base_data_dir,
+                force_refresh=force_refresh,
+                force_refresh_financials=force_refresh_financials or not financial_cache_exists,
+                logger=logger,
+            )
+
+            # 第二步：获取并缓存股本数据
+            update_share_info_cached(
+                symbolInfo,
+                base_data_dir=base_data_dir,
+                force_refresh=force_refresh or force_refresh_financials or not financial_cache_exists,
+                logger=logger,
+            )
     else:
         logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，仅获取价格数据")
 
