@@ -273,6 +273,10 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 - `inferences`：在列表末尾追加一行今日确认
 - 必要时微调 `confidence_score`
 - **其他字段一律不改**
+- **`action_type` 继承修正规则（强制）**：继承上日基线时，若上日 `action_type` 为 `BUY` 或 `SELL`，不能机械搬运：
+  - 若上日 `action=BUY` 且当前持仓数据已反映买入（股数>0），当日应自动转为 `HOLD`
+  - 若上日 `action=SELL` 且当前持仓数据已反映卖出（股数=0），当日应自动转为 `FLAT`
+  - 仅当无法从持仓数据确认执行状态时，保留原 `action_type` 并在 `scan` 中注明"待确认执行状态"
 
 **P2 股票**：
 - 用 Edit 工具仅修改 `scan` 和 `analysis_type`（改为 `"p2_skipped_inherited_from_<prev_date>"`）
@@ -431,3 +435,4 @@ subagent **不通过对话上下文回传完整分析结果**。分析完成后�
 - subagent 写入文件的 JSON 是 `05_decision.json` 各股条目的唯一来源主体正文。
 - 合并脚本 (`merge_subagent_decisions.py`) 负责将文件原样搬运到 `05_decision.json` 的 `stock_decisions` 数组中。
 - 主 agent 不得因为担心文件太长、担心卡住、想节省篇幅等原因，私自修改 subagent 已写入的文件内容或合并后的 entry。
+- **需要的文件一定要完整读完，不要只读一部分！！金融相关分析完整文件很重要**
