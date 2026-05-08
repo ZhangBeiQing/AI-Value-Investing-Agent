@@ -284,7 +284,7 @@ def _resolve_manual_avg_costs(
     if not active_costs:
         return {}, {}
 
-    today_price_map = get_prev_close_prices(today_date, list(active_costs.keys()))
+    today_price_map = _get_on_date_close_prices(today_date, list(active_costs.keys()))
     profits: Dict[str, float] = {}
     for symbol, cost in active_costs.items():
         shares = float(flat_positions.get(symbol, 0.0) or 0.0)
@@ -334,6 +334,22 @@ def _price_row_on_or_before(symbol: str, target_date: str) -> Optional[pd.Series
     if subset.empty:
         return None
     return subset.iloc[-1]
+
+def _get_on_date_close_prices(target_date: str, symbols: List[str]) -> Dict[str, Optional[float]]:
+    """获取目标日期当日（或最近）的收盘价。
+    
+    与 get_prev_close_prices 不同，此函数直接取 target_date 当天及之前最近的收盘价，
+    而非上一个交易日的收盘价。用于计算以 target_date 为基准的浮动盈亏。
+    """
+    results: Dict[str, Optional[float]] = {}
+    for sym in symbols:
+        row = _price_row_on_or_before(sym, target_date)
+        if row is not None:
+            close_val = row.get("收盘")
+            results[f"{sym}_price"] = float(close_val) if pd.notna(close_val) else None
+        else:
+            results[f"{sym}_price"] = None
+    return results
 
 def get_yesterday_date(today_date: str, calendar_market: str = "CN") -> str:
     """
@@ -588,9 +604,9 @@ def compute_position_costs_and_profit(
     modelname: str,
 ) -> Tuple[Dict[str, float], Dict[str, float]]:
     """
-    计算当前（today_date 当日盘前）每只持仓股票的加权平均成本与浮动盈亏。
-    - 加权成本通过回放 position.jsonl 中截至昨日的所有买卖操作得到，采用买入额加权、卖出优先用现有成本法（与主流券商APP一致）。
-    - 浮动盈亏 = （今日开盘价 - 平均成本） * 当前持股数量；若无持仓或价格缺失则记 0。
+    计算当前（today_date 当日）每只持仓股票的加权平均成本与浮动盈亏。
+    - 加权成本通过回放 position.jsonl 中截至当日的所有买卖操作得到，采用买入额加权、卖出优先用现有成本法（与主流券商APP一致）。
+    - 浮动盈亏 = （当日收盘价 - 平均成本） * 当前持股数量；若无持仓或价格缺失则记 0。
     """
     manual_override_result = _resolve_manual_avg_costs(today_date, modelname)
     if manual_override_result is not None:
@@ -616,6 +632,30 @@ def compute_position_costs_and_profit(
 
     holdings: Dict[str, float] = {}
     avg_costs: Dict[str, float] = {}
+
+    override = _load_manual_position_override(modelname)
+    override_baseline_date: Optional[date] = None
+    if override is not None:
+        ov_date = override.get("as_of_date")
+        if isinstance(ov_date, date) and ov_date <= cutoff_date:
+            override_positions = override.get("positions") or {}
+            override_avg_costs = override.get("avg_costs") or {}
+            for sym, shares in override_positions.items():
+                if sym == "CASH":
+                    continue
+                share_count = float(shares or 0.0)
+                if share_count <= 0:
+                    continue
+                cost = _safe_float(override_avg_costs.get(sym))
+                if cost is None or cost <= 0:
+                    continue
+                holdings[sym] = share_count
+                avg_costs[sym] = float(cost)
+            override_baseline_date = ov_date
+            if override_avg_costs:
+                LOGGER.info("compute_position_costs_and_profit 使用已失效override作为成本基线: signature=%s, baseline_date=%s, symbols=%s",
+                            modelname, ov_date, list(holdings.keys()))
+
     price_cache: Dict[str, Dict[str, Optional[float]]] = {}
 
     def _get_price_map(date_str: str, symbols: List[str]) -> Dict[str, Optional[float]]:
@@ -627,7 +667,7 @@ def compute_position_costs_and_profit(
         target_missing = [sym for sym in symbols if f"{sym}_price" not in cache]
         
         if target_missing:
-            close_prices = get_prev_close_prices(date_str, target_missing)
+            close_prices = _get_on_date_close_prices(date_str, target_missing)
             cache.update(close_prices)
             
         for sym in symbols:
@@ -650,6 +690,9 @@ def compute_position_costs_and_profit(
             except ValueError:
                 continue
             if record_date > cutoff_date:
+                continue
+
+            if override_baseline_date is not None and record_date <= override_baseline_date:
                 continue
 
             action_info = doc.get("this_action") or {}
@@ -702,7 +745,7 @@ def compute_position_costs_and_profit(
     if not active_costs:
         return {}, {}
 
-    today_price_map = _get_price_map(today_date, list(active_costs.keys()))
+    today_price_map = _get_on_date_close_prices(today_date, list(active_costs.keys()))
     profits: Dict[str, float] = {}
     for sym, cost in active_costs.items():
         shares = float(today_positions.get(sym, 0.0) or 0.0)
