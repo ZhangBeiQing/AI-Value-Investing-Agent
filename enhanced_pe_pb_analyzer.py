@@ -134,7 +134,7 @@ class EnhancedPEPBAnalyzer:
         *,
         base_dir: Path | str | None = None,
         analysis_datetime: datetime | None = None,
-        price_lookback_days: int = 900,
+        price_lookback_days: int = 1278,
         similar_limit: int = 2,
     ) -> None:
         self.base_dir = resolve_base_dir(base_dir)
@@ -402,7 +402,7 @@ class EnhancedPEPBAnalyzer:
             fallback_ttm_df=ttm_profit_df,
             total_shares=total_shares,
             yoy_percent_map=yoy_percent_map,
-            years=2.5,
+            years=3.5,
             use_plain_labels=use_plain_labels,
         )
         price_distribution_section = self._build_price_distribution_section(
@@ -414,7 +414,7 @@ class EnhancedPEPBAnalyzer:
             fallback_ttm_df=ttm_profit_df,
             balance_sheet=dataset.financials.balance_sheet,
             hk_abstract_metrics=hk_abstract_metrics,
-            years=2.5,
+            years=3.5,
             bins=10,
         )
 
@@ -788,7 +788,7 @@ class EnhancedPEPBAnalyzer:
         records: List[Dict[str, Any]] = []
         if total_shares <= 0:
             return records
-        window_start = self.analysis_datetime - timedelta(days=365 * 2)
+        window_start = self.analysis_datetime - timedelta(days=int(365 * 3.5))
         for _, row in ttm_profit_df.iterrows():
             report_date = pd.to_datetime(row["REPORT_DATE"])
             if pd.isna(report_date) or report_date < window_start:
@@ -827,7 +827,7 @@ class EnhancedPEPBAnalyzer:
         if len(ttm_profit_df) < 5 or total_shares <= 0:
             return records
         ttm_profit_df = ttm_profit_df.sort_values("REPORT_DATE").reset_index(drop=True)
-        window_start = self.analysis_datetime - timedelta(days=365 * 2)
+        window_start = self.analysis_datetime - timedelta(days=int(365 * 3.5))
         for idx in range(4, len(ttm_profit_df)):
             current = ttm_profit_df.iloc[idx]
             prev = ttm_profit_df.iloc[idx - 4]
@@ -872,7 +872,7 @@ class EnhancedPEPBAnalyzer:
         total_shares: float,
         yoy_percent_map: Optional[Dict[str, Tuple[float, str]]] = None,
         *,
-        years: float = 2.5,
+        years: float = 3.5,
         use_plain_labels: bool = False,
     ) -> List[Dict[str, Any]]:
         if total_shares <= 0 or price_series.empty:
@@ -943,7 +943,7 @@ class EnhancedPEPBAnalyzer:
         fallback_ttm_df: pd.DataFrame,
         balance_sheet: pd.DataFrame,
         hk_abstract_metrics: Optional[Dict[str, Any]] = None,
-        years: float = 2.5,
+        years: float = 3.5,
         bins: int = 10,
     ) -> Dict[str, Any]:
         if total_shares <= 0 or price_series.empty:
@@ -1041,7 +1041,7 @@ class EnhancedPEPBAnalyzer:
         fallback_ttm_df: pd.DataFrame,
         balance_sheet: pd.DataFrame,
         hk_abstract_metrics: Optional[Dict[str, Any]] = None,
-        years: float = 2.5,
+        years: float = 3.5,
     ) -> pd.DataFrame:
         window_start = self.analysis_datetime - timedelta(days=365 * years)
         window_prices = price_series[
@@ -1104,16 +1104,16 @@ class EnhancedPEPBAnalyzer:
 
     @staticmethod
     def _window_label(years: float) -> str:
-        if math.isclose(years, 2.5):
-            return "最近两年半"
+        if math.isclose(years, 3.5):
+            return "最近三年半"
         if float(years).is_integer():
             return f"最近{int(years)}年"
         return f"最近{years:g}年"
 
     @staticmethod
     def _window_short_label(years: float) -> str:
-        if math.isclose(years, 2.5):
-            return "两年半"
+        if math.isclose(years, 3.5):
+            return "三年半"
         if float(years).is_integer():
             return f"{int(years)}年"
         return f"{years:g}年"
@@ -1555,7 +1555,7 @@ class EnhancedPEPBAnalyzer:
 
         history_table = self._build_history_table(info)
         if history_table is not None and not history_table.empty:
-            lines.append("## 最近两年净利润增速与PE/PEG/PB")
+            lines.append("## 最近三年半净利润增速与PE/PEG/PB")
             lines.append("")
             lines.append(history_table.to_markdown(index=False, floatfmt=".3f").replace("nan", ""))
             lines.append("")
@@ -1564,7 +1564,7 @@ class EnhancedPEPBAnalyzer:
 
         if info.extreme_price_metrics:
             extreme_df = pd.DataFrame(info.extreme_price_metrics)
-            lines.append("## 最近两年半最高/最低股价及对应估值指标")
+            lines.append("## 最近三年半最高/最低股价及对应估值指标")
             lines.append("")
             lines.append(extreme_df.to_markdown(index=False, floatfmt=".3f").replace("nan", ""))
             lines.append("")
@@ -1574,8 +1574,8 @@ class EnhancedPEPBAnalyzer:
         distribution_table = distribution_section.get("table") or []
         if distribution_summary and distribution_table:
             avg_pe_label = "平均PE" if info.use_plain_pe_label else "平均PE"
-            window_label = distribution_summary.get("window_label") or "最近两年半"
-            window_short_label = distribution_summary.get("window_short_label") or "两年半"
+            window_label = distribution_summary.get("window_label") or "最近三年半"
+            window_short_label = distribution_summary.get("window_short_label") or "三年半"
             distribution_df = pd.DataFrame(distribution_table)
             if "平均PE" in distribution_df.columns and avg_pe_label != "平均PE":
                 distribution_df = distribution_df.rename(columns={"平均PE": avg_pe_label})
