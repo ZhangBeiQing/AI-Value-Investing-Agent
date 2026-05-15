@@ -453,7 +453,7 @@ def _build_long_candidates(
             _inverse_rank_score(df["pe_ttm"]),
             _inverse_rank_score(df["pb"]),
             _inverse_rank_score(df["ps"]),
-            _inverse_rank_score(df["pe_2y_percentile"]),
+            _inverse_rank_score(df["pe_3_5y_percentile"]),
         ],
         axis=1,
     ).mean(axis=1).fillna(0.5)
@@ -486,7 +486,7 @@ def _build_long_candidates(
                     [
                         f"长期评分较高，核心来自质量、增长和估值维度。",
                         f"ROE {row.get('roe')}，收入同比 {row.get('revenue_growth_yoy')}，净利润同比 {row.get('net_income_growth_yoy')}。",
-                        f"估值侧 pe_ttm={row.get('pe_ttm')}，pe_2y_percentile={row.get('pe_2y_percentile')}。",
+                        f"估值侧 pe_ttm={row.get('pe_ttm')}，pe_3_5y_percentile={row.get('pe_3_5y_percentile')}。",
                     ]
                 ),
                 "long_term_thesis": _join_sentences(
@@ -499,7 +499,7 @@ def _build_long_candidates(
                     "pe_ttm": row.get("pe_ttm"),
                     "pb": row.get("pb"),
                     "ps": row.get("ps"),
-                    "pe_2y_percentile": row.get("pe_2y_percentile"),
+                    "pe_3_5y_percentile": row.get("pe_3_5y_percentile"),
                 },
                 "quality_view": {
                     "roe": row.get("roe"),
@@ -589,7 +589,7 @@ def _build_compact_candidate_rows(
                     "pe_ttm": row.get("pe_ttm"),
                     "pb": row.get("pb"),
                     "ps": row.get("ps"),
-                    "pe_2y_percentile": row.get("pe_2y_percentile"),
+                    "pe_3_5y_percentile": row.get("pe_3_5y_percentile"),
                     "return_1y": row.get("return_1y"),
                     "max_drawdown_1y": row.get("max_drawdown_1y"),
                 }
@@ -1093,8 +1093,8 @@ def _build_short_risks(row: Mapping[str, Any], announcements: List[Mapping[str, 
 
 def _build_long_risks(row: Mapping[str, Any], announcements: List[Mapping[str, Any]]) -> List[str]:
     risks: list[str] = []
-    if float(row.get("pe_2y_percentile") or 0.0) > 0.8:
-        risks.append("估值处于近两年高分位，长期赔率可能受限")
+    if float(row.get("pe_3_5y_percentile") or 0.0) > 0.8:
+        risks.append("估值处于近三年半高分位，长期赔率可能受限")
     if float(row.get("net_income_growth_yoy") or 0.0) < 0:
         risks.append("净利润同比为负，盈利稳定性仍需验证")
     if _has_negative_announcement_signal(announcements):

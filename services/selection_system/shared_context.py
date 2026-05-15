@@ -146,7 +146,7 @@ def render_shared_selection_context(
     lines.append("- snapshot 基座：services/snapshot/basic_snapshot.py")
     lines.append("- 推荐使用方式：字段说明 + 排序接口 + 过滤接口 + 单股查询接口")
     lines.append("- 短期池重点字段：daily_change_pct, return_3m, sharpe_3m, volatility_3m, max_drawdown_3m, turnover_rate, avg_turnover_30d, liquidity_score")
-    lines.append("- 长期池重点字段：roe, revenue_growth_yoy, net_income_growth_yoy, gross_margin, net_profit_margin, pe_ttm, pb, ps, pe_2y_percentile, return_1y, max_drawdown_1y")
+    lines.append("- 长期池重点字段：roe, revenue_growth_yoy, net_income_growth_yoy, gross_margin, net_profit_margin, pe_ttm, pb, ps, pe_3_5y_percentile, return_1y, max_drawdown_1y")
     lines.append("")
 
     lines.append("## 7. 连续性提示")

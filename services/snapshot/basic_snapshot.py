@@ -75,10 +75,10 @@ FIELD_NOTES: Dict[str, Any] = {
         "pb": "市净率",
         "ps": "市销率",
         "market_cap": "总市值，单位：人民币亿元",
-        "pe_2y_median": "近2年扣非TTM市盈率中位数（使用扣非净利润）",
-        "pe_2y_percentile": "当前扣非TTM市盈率在近2年样本中的分位数 (0-1)",
-        "pe_2y_std": "近2年扣非TTM市盈率标准差",
-        "pe_current_vs_median": "当前扣非TTM市盈率 / 近2年中位数",
+        "pe_3_5y_median": "近三年半扣非TTM市盈率中位数（使用扣非净利润）",
+        "pe_3_5y_percentile": "当前扣非TTM市盈率在近三年半样本中的分位数 (0-1)",
+        "pe_3_5y_std": "近三年半扣非TTM市盈率标准差",
+        "pe_current_vs_median": "当前扣非TTM市盈率 / 近三年半中位数",
         "return_3m": "近3个月累计收益率 (%)",
         "sharpe_3m": "近3个月夏普比率",
         "volatility_3m": "近3个月年化波动率 (%)",
@@ -653,25 +653,25 @@ class BasicStockInfoService:
     ) -> Dict[str, Any]:
         if not pe_history:
             return {
-                "pe_2y_median": None,
-                "pe_2y_percentile": None,
-                "pe_2y_std": None,
+                "pe_3_5y_median": None,
+                "pe_3_5y_percentile": None,
+                "pe_3_5y_std": None,
                 "pe_current_vs_median": None,
             }
         reference_dt = datetime.combine(reference_date, datetime.min.time())
-        two_years_ago = reference_dt - timedelta(days=2 * 365)
+        three_point_five_years_ago = reference_dt - timedelta(days=int(3.5 * 365))
         values = [
             item["PE"]
             for item in pe_history
-            if _safe_float(item["PE"]) and pd.to_datetime(item["报告期"]) >= two_years_ago
+            if _safe_float(item["PE"]) and pd.to_datetime(item["报告期"]) >= three_point_five_years_ago
         ]
         if current_pe:
             values.append(current_pe)
         if not values:
             return {
-                "pe_2y_median": None,
-                "pe_2y_percentile": None,
-                "pe_2y_std": None,
+                "pe_3_5y_median": None,
+                "pe_3_5y_percentile": None,
+                "pe_3_5y_std": None,
                 "pe_current_vs_median": None,
             }
         median_val = float(np.median(values))
@@ -680,9 +680,9 @@ class BasicStockInfoService:
         percentile = sum(v <= current_value for v in values) / len(values)
         ratio = current_value / median_val if median_val > 0 else None
         return {
-            "pe_2y_median": _round(median_val),
-            "pe_2y_percentile": _round(percentile),
-            "pe_2y_std": _round(std_val),
+            "pe_3_5y_median": _round(median_val),
+            "pe_3_5y_percentile": _round(percentile),
+            "pe_3_5y_std": _round(std_val),
             "pe_current_vs_median": _round(ratio),
         }
 

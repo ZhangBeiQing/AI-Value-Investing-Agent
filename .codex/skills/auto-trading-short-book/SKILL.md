@@ -1,13 +1,16 @@
 ---
 name: auto-trading-short-book
 description: >
-  动态短期股票池每日股票自动交易程序。Agent 读取用户已经准备好的动态短期股票池中的每日最新股票数据，根据用户规则详细分析股票后，生成每日交易决策 JSON，经人工确认后，再执行交易、然后生成每日操盘总结，最后合并到历史操盘总结中。
-  当用户要求“开始今天短期股票池交易”时触发。
+  动态超短线股票池每日股票自动交易程序。Agent 读取用户已经准备好的超短线股票池中的每日最新股票数据，
+  根据用户规则详细分析股票后，生成每日交易决策 JSON，经人工确认后，再执行交易、然后生成每日操盘总结，
+  最后合并到历史操盘总结中。超短线池上限 7 只，持仓周期不超过 3 个交易日，到限不论盈亏必须了结。
+  当用户要求"开始今天超短线股票池交易"时触发。
 ---
 
 # 1. 适用场景 / 触发说明
-- 用户说“开始今天短期股票池交易”。
+- 用户说"开始今天超短线股票池交易"。
 - 目标：通过固定流程生成决策文件，人工确认后执行交易与总结归档。
+- 超短线核心约束：池上限 7 只，持仓 ≤3 天，催化 × 量价确认 × 3天盈亏比缺一不可。
 
 # 2. Python 环境要求（必须遵守）
 本技能的所有脚本必须在指定的 Python 虚拟环境中运行：
@@ -30,21 +33,21 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 - `04_stock_research/`（个股研究包文件夹：新闻/公告/估值/财报等详细信息；每个文件按 symbol 命名）
 - `05_decision.json`（Agent 决策输出，由当前 Agent 在对话中生成）
 
-# 4. 标准工作流（优先级队列 + P0 并行 subagent，半自动确认）
+# 4. 标准工作流（全池并行 subagent，无 P0/P1/P2 分层）
 
 ## 日期选择说明
 - 若用户触发 Skill 时明确提供了日期（格式：`YYYY-MM-DD`），则使用用户指定日期
 - 若用户未提供日期，默认使用上一个交易日（today - 1）；若昨天是周末或节假日非交易日，向前查找最近一个交易日
 - 主 agent 据此日期定位到 `data/skill_runs/YYYY-MM-DD/short_book/` 目录，所有文件读取和决策输出都基于该日期目录
 
-## 执行模式说明（重要）
-本技能采用"主 agent 建立优先级队列 + 仅对 P0 并行派发 subagent"的方式，以控制 token 消耗并提升逐股深度。
+## 执行模式说明
+本技能采用"主 agent 对池中所有股票并行派发 subagent"的方式，每只股票一个独立 subagent，上限 7 个并发。
 
-**上下文共享边界（必须理解）**：
+**上下文共享边界**：
 - 主 agent 只读取 `SKILL.md`、`03_agent_input.md`、`02_basic_snapshot_payload.json`、`01_global_context.md`，以及 `data/selection_runs/{run_date}/06_hot_news_state.json`、`data/selection_runs/{run_date}/05_board_heat_digest.json`。**主 agent 禁止读任何股票的 `_research.md`**——深度阅读是 subagent 的工作。
-- 主 agent 基于上述输入建立 P0（并行深度分析，≤5 只）/ P1（主 agent 快扫结论）/ P2（跳过）三档队列，仅对 P0 派发并行 subagent。
 - 每个 subagent 读取共享输入顺序固定为：`03_agent_input.md -> 01_global_context.md -> 本股 04_stock_research/{symbol}_research.md`。该股 snapshot 已写入研究包，subagent 不单独读 `02_basic_snapshot_payload.json`。
-- subagent 只能读 `01/03` + 自己那只 `_research.md`，不得读其他股票研究包；分析完后把完整庭审底稿传回主 agent；主 agent 负责汇总 P0 详细底稿 + P1 快扫 + P2 跳过记录，最终写入 `05_decision.json`。
+- subagent 只能读 `01/03` + 自己那只 `_research.md`，不得读其他股票研究包。
+- 所有 subagent 完成后把结果写入文件，主 agent 负责汇总并最终写入 `05_decision.json`。
 
 ## 阶段 A（自动，由主 agent 完成统筹）
 
@@ -58,13 +61,14 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 - **⚠️ 特别注意**：`03_agent_input.md` 中包含的【最终总结生成规则】(`final_summary_rules`) 定义了 `05_decision.json` 的输出格式，必须牢记此格式
 
 ### 步骤 3：读取基本面数据概览
-主 agent 阅读 `02_basic_snapshot_payload.json`，用于快速扫描各股最新快照、仓位、初始定价锚点。
+主 agent 阅读 `02_basic_snapshot_payload.json`，用于快速扫描各股最新快照、仓位、持仓天数。
 
 说明：`02_basic_snapshot_payload.json` 仅由主 agent 使用；subagent 不读取，每只股票对应的 snapshot 已在研究包中。
 
 ### 步骤 4：读取宏观、大盘上下文
 主 agent 阅读 `01_global_context.md`，提炼：
 - 宏观、指数、流动性、事件风险背景（第 1–2 节）
+- 重点排查 S 级系统性风险
 
 ### 步骤 4.5：读取热点新闻主题状态与板块热度
 
@@ -74,15 +78,14 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 - **板块热度概览**：近期全局板块热度分布，哪些板块是当前的资金主战场、哪些在冷却
 
 **用途**：
-- 后续在步骤 6 确定 P0/P1/P2 时，将热点主题是否直接覆盖某只股票作为加分权重（提升该股 P0 优先级）
-- 后续在步骤 7 派发 subagent 时，若某 P0 股票落入热点主题的 `linked_symbols_in_universe` 或 `linked_boards`，将该主题的核心信息提炼后写入 subagent prompt，供其作为上下文辅助分析
+- 在步骤 7 派发 subagent 时，若某股票落入热点主题的 `linked_symbols_in_universe` 或 `linked_boards`，将该主题的核心信息提炼后写入 subagent prompt，供其作为上下文辅助分析
 
 **文件不存在时的处理**：
 - 若 `06_hot_news_state.json` 或 `05_board_heat_digest.json` 不存在，跳过此步骤，在给 subagent 的 prompt 中注明"今日无热点主题状态数据"；不要因此中止流程
 
 ### 步骤 5：继承上一交易日决策基线（若存在）
 
-**目的**：避免主 agent 对 P1/P2 从头生成底稿，转而继承昨日完整底稿 + 今日局部刷新，以大幅降低 token 消耗并保持 thesis 连续性。
+**目的**：为 subagent 提供昨日分析结论，帮助判断催化连续性。
 
 查找 `data/skill_runs/<上一交易日>/short_book/05_decision.json`：
 
@@ -92,67 +95,36 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 cp data/skill_runs/<prev_trading_day>/short_book/05_decision.json data/skill_runs/<today>/short_book/05_decision.json
 ```
 
-  后续 P1/P2 通过 Edit 工具对该文件做局部字段修改；P0 通过 Edit 工具整条替换该股对应 entry。
-
-- **不存在**（首次运行、连续多日缺失、或用户主动删除）：跳过此步，按冷启动执行：后续 P1/P2 主 agent 仍按老逻辑从 snapshot 生成简明底稿；最终 `05_decision.json` 用 Write 工具一次性生成。
+- **不存在**（首次运行或连续多日缺失）：跳过此步，按冷启动执行。
 
 **注意**：
-
 - `<上一交易日>` 不是日历昨天，是 run_date 之前最近一个含有 `short_book/05_decision.json` 的交易日（周一早上通常回看上周五；节假日后类推）。可用 `ls data/skill_runs/` 反向查找。
 - 继承基线只是起点；顶层字段 `summary_date`、`system_risk_notes`、`system_focus_items` 必须在步骤 10 重写为今日内容，不得沿用。
-- 若基线文件中不包含今日股票池里的某只 symbol（新入池），该股走冷启动，不能编造继承。
+- 若基线文件中不包含今日股票池里的某只 symbol（新入池），该股走冷启动。
 - 若基线文件中存在某只 symbol 但该股今日已不在股票池，在 `cp` 后从 `stock_decisions` 中删掉该 entry。
 
-### 步骤 6：主 agent 建立 P0/P1/P2 优先级队列
-结合当日持仓、`02_basic_snapshot_payload.json` 的量价扫描、Step 0 + Step 1 的宏观判定，主 agent 把股票池分成三档：
+### 步骤 6：确认股票池并等待用户确认
 
-- **P0 级（并行深度分析，≤ 5 只）**：
-  1. 昨日持仓且今日跌幅 / 波动异常
-  2. 未持仓但今日波动异常（大涨 >5% / 大跌 >5%，涨停跌停优先）
-  3. 出现明确事件催化的持仓股（突发公告、业绩预告、行业政策等）
-  4. Step 0 / Step 1 识别到的极具吸引力的短期交易机会
-- **P1 级（继承昨日底稿 + 今日局部刷新）**：股价平稳的持仓股、观察仓。主 agent 不派 subagent，也不读 `_research.md`。
-  - **若步骤 5 已 `cp` 继承基线**：对该股 entry 用 Edit 工具只刷新 `scan`（今日量价、持仓、昨收对比）、`action_type`、`action_num`、`analysis_type`（改为 `"p1_inherited_from_<prev_date>"`），并在 `inferences` 列表末尾追加一行今日确认，例 `"2026-04-23 确认：无新增催化，昨日 thesis 延续"`；必要时微调 `confidence_score`。其他字段（`history_anchor`、`catalyst_and_momentum`、`trading_mode`、`key_facts`、`risk_reward_setup`、`motion`、`court`、`recommended_action`、`price_target`、`stop_loss`、`key_risks`、`next_day_watchlist`）**原样保留，不得重写**。
-  - **若没有继承基线（冷启动）**：基于 snapshot + 01 宏观，直接在 05 中写 HOLD / FLAT 简明底稿（允许沿用上一次锚点并写明"逻辑未变"）。
-- **P2 级（继承跳过 + 最简刷新）**：无持仓且无明显机会，`last_deep_scan_date` 距今 ≤10 天的股票。
-  - **若步骤 5 已 `cp` 继承基线**：对该股 entry 用 Edit 工具只刷新 `scan`（可简短，如 `"今日 ±X%，无异动，跳过"`）和 `analysis_type`（改为 `"p2_skipped_inherited_from_<prev_date>"`）；其他字段原样保留。
-  - **若没有继承基线**：05 中记一行"已略过，理由：近期已深度分析"。
+主 agent 确认当天超短线池股票数量（上限 7 只），向用户输出：
+- 池中股票列表（名称 + symbol）
+- 每只股票当前持仓状态和持仓天数
+- 已满 3 天的持仓股标记
+- **暂停等待确认**：等待用户回复"OK 继续"或类似确认后，进入步骤 7
 
-若 P0 候选过多（>5 只），按"昨日持仓异动 > 明确事件催化 > 强催化非持仓"顺序择优裁剪到 5 只以内。
+### 步骤 7：主 agent 对全池并行派发 subagent
 
-**继承安全栅栏**：
-
-- 若某股票不在继承基线中（新入池），即使满足 P1 / P2 条件也不能继承，该股走冷启动（由主 agent 快扫或升 P0 深度分析）。
-- `analysis_type` 连续 >10 天为 `p1_inherited_*` / `p2_skipped_inherited_*` 的股票，必须升格 P0。
-
-**⚠️ P0 队列确认暂停（强制，不可跳过）**：
-
-主 agent 在完成 P0/P1/P2 分档后，**必须立即停住**，向用户输出以下内容并等待确认：
-
-**输出内容**：
-1. **P0 筛选清单**：逐只列出 P0 股票的名称和 symbol，每只附一句话说明为什么被选为 P0（明确写出触发规则：昨日持仓异动 / 今日大涨大跌放量 / 明确事件催化 / Step0-Step1 识别短期机会）
-2. **完整分档总览**：
-   - P0 深度分析队列：X 只（逐只列出，附触发原因摘要）
-   - P1 继承刷新：Y 只（逐只列出 symbol）
-   - P2 跳过：Z 只（逐只列出 symbol）
-3. **暂停等待确认**：说完以上内容后**必须停住**，等待用户回复"OK 继续"、"确认"或类似明确确认后，才能进入步骤 7 派发 subagent。
-
-**禁止**：在没有得到用户对 P0 队列的明确确认前直接派发 subagent。
-
-### 步骤 7：主 agent 对 P0 队列并行派发 subagent
-
-主 agent 在派发每个 P0 subagent 前，**必须执行热点主题交叉匹配**：
-1. 检查当前 P0 股票的 symbol 是否出现在 `06_hot_news_state.json` 的任一 `active_themes` 或 `new_themes` 的 `linked_symbols_in_universe` 中
-2. 检查当前 P0 股票所在板块是否在 `06_hot_news_state.json` 的任一主题的 `linked_boards` 中，或在 `05_board_heat_digest.json` 中热度排名靠前
+主 agent 在派发每个 subagent 前，**必须执行热点主题交叉匹配**：
+1. 检查当前股票的 symbol 是否出现在 `06_hot_news_state.json` 的任一 `active_themes` 或 `new_themes` 的 `linked_symbols_in_universe` 中
+2. 检查当前股票所在板块是否在 `06_hot_news_state.json` 的任一主题的 `linked_boards` 中，或在 `05_board_heat_digest.json` 中热度排名靠前
 3. 若匹配到热点主题，须将以下提炼信息写入该 subagent 的 prompt：
    - 该主题的 `theme_name`、`strength`（强化/稳定/减弱）、`current_state`（市场在交易什么、不交易什么）
    - 该股票/板块为何与该主题关联
    - 该主题的 `scenario_tree` 主要演化路径中与这只股票相关的部分
    - 该主题的 `next_day_watchlist` 中与这只股票相关的跟踪点
 
-**热点主题信息的用途**：让 subagent 知道"当前市场叙事正在交易什么"，帮助判断该股的催化剂是在强化还是钝化、量价异动是否有板块逻辑支撑、短期盈亏比是否受主题节奏影响，避免孤立的个股催化剂分析漏掉宏观主题驱动。
+**热点主题信息的用途**：让 subagent 知道"当前市场叙事正在交易什么"，帮助判断该股的催化剂是在强化还是钝化、量价异动是否有板块逻辑支撑、3天盈亏比是否受主题节奏影响。
 
-主 agent 对 P0 队列中的每只股票分配一个独立 subagent 并行执行。每个 subagent 的任务边界：
+主 agent 对池中每只股票分配一个独立 subagent 并行执行。每个 subagent 的任务边界：
 - 只负责 1 只股票
 - 必须先按顺序完整读取 `03_agent_input.md` → `01_global_context.md` → 自己那只 `04_stock_research/{symbol}_research.md`；如文件较长必须分段顺序读到末尾
 - 读完本股研究包后**自行整理 `search_brief` 自检清单**（主 agent 不会下发 brief），至少覆盖：① 研究包中已载明的上一交易日 `next_day_watchlist` 遗留跟踪点；② 今日异常涨跌 / 放量待解释问题；③ 需要核验的高时效事实
@@ -167,15 +139,16 @@ subagent 联网补证的硬触发条件至少包括：
 - 你自己在阅读后明确感到"这里如果不联网，我无法区分是正常波动还是新的基本面 / 事件驱动"
 
 ### 步骤 8：subagent 逐股输出标准化结果
-每个 P0 subagent 完成以下内容后，把结果返回给主 agent：
-- 当前催化剂与动能评级（`high` / `medium` / `low`）
-- 交易定性模式（`event_driven` / `technical_rebound` / `trend_following` / `no_clear_catalyst`）
-- 风险收益比评估（向上赔率 vs 向下止损空间）
+
+每个 subagent 按 skill_flow 中 Step 2 的要求完成分析后，把结果返回给主 agent：
+- 当前催化剂与动能评级（`high` / `medium` / `low`），以及催化能否在 1-3 天内兑现
+- 今日量价确认信号分析
+- 交易定性模式（`event_driven` / `technical_breakout` / `momentum_following` / `oversold_bounce` / `no_clear_catalyst`）
+- 3 天盈亏比评估（预期涨幅 ÷ 最大亏损，必须 ≥ 2.0）
 - 交易动议初筛
 - 正反方辩论
 - 法官裁决
-- 明确的退出逻辑与次日继续跟踪变量
-- 若进行了联网补证，需把搜索问题、来源和结论吸收到 `key_facts` / `inferences` / `next_day_watchlist` 中；若命中强制触发条件却最终未能拿到有效外部证据，必须在结论中显式降低置信度
+- 明确的最大持仓天数（≤3 天）、止损位、催化证伪条件
 
 subagent 写入文件的 JSON 必须结构化包含以下字段：
 1. `symbol`
@@ -196,21 +169,22 @@ subagent 写入文件的 JSON 必须结构化包含以下字段：
 16. `action_num`
 17. `price_target`
 18. `stop_loss`
-19. `key_risks`
-20. `next_day_watchlist`
-21. `confidence_score`
+19. `max_holding_days`
+20. `key_risks`
+21. `next_day_watchlist`
+22. `confidence_score`
 
 **输出要求**：
-- 必须写成可复用的"短期交易记忆锚"
+- 必须写成可复用的"超短线交易记忆锚"
 - 必须区分"已核实事实"和"基于事实的推断"
 - 必须显式引用上一交易日的该股逻辑锚是否变化
-- 若没有触发逻辑锚重算条件，必须明确写出"沿用昨日锚点，仅更新验证结果"，不得因为价格涨跌直接改结论
+- 每笔买入必须绑定：止损位（5-8%）、最大持仓天数（≤3）、催化证伪条件
 - subagent 必须在写入的文件内容中明确体现自行整理的 `search_brief` 自检清单每一项是否已有新进展；不能跳过不答
-- 若今日存在异常涨跌或放量，且研究包本地材料不足以解释，subagent 必须先联网补证，再决定是"事件驱动"还是"高波动正常波动"
+- 若今日存在异常涨跌或放量，且研究包本地材料不足以解释，subagent 必须先联网补证
 
 #### 8.1 subagent 分析完成后：文件落盘（强制）
 
-subagent 完成上述 21 字段分析后，**必须将结果写入文件**，而不是通过对话上下文回传完整底稿给主 agent。
+subagent 完成上述分析后，**必须将结果写入文件**，而不是通过对话上下文回传完整底稿给主 agent。
 
 **输出目录**：
 ```bash
@@ -222,34 +196,29 @@ mkdir -p data/skill_runs/{run_date}/short_book/subagent_result
 data/skill_runs/{run_date}/short_book/subagent_result/{stock_name}_{symbol}_{run_date}_decision.json
 ```
 
-例如：
-```
-data/skill_runs/2026-04-28/short_book/subagent_result/世运电路_603920.SH_2026-04-28_decision.json
-```
-
-**文件内容**：只写【单个 stock entry 对象】（21 字段），不要外层 `summary_date` / `stock_decisions` 包装。格式就是从属于 `stock_decisions` 数组的一个完整 JSON 对象。
+**文件内容**：只写【单个 stock entry 对象】（22 字段），不要外层 `summary_date` / `stock_decisions` 包装。
 
 **写完后向主 agent 回传**：只回传一句简短确认，格式为：
 ```
 {symbol} {stock_name} 分析完成 → {文件名} | action={action_type} | 置信度={confidence_score}
 ```
 
-subagent **禁止**把完整 21 字段底稿塞进回传消息中——主 agent 不需要看到详细底稿，合并脚本会自动处理。
+subagent **禁止**把完整底稿塞进回传消息中——主 agent 不需要看到详细底稿，合并脚本会自动处理。
 
-### 步骤 9：主 agent 汇总 P0 底稿 + P1 继承刷新 + P2 继承跳过
+### 步骤 9：主 agent 汇总全池结果
 
-主 agent 等待所有 P0 subagent 完成并确认文件落盘后，按以下步骤操作：
+主 agent 等待所有 subagent 完成并确认文件落盘后，按以下步骤操作：
 
-#### 9.1 确认所有 P0 文件已落盘
+#### 9.1 确认所有文件已落盘
 
-检查每个 P0 symbol 对应的 `subagent_result/{stock_name}_{symbol}_{date}_decision.json` 是否已存在：
+检查每个 symbol 对应的 `subagent_result/{stock_name}_{symbol}_{date}_decision.json` 是否已存在：
 ```bash
 ls data/skill_runs/{run_date}/short_book/subagent_result/
 ```
 
-若某 P0 symbol 缺失文件，立即追问对应 subagent，不要跳过。
+若某 symbol 缺失文件，立即追问对应 subagent，不要跳过。
 
-#### 9.2 执行合并脚本，将 P0 结果写入 05_decision.json
+#### 9.2 执行合并脚本，将结果写入 05_decision.json
 
 ```bash
 source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_subagent_decisions.py --date {run_date} --book-type short_book
@@ -262,29 +231,9 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 - 写入合并后的 `05_decision.json`
 - 输出替换/新增/保留的摘要
 
-#### 9.3 P1/P2 股票处理（主 agent 手动完成）
+#### 9.3 出池股票处理
 
-合并脚本**不处理 P1/P2 股票**。主 agent 在合并完成后，用 Edit 工具处理：
-
-**P1 股票**（与之前流程完全一致）：
-- `scan`：更新今日量价、持仓、昨收对比
-- `action_type` / `action_num`：更新
-- `analysis_type`：改为 `"p1_inherited_from_<prev_date>"`
-- `inferences`：在列表末尾追加一行今日确认
-- 必要时微调 `confidence_score`
-- **其他字段一律不改**
-- **`action_type` 继承修正规则（强制）**：继承上日基线时，若上日 `action_type` 为 `BUY` 或 `SELL`，不能机械搬运：
-  - 若上日 `action=BUY` 且当前持仓数据已反映买入（股数>0），当日应自动转为 `HOLD`
-  - 若上日 `action=SELL` 且当前持仓数据已反映卖出（股数=0），当日应自动转为 `FLAT`
-  - 仅当无法从持仓数据确认执行状态时，保留原 `action_type` 并在 `scan` 中注明"待确认执行状态"
-
-**P2 股票**：
-- 用 Edit 工具仅修改 `scan` 和 `analysis_type`（改为 `"p2_skipped_inherited_from_<prev_date>"`）
-- 其他字段原样保留
-
-**出池股票**：若基线中存在某只 symbol 但今日已不在股票池，从 `stock_decisions` 中删除该 entry。
-
-**新入池 P1/P2**（基线中不存在）：冷启动生成概览 entry，注明从未深度分析。
+若基线中存在某只 symbol 但今日已不在股票池，从 `stock_decisions` 中删除该 entry。
 
 #### 9.4 跨股票冲突裁决
 
@@ -293,39 +242,27 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 #### 9.5 向用户展示汇总结果
 
 明确分类呈现：
-- **P0 深度分析 X 只**：逐只列出 symbol + action 结论（从 subagent 回传的确认信息汇总即可）
-- **P1 继承刷新 Y 只**：逐只列出 symbol，注明逻辑未变
-- **P2 跳过 Z 只**：逐只列出 symbol
-- 逐股给出庭审裁决摘要
+- 逐只列出 symbol + action 结论（从 subagent 回传的确认信息汇总即可）
+- 标注持仓满 3 天的股票
+
+- **⚠️ 到此必须停住，等待人工确认**
 
 ### 步骤 10：人工确认后完成最终决策文件
 
 **⚠️ 只有在用户明确回复"OK 生成决策"或类似确认后，主 agent 才执行此步骤**
 
-此时 `05_decision.json` 中 P0 的 entry 已由合并脚本（步骤 9.2）写入，P1/P2 继承刷新也已由主 agent（步骤 9.3）通过 Edit 工具完成。步骤 10 只需完成收尾工作：
+此时 `05_decision.json` 中所有 entry 已由合并脚本（步骤 9.2）写入。步骤 10 只需完成收尾工作：
 
-#### 10.1 更新顶层字段（两条路径通用）
+#### 10.1 更新顶层字段
 
 用 Edit 工具修改 `05_decision.json` 的顶层字段：
 - `summary_date`：改为今日日期
 - `system_risk_notes`：写今日宏观风险提示（不继承昨日）
 - `system_focus_items`：写今日关注点（不继承昨日）
 
-#### 10.2 新入池股票（冷启动）
-
-基线中原本就没有该 symbol 的 P1/P2 股票，此时用 Write 工具**逐只 append** 到 `stock_decisions` 数组末尾，生成概览结果，注明从未深度分析。
-
-#### 路径 A / 路径 B 通用
-
-由于合并脚本已在步骤 9.2 统一处理了 P0 条目写入，两条路径的区别已大大缩小：
-- **路径 A（有继承基线）**：合并脚本替换了 P0 entry + 主 agent Edit 刷新了 P1/P2 entry → 步骤 10 只需收尾
-- **路径 B（冷启动）**：合并脚本从空基线写入了 P0 entry → 主 agent 补 P1/P2 冷启动 entry → 步骤 10 收尾
-
 #### 通用强制要求
 
 - **P0 entry 是由 subagent 直接写入的完整底稿，合并脚本原样搬运到 05_decision.json**。主 agent 不得重新压缩、改写、丢弃细节。
-- **P1 entry 的 `key_facts`、`court`、`recommended_action`、`key_risks`、`next_day_watchlist` 等字段必须原样保留自继承基线**，禁止重写成更短版本；主 agent 若发现确有必要修改（如 thesis 明显弱化），说明该股应升格为 P0，不能在 P1 流程里暗改。
-- P1 / P2 的 `analysis_type` 必须显式包含 `inherited_from_<prev_date>` 标签。
 - **⚠️ 生成完毕后必须停住，等待人工检查决策文件**
 
 ## 阶段 B（人工确认）
@@ -334,21 +271,22 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 - **时机**：主 agent 完成全部 subagent 结果汇总后
 - **内容**：用户检查逐股分析结论和逐股庭审裁决
 - **操作**：用户回复"OK 生成决策"或"继续生成 JSON"
-- **作用**：只有人工确认后，主 agent 才生成 `05_decision.json`
+- **作用**：只有人工确认后，主 agent 才最终完成 `05_decision.json`
 
 # 5. 单股分析最小规则（强制）
 
 1. **单股负责制**：每个 subagent 只负责 1 只股票；允许读取 `03_agent_input.md`、`01_global_context.md` 这 2 份共享输入，以及自己负责的 `_research.md`；不得读取其他股票研究包。该股票 snapshot 已内嵌在 `_research.md` 中。
 2. **完整阅读优先**：读取顺序固定为 `03 -> 01 -> 本股 04`，且这 3 份输入都必须从头到尾完整读完；只有全部读完后，才允许补充搜索。若主 agent 在 prompt 中提供了热点主题上下文（提炼自 `06_hot_news_state.json` / `05_board_heat_digest.json`），应在阅读完本地文件后将该主题信息作为辅助分析背景。
-3. **先执行搜索next_day_watchlist，再下结论**：subagent 在完成本地阅读后，必须先核验 next_day_watchlist中列出的遗留跟踪点和疑点；不能直接跳过这些核验进入估值与动作判断。
-4. **先判断，再交易**：先回答以下问题，再决定交易动作：
-   - 当前催化剂与动能评级（`high` / `medium` / `low`）：是否有明确近端事件催化、市场是否通过量价确认、是否面临近端重大风险
-   - 交易定性模式（`event_driven` / `technical_rebound` / `trend_following` / `no_clear_catalyst`）
-   - 风险收益比（向上赔率 vs 向下止损空间）
-   - 最终动作候选与明确的止损退出逻辑
-5. **动能与催化低时从严**：若 `catalyst_and_momentum.level` 为 `low`，默认禁止新开仓或加仓；已持仓股票只需要回答逻辑是否证伪、是否触发止损、或继续持有等待验证。
-6. **估值作为安全垫而非唯一依据**：只有在价格极度高估透支、或基本面存在随时爆雷风险时，才用估值一票否决；否则，应将分析重心放在"风险收益比"上。
-7. **异常波动必须解释**：若今日或最近一日大涨大跌、放量异动，而研究包没有足够解释，必须联网核验是否存在突发利好、利空、公告、经营数据或行业事件；只有核验后仍无证据时，才可判定为高波动品种的正常波动。
+3. **先执行搜索 next_day_watchlist，再下结论**：subagent 在完成本地阅读后，必须先核验 next_day_watchlist 中列出的遗留跟踪点和疑点；不能直接跳过这些核验进入动作判断。
+4. **先判断催化 × 量价 × 3天盈亏比，再决定交易**：
+   - 当前催化剂与动能评级（`high` / `medium` / `low`）：催化是什么、1-3 天内能兑现吗？
+   - 今日量价是否给出确认信号（放量/突破/资金共振）？
+   - 交易定性模式（`event_driven` / `technical_breakout` / `momentum_following` / `oversold_bounce` / `no_clear_catalyst`）
+   - 3 天盈亏比计算（预期涨幅 ÷ 最大亏损，必须 ≥ 2.0）
+   - 最终动作候选与明确的：止损位（5-8%）、最大持仓天数（≤3）、催化证伪条件
+5. **催化低时从严**：若 `catalyst_and_momentum.level` 为 `low` 或无量价确认，直接输出 HOLD 或 FLAT，不进入买入流程。
+6. **估值不是重点**：不在超短线中做精确估值测算。分析重心放在催化强度 × 量价确认度 × 3天盈亏比。
+7. **异常波动必须解释**：若今日或最近一日大涨大跌、放量异动，而研究包没有足够解释，必须联网核验是否存在突发利好、利空、公告、经营数据或行业事件；核验后仍无证据时，才可判定为高波动品种的正常波动。
 8. **禁止事项**：
    - 不得读取其他股票研究包
    - 不得跳过 `03/01/本股04` 的完整阅读直接联网搜索
@@ -385,24 +323,27 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 16. `action_num`
 17. `price_target`
 18. `stop_loss`
-19. `key_risks`
-20. `next_day_watchlist`
-21. `confidence_score`
+19. `max_holding_days`
+20. `key_risks`
+21. `next_day_watchlist`
+22. `confidence_score`
 
 说明：
 - `recommended_action` 保留子agent原始主观建议和底稿口吻
 - `action_type`、`action_num` 由主agent在人工确认后补充，用于执行层枚举消费
-- `BUY` / `SELL` 如需真实执行，必要的数量与执行价信息必须在最终 JSON 中可读；短线买入必须严格写入 `stop_loss`
+- `BUY` 必须带有 `stop_loss`（止损位）和 `max_holding_days`（≤3）和 `price_target`
+- `SELL` 必须写明卖出原因（止损触发/催化证伪/3天到限/自由裁定）
+- 如果当天不交易，`action_num` 仍应显式给出当前持仓或 `0`
 
 # 7. 庭审最小规则
 
 在输出最终 JSON 前，必须完成最小庭审：
 - **动议类型**：买入 / 卖出 / 持有 / 观望
-- **正方**：为什么现在的催化、量价和盈亏比值得买入、卖出或继续持有
-- **反方**：最大的反对理由是什么，尤其是催化是否可能伪证/一日游、量价是否背离、盈亏比是否不划算、近端是否面临监管/解禁风险
-- **裁决**：最终决定与明确的止损退出机制
+- **正方**：为什么在 3 天时间窗内，当前催化、量价确认和盈亏比值得买入、卖出或继续持有
+- **反方**：催化是否伪证/一日游？量价是否背离？3天盈亏比是否真的划算？近端风险是否排除（财报/解禁/减持/监管）？
+- **裁决**：最终动作 + 止损位（5-8%）+ 最大持仓天数（≤3）+ 催化证伪条件
 
-如果动能与催化可靠度为 `low`，买入动议通常应被驳回，除非出现极高确定性的预期差反转。
+如果动能与催化可靠度为 `low` 或未给出量价确认，买入动议必须驳回，除非存在极高确定性的预期差反转。
 
 # 8. subagent 文件输出规范
 
@@ -425,9 +366,10 @@ subagent **不通过对话上下文回传完整分析结果**。分析完成后�
 16. `action_num`
 17. `price_target`
 18. `stop_loss`
-19. `key_risks`
-20. `next_day_watchlist`
-21. `confidence_score`
+19. `max_holding_days`
+20. `key_risks`
+21. `next_day_watchlist`
+22. `confidence_score`
 
 不要求额外包装复杂 JSON，但字段语义必须完整、可直接被 `merge_subagent_decisions.py` 合并脚本读取并写入最终 `05_decision.json`。
 
