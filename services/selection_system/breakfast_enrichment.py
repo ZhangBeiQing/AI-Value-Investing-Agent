@@ -127,7 +127,7 @@ def _extract_global_market_with_qwen(image_path: Path, image_json_path: Path) ->
     if not api_key or not base_url:
         raise ValueError("缺少 EXTRACTION_MODEL_API_KEY 或 EXTRACTION_MODEL_BASE_URL")
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=120.0)
     file_obj = client.files.create(file=image_path, purpose="file-extract")
     file_id = getattr(file_obj, "id", None)
     prompt = (
