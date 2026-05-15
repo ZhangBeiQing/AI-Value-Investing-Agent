@@ -98,6 +98,21 @@ description: >
 
 - `06_hot_news_state.json`
 
+**逐主题生成并写入文件**：不要试图一次性把所有主题写入文件。06_hot_news_state.json 文件通常 6000+ 行、数十万字符，单次 Write 工具调用或单次 bash heredoc 必定被截断导致 JSON 损坏。
+
+正确的落盘流程：
+
+1. 先用 Python 创建包含 `run_date`、`market_regime_bridge` 字段的基础 JSON 骨架，写入文件
+2. 每分析完一个主题（active/cooling），立即用 Python 读取现有文件 → `data["active_themes"].append(theme_dict)` → 写回文件
+3. 重复步骤 2，直到所有主题全部追加完成
+4. 最后追加 `cooling_themes`、`summary` 等剩余字段，同样逐块写入
+5. 全部完成后用 `python3 -c "import json; json.load(open('...'))"` 验证 JSON 有效性
+
+禁止的做法：
+- 禁止在一条 Write 工具调用中写入完整 JSON（必定截断）
+- 禁止在 bash heredoc 中拼装完整 JSON（必定截断）
+- 禁止在 Write 的 content 参数中堆砌超过 3000 行的 JSON 文本
+
 ## 强制要求
 
 - 不要重写宏观总结
@@ -109,4 +124,5 @@ description: >
 - `linked_boards` 必须使用 [输入约定](references/input-contract.md) 中的标准板块名清单
 - 不要把昨天出现过的主题机械地全部延续到今天
 - 不要把已结束、已证伪、已完全失去交易性的主题继续保留在今天的 `06_hot_news_state.json`
+- **必须逐主题生成并写入文件**，严禁一次性输出全部主题（JSON 体量过大，单次写入必定截断导致文件损坏）
 

@@ -708,7 +708,8 @@ def _get_openai_client(purpose: str, model_name_for_logging: str) -> OpenAI:
             _log(error_message)
             raise ValueError(error_message)
         
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        _timeout = 300.0 if purpose == "audit" else 120.0
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=_timeout)
         _CLIENTS_CACHE[client_key] = client
         _log(f"为 {purpose} ({model_name_for_logging}) 的OpenAI兼容客户端已初始化 (base_url: {base_url})")
         return client
@@ -925,9 +926,7 @@ def qwen_doc_summarize_with_fileid(stock_name: str, symbol: str, meta: Announcem
             "source": "公告",
         }
     except Exception as exc:
-        _log("调用Qwen摘要异常")
-        if isinstance(exc, RuntimeError):
-            raise
+        _log(f"调用Qwen摘要异常: {exc}")
         return None
 
 
@@ -1016,9 +1015,7 @@ def qwen_summarize_with_markdown(stock_name: str, symbol: str, meta: Announcemen
             "source": "公告",
         }
     except Exception as exc:
-        _log(f"调用模型({model})摘要异常")
-        if isinstance(exc, RuntimeError):
-            raise
+        _log(f"调用模型({model})摘要异常: {exc}")
         return None
 
 
@@ -1154,7 +1151,11 @@ def update_disclosures_for_stock(
                         meta.file_id = fid
                         _log(f"记录file_id: {fid}")
                 if meta.file_id:
-                    summary_item = qwen_doc_summarize_with_fileid(stock_name, symbol, meta)
+                    try:
+                        summary_item = qwen_doc_summarize_with_fileid(stock_name, symbol, meta)
+                    except Exception as e:
+                        _log(f"公告 {meta.announcement_id} 摘要失败: {e}")
+                        summary_item = None
             else:
                 # PDF -> Markdown -> LLM 流程
                 md_file_name = f"{date}__{stock_code}__{meta.announcement_id}__{_slugify(title)}.md"
@@ -1162,7 +1163,11 @@ def update_disclosures_for_stock(
                 markdown_content = convert_pdf_to_markdown(Path(meta.pdf_path), md_path_obj)
                 if markdown_content:
                     meta.md_path = str(md_path_obj)
-                    summary_item = qwen_summarize_with_markdown(stock_name, symbol, meta, markdown_content, model)
+                    try:
+                        summary_item = qwen_summarize_with_markdown(stock_name, symbol, meta, markdown_content, model)
+                    except Exception as e:
+                        _log(f"公告 {meta.announcement_id} 摘要失败: {e}")
+                        summary_item = None
 
             if summary_item is None:
                 _log(f"无法为公告 {meta.announcement_id} 生成摘要，跳过")
