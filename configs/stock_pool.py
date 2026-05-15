@@ -19,9 +19,8 @@ class StockEntry:
 
 TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
-    StockEntry("605117.SH", "德业股份", "储能逆变器"),
-    StockEntry("002156.SZ", "通富微电", "封测"),
-    StockEntry("601138.SH", "工业富联", "加工"),
+    StockEntry("600246.SH", "万通发展", "房地产和高速互连芯片"),
+    StockEntry("600685.SH", "中船防务", "国防海军舰船"),
     StockEntry("600584.SH", "长电科技", "封测龙头"),
     StockEntry("002714.SZ", "牧原股份", "生猪养殖"),
     StockEntry("603501.SH", "豪威集团", "半导体设计"),
@@ -33,6 +32,24 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("300750.SZ", "宁德时代", "新能源电池"),
     StockEntry("600150.SH", "中国船舶", "船舶制造"),
     StockEntry("518800.SH", "黄金基金ETF", "黄金"),
+    StockEntry("002130.SZ", "沃尔核材", "GB200铜缆独家"),
+    StockEntry("002600.SZ", "领益智造", "Rubin冷接头大陆唯一"),
+    StockEntry("002484.SZ", "江海股份", "MLPC超级电容独家方案"),
+    StockEntry("300395.SZ", "菲利华", "石英布全球3家认证国内唯一"),
+    StockEntry("601208.SH", "东材科技", "树脂全球双寡头M9认证"),
+    StockEntry("688498.SH", "源杰科技", "EML光芯片国产替代"),
+    StockEntry("688661.SH", "和林微纳", "H100/B100测试探针独家"),
+    StockEntry("300709.SZ", "精研科技", "大陆唯一精密散热"),
+    StockEntry("300308.SZ", "中际旭创", "800G/1.6T光模块全球第一"),
+    StockEntry("300394.SZ", "天孚通信", "光引擎90%+份额CPO独占"),
+    StockEntry("601138.SH", "工业富联", "英伟达40%DC订单代工商"),
+    StockEntry("300502.SZ", "新易盛", "800G光模块全球第二大"),
+    StockEntry("002463.SZ", "沪电股份", "AI主板北美市占率80%+"),
+    StockEntry("300476.SZ", "胜宏科技", "GB300 HDI板独家份额50%"),
+    StockEntry("600183.SH", "生益科技", "国内唯一M9覆铜板认证"),
+    StockEntry("002837.SZ", "英维克", "GB300冷板+CDU认证"),
+    StockEntry("002851.SZ", "麦格米特", "A股唯一英伟达官宣电源"),
+    StockEntry("300811.SZ", "铂科新材", "GPU电感全球独家"),
 ]
 
 
@@ -51,6 +68,7 @@ def symbol_to_akshare(symbol: str) -> str:
         "SZ": "sz",
         "SH": "sh",
         "HK": "hk",
+        "BJ": "bj",
     }
     prefix = prefix_map.get(exchange)
     if prefix is None:

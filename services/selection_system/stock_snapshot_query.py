@@ -22,7 +22,7 @@ LOWER_IS_BETTER_FIELDS = {
     "pe_ttm",
     "pb",
     "ps",
-    "pe_2y_percentile",
+    "pe_3_5y_percentile",
     "pe_current_vs_median",
     "volatility_3m",
     "volatility_6m",

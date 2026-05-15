@@ -99,6 +99,7 @@ class StockSnapshot:
     price_distribution_section: Dict[str, Any] = field(default_factory=dict)
     reason: str = ""
     ttm_profit_raw: float = 0.0
+    deduct_profit_raw: float = 0.0
     use_plain_pe_label: bool = False
 
 
@@ -444,6 +445,7 @@ class EnhancedPEPBAnalyzer:
             price_distribution_section=price_distribution_section,
             reason="",
             ttm_profit_raw=ttm_profit,
+            deduct_profit_raw=deduct_profit or 0.0,
             use_plain_pe_label=use_plain_labels,
         )
         return snapshot
@@ -807,7 +809,7 @@ class EnhancedPEPBAnalyzer:
             records.append(
                 {
                     "报告期": report_date.strftime("%Y-%m-%d"),
-                    "TTM净利润(亿元)": ttm_profit / 1e8,
+                    "TTM扣非净利润(亿元)": ttm_profit / 1e8,
                     "TTM每股收益(元)": eps,
                     "股价(元)": price,
                     "PE": pe_value,
@@ -1293,7 +1295,7 @@ class EnhancedPEPBAnalyzer:
             "价格日期": price_date.strftime("%Y-%m-%d"),
             "价格(元)": price,
             "参考财报日期": report_date.strftime("%Y-%m-%d"),
-            "TTM净利润(亿元)": ttm_profit / 1e8 if ttm_profit else None,
+            "TTM扣非净利润(亿元)": ttm_profit / 1e8 if ttm_profit else None,
             pe_field: pe_value,
             growth_field: yoy_percent,
             "PEG": peg,
@@ -1614,7 +1616,7 @@ class EnhancedPEPBAnalyzer:
         growth_col_name = self._growth_label(snapshot)
         desired_order = [
             "报告期",
-            "TTM净利润(亿元)",
+            "TTM扣非净利润(亿元)",
             "股价(元)",
             pe_col_name,
             "PB",
@@ -1629,7 +1631,7 @@ class EnhancedPEPBAnalyzer:
                 continue
             record_map[report_key] = {
                 "报告期": report_key,
-                "TTM净利润(亿元)": entry.get("TTM净利润(亿元)"),
+                "TTM扣非净利润(亿元)": entry.get("TTM扣非净利润(亿元)"),
                 "股价(元)": entry.get("股价(元)"),
                 pe_col_name: entry.get("PE"),
                 "PB": entry.get("PB"),
@@ -1645,7 +1647,7 @@ class EnhancedPEPBAnalyzer:
                 report_key,
                 {
                     "报告期": report_key,
-                    "TTM净利润(亿元)": None,
+                    "TTM扣非净利润(亿元)": None,
                     "股价(元)": None,
                     pe_col_name: entry.get("PE"),
                     "PB": entry.get("PB"),
@@ -1658,9 +1660,10 @@ class EnhancedPEPBAnalyzer:
             if entry.get("PEG") is not None:
                 record["PEG"] = entry["PEG"]
 
+        deduct_profit_for_display = snapshot.deduct_profit_raw or snapshot.ttm_profit_raw
         current_row = {
             "报告期": snapshot.analysis_time.strftime("%Y-%m-%d") + "*",
-            "TTM净利润(亿元)": snapshot.ttm_profit_raw / 1e8 if snapshot.ttm_profit_raw else None,
+            "TTM扣非净利润(亿元)": deduct_profit_for_display / 1e8 if deduct_profit_for_display else None,
             "股价(元)": snapshot.price,
             pe_col_name: self._get_display_pe_value(snapshot) or snapshot.pe_ttm,
             "PB": snapshot.pb,
@@ -1677,7 +1680,7 @@ class EnhancedPEPBAnalyzer:
             ["__is_current", "__sort"], ascending=[False, False]
         ).drop(columns=["__is_current", "__sort"])
 
-        for col in ("TTM净利润(亿元)", "股价(元)", pe_col_name, "PB", growth_col_name, "PEG"):
+        for col in ("TTM扣非净利润(亿元)", "股价(元)", pe_col_name, "PB", growth_col_name, "PEG"):
             combined[col] = combined[col].apply(
                 lambda x: round(x, 3) if isinstance(x, (int, float)) and math.isfinite(x) else x
             )

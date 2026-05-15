@@ -135,7 +135,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 
 重要说明：
 
-- 当前默认口径：`08_short_book_input.*` 与 `09_long_book_input.*` 都要求本地 agent 各输出 `15` 只股票
+- 当前默认口径：`08_short_book_input.*` 要求本地 agent 输出 **7** 只股票（超短线池上限），`09_long_book_input.*` 要求输出 `15` 只股票
 - `snapshot` 字段在 `build-candidate-pools` 执行时由 orchestrator 隐式补齐；skill 本体不再关心
 
 ## 阶段 B：08/09 准备完成后再启动 2 个 subagent
@@ -186,13 +186,17 @@ short-book subagent 的强制要求：
 
 1. 先完整阅读 `08_short_book_input.md`
 2. 再完整阅读 `08_short_book_input.json`
-3. 再完整阅读当前今日路径下的 `08_short_book_candidates.json`（若 Step 5.1 已 cp 成功，这就是昨日终态；若未 cp，则进入冷启动）；这一步属于强制连续性检查，不视为回读 01-07 原始中间文件
+3. 再完整阅读当前今日路径下的 `08_short_book_candidates.json`（若 Step 5.1 已 cp 成功，这就是昨日终态；若未 cp，则进入冷启动）；这一步属于强制连续性检查
 4. 以 `08_short_book_input.json` 中的 `shared_context_excerpt` 作为共享上下文主来源
 5. 不要默认回头重读 `07_shared_selection_context.md` 或更早的原始中间文件
-6. 短期池对继承的昨日文件只采用"弱先验"口径，必须逐票判断：昨天的催化今天是强化、兑现中、钝化还是证伪
-7. 只有当昨日催化仍在强化或仍在扩散时，昨日入池股票才应保留；若昨日只是单日脉冲、今天没有延续，应快速出池
-8. 新进票可以大量替换昨日旧票，不要求短期池名单高稳定性；但新进票必须能回答：它为何比被替换的昨日旧票更值得占用今天的 short-book 名额
-9. 修改后必须更新文件内所有日期、`run_date`、时效性字段，使文件的"时间身份"整体切换到今日；不允许出现残留的昨日日期
+6. 超短线池上限 7 只，坚持事件驱动+量价确认的选股逻辑：
+   - 每只入选股票必须有能在 1-3 天内兑现的近端催化（政策/公告/业绩预告/行业突发事件）
+   - 必须有今日量价给出确认信号（放量突破/缺口/资金共振），不能只靠主题热度
+   - 昨日入池的股票，催化已兑现/钝化/证伪的立即出池，不恋战
+   - 新进票必须比被替换的旧票在 3 天时间窗内更具爆发力
+7. 排除标准从严：近端财报窗口（<5天）、大额解禁、减持公告、监管问询的股票直接排除
+8. 高流动性强制门槛：日均成交额过小的标的不得入池
+9. 修改后必须更新文件内所有日期、`run_date`、时效性字段，使文件的"时间身份"整体切换到今日
 10. 若需要补充板块细节，只使用：
 
 ```bash
@@ -205,7 +209,7 @@ python scripts/query_board_snapshot.py --date YYYY-MM-DD --board-name "板块A"
 python scripts/query_stock_snapshot.py --date YYYY-MM-DD --symbol 000977.SZ
 ```
 
-12. 若 Step 5.1 因源文件缺失而未 cp（冷启动），允许按冷启动口径从零筛选，但必须在最终分析中显式说明昨日短期池锚点缺失，今天无法做连续性比较
+12. 若 Step 5.1 因源文件缺失而未 cp（冷启动），允许按冷启动口径从零筛选，但必须在最终分析中显式说明昨日超短线池锚点缺失
 13. 最终产物必须写回（覆盖）到：
 
 - `data/selection_runs/YYYY-MM-DD/08_short_book_candidates.json`
@@ -260,11 +264,11 @@ long-book subagent 的强制要求：
 
 short-book subagent 关注：
 
-- 主题强化
-- 板块确认
-- 公告催化
-- 量价与流动性
-- 近端风险
+- 近端催化（政策/公告/业绩预告/行业事件，需在1-3天内兑现）
+- 量价确认（放量突破/缺口/资金共振）
+- 板块协同与资金流向
+- 高流动性
+- 近端风险排除（财报/解禁/减持/监管）
 
 long-book subagent 关注：
 
@@ -329,13 +333,13 @@ python scripts/manage_selection_system.py --base-dir data merge-candidates --dat
 和 data/selection_runs/YYYY-MM-DD/08_short_book_input.json，
 再完整阅读今日路径下已继承的 08_short_book_candidates.json。
 然后在该文件上做增量修改：逐票判断昨日催化今天是强化、兑现中、钝化还是证伪，
-快速出池已钝化/证伪的票，保留仍在强化的票，并加入新进票；
+催化已兑现/钝化/证伪的票立即出池，保留仍在强化的票，并加入新进票。
+超短线池上限 7 只，新进票必须有能在 1-3 天内兑现的近端催化 + 今日量价确认信号。
 务必把文件内所有日期与 run_date 整体切换到今日，不允许残留昨日日期。
-这一步属于连续性继承，不属于回读 07 或更早的原始中间文件。
 最终把修改结果覆盖写回 data/selection_runs/YYYY-MM-DD/08_short_book_candidates.json。
 除非需要补充板块或 snapshot 细节，否则不要回读 07 或更早的中间文件。
 若今日路径下 08_short_book_candidates.json 不存在（冷启动），按冷启动口径从零构建，
-并在最终分析中显式说明昨日短期池锚点缺失。
+并在最终分析中显式说明昨日超短线池锚点缺失。
 ```
 
 主 agent 给 long-book subagent 的任务应接近：
