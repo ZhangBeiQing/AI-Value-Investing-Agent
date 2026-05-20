@@ -17,7 +17,7 @@ from services.pipeline.daily_pipeline import SKILL_FLOW_CONFIG, run_daily_pipeli
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run daily pipeline steps 1-4.")
+    parser = argparse.ArgumentParser(description="运行 daily pipeline；默认仅生成 fixed_tracked，显式指定时才跑三账本。")
     parser.add_argument(
         "--date",
         dest="run_date",
@@ -45,6 +45,11 @@ def main() -> None:
         help="Run manifest path or 'auto' to build from selection outputs.",
     )
     parser.add_argument(
+        "--all-books",
+        action="store_true",
+        help="启用三账本模式：基于 manifest/selection 输出生成 fixed_tracked + short_book + long_book。",
+    )
+    parser.add_argument(
         "--max-workers",
         type=int,
         default=4,
@@ -53,7 +58,7 @@ def main() -> None:
     args = parser.parse_args()
 
     prompt_config = args.prompt_config
-    if args.manifest == "auto" and not args.signature and prompt_config == str(SKILL_FLOW_CONFIG):
+    if args.all_books or args.manifest != "auto":
         prompt_config = None
 
     run_daily_pipeline(

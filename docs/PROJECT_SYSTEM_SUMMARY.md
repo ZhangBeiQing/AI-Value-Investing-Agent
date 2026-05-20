@@ -1,9 +1,10 @@
-更新日期：2026-03-20
+更新日期：2026-05-15
 
 # AI-Trader 项目系统白皮书
 
 ## 1. 顶层流程与运行方式
-- **当前主入口**：项目当前主流程已经切换为 `skill-only`。日常运行顺序为：`scripts/manage_daily_data.py` → `scripts/run_daily_pipeline.py --date YYYY-MM-DD` → 本地 Agent 读取 `data/skill_runs/{date}/` → `scripts/run_post_trade.py --date YYYY-MM-DD`。其中 `run_daily_pipeline` 在生成 `fixed_tracked`、`short_book`、`long_book` 前，会先按当日 manifest 汇总三个账本股票并集并触发一次统一数据刷新；若 `manage_daily_data` 的 `--force-refresh-price` 为 `true`，则该并集内所有股票的价格缓存都会强制刷新。
+- **当前默认主入口**：项目当前主流程已经切换为 `skill-only`，且默认只服务 `fixed_tracked`。推荐日常顺序为：`python scripts/refresh_all_for_date.py --date YYYY-MM-DD` → `/daily-macro-summary` → `python scripts/prepare_financial_report_skill.py --date YYYY-MM-DD --sync-first --json` → `/financial-report-summary` → `python scripts/run_daily_pipeline.py --date YYYY-MM-DD` → 本地 Agent 读取 `data/skill_runs/{date}/fixed_tracked/` → `python scripts/run_post_trade.py --date YYYY-MM-DD --book-type fixed_tracked --signature book-fixed_tracked`。
+- **三账本链路改为显式开启**：只有在用户明确要求恢复自动选股、渐进式热点主题、`short_book`、`long_book` 时，才使用 `python scripts/refresh_all_for_date.py --include-selection-universe`、`python scripts/prepare_financial_report_skill.py --include-queue`、`python scripts/run_daily_pipeline.py --all-books` 等旧口径入口。
 - **旧入口状态**：`main.sh`、`main.py` 与 `agent/base_agent/base_agent.py` 等旧主入口已从仓库中清理，不再保留。
 - **交易结果落地**：`tools.price_tools` 提供 `get_latest_position`、`get_open_prices`、`add_no_trade_record`、`compute_total_value` 等函数，所有买卖最终写入 `data/agent_data/{signature}/position/position.jsonl` 并更新 `IF_TRADE` 标记。
 - **运行前置与依赖**：`pip install -r requirements.txt` 安装依赖，`cp .env.example .env` 并填写密钥；当前主流程默认不再依赖启动 MCP 服务。

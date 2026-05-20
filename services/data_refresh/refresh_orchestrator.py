@@ -2,7 +2,7 @@
 
 面向「早上 7 点起床，分析昨天收盘」的日常节奏：
 - `--date` 语义统一为「要分析的交易日」（默认 today - 1 日历日）。
-- 轻量档（默认）：强刷宏观 panel、行情快照、板块快照、新闻、选股输入等易变数据。
+- 轻量档（默认）：强刷宏观 panel、行情快照、板块快照、新闻（含渐进式热点总结的输入）等易变数据。
 - 重量档（可选）：在轻量档基础上，额外强刷财报结构化数据等重缓存。
 - 公告 PDF、历史日线、财报 PDF 等重缓存按各自增量逻辑走，不在此处强刷。
 - 本编排层只跑 Python 脚本链路，宏观/新闻/选股/财报/交易等 skill 由最终清单提示人工触发。
@@ -26,12 +26,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGGER = get_logger("RefreshOrchestrator")
 
 
-def _load_daily_refresh_symbols(base_dir: str = "data") -> List[str]:
-    """合并 TRACKED_A_STOCKS ∪ master_universe，得到"今日应刷新股票清单"。
+def _load_daily_refresh_symbols(
+    base_dir: str = "data",
+    *,
+    include_selection_universe: bool = False,
+) -> List[str]:
+    """得到"今日应刷新股票清单"。
 
-    设计归属：本编排层是**每日刷新策略的唯一决策源**——回答"今天哪些股票
-    需要 fresh 的价格 / 财报 / basic_info 数据"。下游 `selection_system`
-    只做缓存消费者，不再承担 universe 的主刷新责任。
+    默认只刷新 `TRACKED_A_STOCKS`，以缩短固定股票池日常流程耗时。
+    仅当 `include_selection_universe=True` 时，才恢复旧口径：
+    `TRACKED_A_STOCKS ∪ master_universe`。
     """
     from configs.stock_pool import TRACKED_A_STOCKS
 
@@ -41,6 +45,9 @@ def _load_daily_refresh_symbols(base_dir: str = "data") -> List[str]:
         if entry.symbol and entry.symbol not in seen:
             ordered.append(entry.symbol)
             seen.add(entry.symbol)
+
+    if not include_selection_universe:
+        return ordered
 
     universe_path = PROJECT_ROOT / base_dir / "universe" / "master_universe.json"
     if universe_path.exists():
@@ -191,32 +198,41 @@ def run_refresh_pipeline(
     signature: str = "",
     base_dir: str = "data",
     stop_on_failure: bool = True,
+    include_selection_universe: bool = False,
 ) -> OrchestratorResult:
     """按固定顺序刷新每日分析所需数据。
 
     **策略归属**：本编排层是"每日 fresh 数据"策略的唯一决策源。它决定：
-    - 每日应刷新的股票范围 = TRACKED_A_STOCKS ∪ master_universe（约 11 + 105 ≈ 116 只）
+    - 默认每日应刷新的股票范围 = TRACKED_A_STOCKS
+    - 仅当 `include_selection_universe=True` 时，额外合并 master_universe
     - 价格 / 财报结构化 / basic_info 由 manage_daily_data 负责
+    - 新闻采集 / 板块热度 默认执行，为渐进式热点总结提供输入
     - 公告由 selection_system.build-announcements 单独负责（增量 + audit），
       因此 manage_daily_data 以 --skip-disclosures 跳过重复扫描
+    - 选股系统（候选池生成等）仅在 `include_selection_universe=True` 时启用
 
     顺序依赖解释：
-    1. manage_daily_data：宏观客观面板 + 行情快照 + basic_stock_info（TRACKED ∪ universe），
-       是后续所有模块的上游。
-    2. run-news：当日新闻抓取/去重/富化，产出 03_news_prompt_input.json。
-    3. run-signals：板块变动 + 个股热度，产出 05_market_signals 基础数据。
-    4. build-board-heat-state：基于 3 的快照合成 05_board_heat_digest/state（force 刷新）。
-    5. build-announcements：聚合主 universe 最近公告 → 04_recent_company_announcements.json。
-    6. build-shared-context：整合 03/04/05 → 07_shared_selection_context.md。
-    7. build-candidate-pools：产出 08/09 选股输入，供选股 skill 消费。
+    1. manage_daily_data：宏观客观面板 + 行情快照 + basic_stock_info
+    2. selection.run-news：全市场新闻采集/去重/增强 → 03_news_prompt_input.json
+    3. selection.build-board-heat-state：板块热度分析 → 05_board_heat_state/digest.json
+    4. 仅在 include_selection_universe=True 时，继续执行信号/公告/共享上下文/候选池。
     """
     result = OrchestratorResult(run_date=run_date, fresh_heavy=fresh_heavy)
 
-    refresh_symbols = _load_daily_refresh_symbols(base_dir=base_dir)
-    LOGGER.info(
-        "本次一键刷新覆盖 %d 只股票（TRACKED_A_STOCKS ∪ master_universe）",
-        len(refresh_symbols),
+    refresh_symbols = _load_daily_refresh_symbols(
+        base_dir=base_dir,
+        include_selection_universe=include_selection_universe,
     )
+    if include_selection_universe:
+        LOGGER.info(
+            "本次一键刷新覆盖 %d 只股票（TRACKED_A_STOCKS ∪ master_universe）",
+            len(refresh_symbols),
+        )
+    else:
+        LOGGER.info(
+            "本次一键刷新覆盖 %d 只固定股票池股票（TRACKED_A_STOCKS）",
+            len(refresh_symbols),
+        )
 
     steps: List[tuple[str, List[str]]] = [
         (
@@ -235,26 +251,31 @@ def run_refresh_pipeline(
             _selection_cmd("run-news", run_date, base_dir=base_dir),
         ),
         (
-            "selection.run-signals",
-            _selection_cmd("run-signals", run_date, base_dir=base_dir),
-        ),
-        (
             "selection.build-board-heat-state",
             _selection_cmd("build-board-heat-state", run_date, "--force-refresh", base_dir=base_dir),
         ),
-        (
-            "selection.build-announcements",
-            _selection_cmd("build-announcements", run_date, base_dir=base_dir),
-        ),
-        (
-            "selection.build-shared-context",
-            _selection_cmd("build-shared-context", run_date, base_dir=base_dir),
-        ),
-        (
-            "selection.build-candidate-pools",
-            _selection_cmd("build-candidate-pools", run_date, base_dir=base_dir),
-        ),
     ]
+    if include_selection_universe:
+        steps.extend(
+            [
+                (
+                    "selection.run-signals",
+                    _selection_cmd("run-signals", run_date, base_dir=base_dir),
+                ),
+                (
+                    "selection.build-announcements",
+                    _selection_cmd("build-announcements", run_date, base_dir=base_dir),
+                ),
+                (
+                    "selection.build-shared-context",
+                    _selection_cmd("build-shared-context", run_date, base_dir=base_dir),
+                ),
+                (
+                    "selection.build-candidate-pools",
+                    _selection_cmd("build-candidate-pools", run_date, base_dir=base_dir),
+                ),
+            ]
+        )
 
     for name, cmd in steps:
         step_result = _run_step(name, cmd)
@@ -274,41 +295,74 @@ def run_refresh_pipeline(
     return result
 
 
-def format_followup_checklist(run_date: str) -> str:
+def format_followup_checklist(run_date: str, *, include_selection_universe: bool = False) -> str:
     """打印后续需要人工触发的 skill / 脚本清单。
 
     这些动作要么依赖 LLM / 联网分析（skill），要么位于人工确认节点之后
     （交易执行与后处理），不纳入一键刷新流水线自动执行。
     """
+    if include_selection_universe:
+        lines = [
+            "",
+            "=" * 72,
+            f"数据刷新完成（交易日 {run_date}）。接下来请依次人工触发：",
+            "=" * 72,
+            "",
+            "【分析 skill（需 LLM / 联网）】",
+            "  1. /daily-macro-summary              → data/macro_economy/"
+            + run_date.replace("-", "")
+            + ".md",
+            "  2. /gradual-hot-news-summary         → 06_hot_news_state.json",
+            "  3. /auto-selection-daily-pipeline    → 08/09/10/11 候选池 & 深研队列",
+            "",
+            "【财报 skill（依赖选股深研队列）】",
+            f"  4. python scripts/prepare_financial_report_skill.py --date {run_date} --mandate all --sync-first --json --include-queue",
+            "  5. /financial-report-summary         → 各股 financial_reports/*.md",
+            "",
+            "【三账本 01-04 产物】",
+            f"  6. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6 --all-books",
+            "",
+            "【三账本交易 skill（生成 05_decision.json 后人工确认）】",
+            "  7. /auto-trading-fixed-tracked",
+            "  8. /auto-trading-short-book",
+            "  9. /auto-trading-long-book",
+            "",
+            "【人工确认后分别执行后处理】",
+            f"  10. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
+            f"  11. python scripts/run_post_trade.py --date {run_date} --book-type short_book --signature book-short_book",
+            f"  12. python scripts/run_post_trade.py --date {run_date} --book-type long_book --signature book-long_book",
+            "=" * 72,
+        ]
+        return "\n".join(lines)
+
     lines = [
         "",
         "=" * 72,
         f"数据刷新完成（交易日 {run_date}）。接下来请依次人工触发：",
         "=" * 72,
         "",
-        "【分析 skill（需 LLM / 联网）】",
+        "【宏观与新闻总结 skill（需 LLM / 联网）】",
         "  1. /daily-macro-summary              → data/macro_economy/"
         + run_date.replace("-", "")
         + ".md",
-        "  2. /gradual-hot-news-summary         → 06_hot_news_state.json",
-        "  3. /auto-selection-daily-pipeline    → 08/09/10/11 候选池 & 深研队列",
+        "  2. /gradual-hot-news-summary         → data/selection_runs/"
+        + run_date
+        + "/06_hot_news_state.json",
         "",
-        "【财报 skill（依赖选股深研队列）】",
-        f"  4. python scripts/prepare_financial_report_skill.py --date {run_date} --mandate all --sync-first --json --include-tracked",
-        "  5. /financial-report-summary         → 各股 financial_reports/*.md",
+        "【固定股票池财报准备与总结】",
+        f"  3. python scripts/prepare_financial_report_skill.py --date {run_date} --sync-first --json",
+        "  4. /financial-report-summary         → fixed_tracked 各股 financial_reports/*.md",
         "",
-        "【三账本 01-04 产物】",
-        f"  6. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6",
+        "【固定股票池 01-04 产物】",
+        f"  5. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6",
         "",
-        "【三账本交易 skill（生成 05_decision.json 后人工确认）】",
-        "  7. /auto-trading-fixed-tracked",
-        "  8. /auto-trading-short-book",
-        "  9. /auto-trading-long-book",
+        "【固定股票池交易 skill（生成 05_decision.json 后人工确认）】",
+        "  6. /auto-trading-fixed-tracked",
         "",
-        "【人工确认后分别执行后处理】",
-        f"  10. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
-        f"  11. python scripts/run_post_trade.py --date {run_date} --book-type short_book --signature book-short_book",
-        f"  12. python scripts/run_post_trade.py --date {run_date} --book-type long_book --signature book-long_book",
+        "【人工确认后执行后处理】",
+        f"  7. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
+        "",
+        "说明：当前默认不跑 auto-selection-daily-pipeline、short_book、long_book。",
         "=" * 72,
     ]
     return "\n".join(lines)
