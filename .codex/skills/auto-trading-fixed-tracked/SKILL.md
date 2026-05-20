@@ -432,7 +432,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 - **反方**：最大的反对理由是什么
 - **裁决**：最终决定与理由
 
-如果盈利预测可靠度为 `low`，买入动议通常应被驳回，除非出现极强、可验证的例外证据。
+如果盈利预测可靠度为 `low`，买入动议需更加谨慎审查。
 
 # 8. subagent 文件输出规范
 
@@ -472,3 +472,5 @@ data/skill_runs/{run_date}/fixed_tracked/subagent_result/{stock_name}_{symbol}_{
 - subagent 写入文件的 JSON 是 `05_decision.json` 各股条目的唯一来源主体正文。
 - 合并脚本 (`merge_subagent_decisions.py`) 负责将文件原样搬运到 `05_decision.json` 的 `stock_decisions` 数组中。
 - **需要的文件一定要完整读完，不要只读一部分！！金融相关分析完整文件很重要**
+
+**注：非常重要。你可以自由裁定是否卖出，本skill只限制必须卖出的情景。非必须卖出情景，你可以根据当前综合形势，发动主观能动性确定是否卖出。必须卖出是为了兜底止损防止亏太多，至于如何止盈、看情况不妙何时及时跑路，你可以自己决定**
