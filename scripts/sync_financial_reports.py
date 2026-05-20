@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync financial report disclosures for deep research queue stocks."""
+"""Sync financial report disclosures for fixed tracked stocks or queue stocks."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from utlity.stock_utils import parse_symbol
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="同步 deep research queue 股票的财报公告原始件。")
+    parser = argparse.ArgumentParser(description="同步固定股票池或深研队列股票的财报公告原始件。")
     parser.add_argument("--date", help="selection_runs 日期，默认自动使用最近日期。")
     parser.add_argument(
         "--mandate",
@@ -45,9 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="是否把 configs.stock_pool.TRACKED_A_STOCKS 的全部股票也加入同步列表（默认启用，用 --no-include-tracked 关闭）。",
     )
     parser.add_argument(
-        "--no-queue",
+        "--include-queue",
         action="store_true",
-        help="跳过 deep research queue，仅同步 --symbols / --include-tracked 指定的股票。",
+        help="额外把 deep research queue 的股票也加入同步列表（默认关闭，仅同步固定股票池）。",
     )
     return parser
 
@@ -59,10 +59,10 @@ def _parse_symbol_list(raw):
 
 
 def _build_items(args) -> list:
-    if args.no_queue:
-        items: list = []
-    else:
+    if args.include_queue:
         items = list(load_deep_research_items(args.date, mandate=args.mandate))
+    else:
+        items = []
     seen = {item.get("symbol") for item in items if item.get("symbol")}
     tracked_by_symbol = {entry.get("symbol"): entry for entry in load_tracked_items()}
     if args.include_tracked:
