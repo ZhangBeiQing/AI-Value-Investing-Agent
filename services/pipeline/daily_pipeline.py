@@ -303,7 +303,8 @@ def run_daily_pipeline(
     else:
         manifest = build_run_manifest(run_date, base_dir=base_dir)
     if prompt_config or signature:
-        # 兼容旧调用：只跑 fixed_tracked 单账本
+        # 默认日常调用：只跑 fixed_tracked 单账本。
+        # 只有显式传入 manifest 且不再提供 prompt_config 时，才进入三账本模式。
         fixed_symbols = [entry.symbol for entry in TRACKED_A_STOCKS]
         output_dir = resolve_output_dir(base_dir, run_date)
         safe_clean_dir(output_dir)
