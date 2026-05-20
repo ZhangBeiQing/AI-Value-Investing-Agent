@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare financial report skill inputs for deep research queue stocks."""
+"""Prepare financial report skill inputs for fixed tracked stocks or queue stocks."""
 
 from __future__ import annotations
 
@@ -202,7 +202,7 @@ def _write_workdir(bundle, latest_path: Path, previous_path: Path | None, indust
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="为财报总结 skill 准备最新深研队列股票的财报输入。")
+    parser = argparse.ArgumentParser(description="为财报总结 skill 准备固定股票池或深研队列股票的财报输入。")
     parser.add_argument("--date", help="selection_runs 日期，默认自动取最近一个有 11_deep_research_queue.json 的日期。")
     parser.add_argument(
         "--mandate",
@@ -235,9 +235,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="是否把 configs.stock_pool.TRACKED_A_STOCKS 的全部股票也加入处理列表（默认启用，用 --no-include-tracked 关闭）。",
     )
     parser.add_argument(
-        "--no-queue",
+        "--include-queue",
         action="store_true",
-        help="跳过 deep research queue，仅处理 --symbols / --include-tracked 指定的股票。",
+        help="额外把 deep research queue 的股票也加入处理列表（默认关闭，仅处理固定股票池）。",
     )
     return parser
 
@@ -285,9 +285,9 @@ def main() -> int:
         ]
         if args.date:
             sync_cmd.extend(["--date", args.date])
-        if args.no_queue:
-            sync_cmd.append("--no-queue")
         sync_cmd.append("--include-tracked" if args.include_tracked else "--no-include-tracked")
+        if args.include_queue:
+            sync_cmd.append("--include-queue")
         if extra_symbols:
             sync_cmd.extend(["--symbols", ",".join(extra_symbols)])
         subprocess.run(
@@ -300,7 +300,7 @@ def main() -> int:
         args.date,
         mandate=args.mandate,
         extra_items=extra_items or None,
-        skip_queue=args.no_queue,
+        skip_queue=not args.include_queue,
     )
     ready = []
     skipped = []
