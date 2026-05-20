@@ -160,6 +160,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     merge_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
 
+    factor_parser = subparsers.add_parser(
+        "build-factor-store",
+        help="Build by-symbol and by-date factor-store snapshots from local caches.",
+    )
+    factor_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    factor_parser.add_argument(
+        "--max-staleness-days",
+        type=int,
+        default=10,
+        help="Max days between requested date and cached basic snapshot date. Default: 10.",
+    )
+    factor_parser.add_argument(
+        "--no-parquet",
+        action="store_true",
+        help="Only write CSV/JSON outputs, skip parquet.",
+    )
+
     return parser
 
 
@@ -328,6 +345,27 @@ def _handle_merge_candidates(
     return 0
 
 
+def _handle_build_factor_store(
+    base_dir: str,
+    run_date: str,
+    max_staleness_days: int,
+    write_parquet: bool,
+) -> int:
+    from services.selection_system.factor_store import FactorStoreConfig, build_factor_store_for_date
+
+    outputs = build_factor_store_for_date(
+        run_date,
+        base_dir=base_dir,
+        config=FactorStoreConfig(
+            max_staleness_days=max_staleness_days,
+            write_parquet=write_parquet,
+            write_csv=True,
+        ),
+    )
+    LOGGER.info("factor store 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -387,6 +425,13 @@ def main() -> int:
         return _handle_merge_candidates(
             args.base_dir,
             args.date,
+        )
+    if args.command == "build-factor-store":
+        return _handle_build_factor_store(
+            args.base_dir,
+            args.date,
+            args.max_staleness_days,
+            not args.no_parquet,
         )
     parser.error(f"未知命令: {args.command}")
     return 2
