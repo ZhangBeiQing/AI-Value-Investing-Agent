@@ -21,6 +21,7 @@ def build_master_universe_from_stock_pool() -> MasterUniverseDocument:
             name=entry.name,
             sector="",
             industry="",
+            stock_type="growth",
         )
         for entry in TRACKED_A_STOCKS
     ]

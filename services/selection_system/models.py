@@ -28,6 +28,7 @@ class MasterUniverseStock:
     name: str
     sector: str = ""
     industry: str = ""
+    stock_type: str = "growth"
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MasterUniverseStock":
@@ -35,11 +36,13 @@ class MasterUniverseStock:
         raw_name = _as_clean_str(payload.get("name"), field_name="name", required=True)
         sector = _as_clean_str(payload.get("sector"), field_name="sector", required=False)
         industry = _as_clean_str(payload.get("industry"), field_name="industry", required=False)
+        stock_type = _as_clean_str(payload.get("stock_type", "growth"), field_name="stock_type", required=False) or "growth"
         return cls(
             symbol=normalize_symbol(raw_symbol),
             name=raw_name,
             sector=sector,
             industry=industry,
+            stock_type=stock_type,
         )
 
     def to_dict(self) -> Dict[str, str]:
@@ -48,6 +51,7 @@ class MasterUniverseStock:
             "name": self.name,
             "sector": self.sector,
             "industry": self.industry,
+            "stock_type": self.stock_type,
         }
 
 

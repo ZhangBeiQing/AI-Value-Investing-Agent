@@ -24,6 +24,8 @@ import numpy as np
 import requests
 from urllib.parse import quote
 
+from shared_data_access.chip_distribution import build_chip_distribution_from_price_csv
+
 # 导入ETF数据获取函数
 from utlity.stock_utils import fetch_cn_etf_daily, fetch_cn_index_daily
 
@@ -214,6 +216,7 @@ class CacheKind(str, Enum):
     BASIC_INFO = "basic_info_cache"
     DISCLOSURES = "disclosures"
     SHARE_INFO = "share_info"
+    CHIP_DISTRIBUTION = "chip_distribution"
     CN_PROFIT_FORECAST = "cn_profit_forecast"
     HK_PROFIT_FORECAST = "hk_profit_forecast"
     BOARD_HISTORY_THS = "board_history_ths"
@@ -290,6 +293,15 @@ BASE_REGISTRY: Dict[CacheKind, CacheSpec] = {
         subdir="share_info",
         description="股本和流通股本数据 CSV 缓存",
         ttl_days=7,
+    ),
+    CacheKind.CHIP_DISTRIBUTION: CacheSpec(
+        kind=CacheKind.CHIP_DISTRIBUTION,
+        subdir="chip_distribution",
+        description="东方财富日 K 筹码分布 CSV 缓存",
+        ttl_days=1,
+        required_files=(
+            "chip_distribution.csv",
+        ),
     ),
     CacheKind.CN_PROFIT_FORECAST: CacheSpec(
         kind=CacheKind.CN_PROFIT_FORECAST,
@@ -1005,6 +1017,135 @@ def update_share_info_cached(
             record_cache_refresh(share_cache_dir)
 
 
+def update_chip_distribution_cached(
+    symbolInfo: SymbolInfo,
+    *,
+    adjust: str = "qfq",
+    force_refresh: bool = False,
+    prefer_local: bool = False,
+    local_full_history: bool = False,
+    base_data_dir: str | Path = "data",
+    logger: logging.Logger | None = None,
+) -> pd.DataFrame:
+    """获取 A 股日 K 筹码分布并缓存。
+
+    AkShare 的 stock_cyq_em 返回最近约 90 个交易日的筹码摘要；本函数只负责刷新
+    原始缓存，历史回测的 as_of 截断在读取阶段完成。
+    """
+
+    if logger is None:
+        logger = get_logger("CacheRegistry")
+
+    is_index = symbolInfo.market == "CN_INDEX"
+    is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(("51", "58", "15", "16", "50", "53"))
+    if not symbolInfo.is_cn_market() or is_index or is_etf:
+        logger.info("%s %s 暂不支持筹码分布缓存，跳过", symbolInfo.stock_name, symbolInfo.symbol)
+        return pd.DataFrame()
+
+    if adjust not in {"", "qfq", "hfq"}:
+        raise ValueError("adjust must be one of '', 'qfq', 'hfq'")
+
+    cache_dir = build_cache_dir(
+        symbolInfo,
+        CacheKind.CHIP_DISTRIBUTION,
+        base_dir=base_data_dir,
+        ensure=True,
+    )
+    csv_path = cache_dir / "chip_distribution.csv"
+
+    if not should_refresh(cache_dir, CacheKind.CHIP_DISTRIBUTION, force_refresh):
+        return _read_cached_dataframe(csv_path)
+
+    if prefer_local:
+        return _update_chip_distribution_from_local_price(
+            symbolInfo,
+            cache_dir=cache_dir,
+            csv_path=csv_path,
+            base_data_dir=base_data_dir,
+            local_full_history=local_full_history,
+            logger=logger,
+        )
+
+    try:
+        logger.info("正在获取%s %s 筹码分布...", symbolInfo.stock_name, symbolInfo.symbol)
+        frame = api_call_with_delay(
+            ak.stock_cyq_em,
+            symbol=symbolInfo.code,
+            adjust=adjust,
+            logger=logger,
+        )
+        if frame is None or frame.empty:
+            logger.warning("%s %s 筹码分布为空", symbolInfo.stock_name, symbolInfo.symbol)
+            return _read_cached_dataframe(csv_path)
+        frame.to_csv(csv_path, index=False, encoding="utf-8")
+        record_cache_refresh(cache_dir, adjust=adjust)
+        logger.info("已缓存%s %s 筹码分布到 %s", symbolInfo.stock_name, symbolInfo.symbol, csv_path)
+        return frame
+    except Exception as exc:
+        logger.error("获取%s %s 筹码分布失败: %s", symbolInfo.stock_name, symbolInfo.symbol, exc)
+        fallback = _update_chip_distribution_from_local_price(
+            symbolInfo,
+            cache_dir=cache_dir,
+            csv_path=csv_path,
+            base_data_dir=base_data_dir,
+            local_full_history=local_full_history,
+            logger=logger,
+        )
+        if not fallback.empty:
+            return fallback
+        return _read_cached_dataframe(csv_path)
+
+
+def _update_chip_distribution_from_local_price(
+    symbolInfo: SymbolInfo,
+    *,
+    cache_dir: Path,
+    csv_path: Path,
+    base_data_dir: str | Path,
+    local_full_history: bool,
+    logger: logging.Logger,
+) -> pd.DataFrame:
+    price_cache_dir = build_cache_dir(
+        symbolInfo,
+        CacheKind.PRICE_SERIES,
+        base_dir=base_data_dir,
+        ensure=False,
+    )
+    price_path = price_cache_dir / "price.csv"
+    if not price_path.exists():
+        logger.warning("%s %s 缺少 price.csv，无法本地计算筹码分布", symbolInfo.stock_name, symbolInfo.symbol)
+        return pd.DataFrame()
+
+    try:
+        logger.info(
+            "正在从本地价格数据计算%s %s 筹码分布...",
+            symbolInfo.stock_name,
+            symbolInfo.symbol,
+        )
+        frame = build_chip_distribution_from_price_csv(
+            str(price_path),
+            max_output_rows=None if local_full_history else 90,
+            source_lookback_rows=None if local_full_history else 210,
+        )
+    except Exception as exc:
+        logger.error("本地计算%s %s 筹码分布失败: %s", symbolInfo.stock_name, symbolInfo.symbol, exc)
+        return pd.DataFrame()
+
+    if frame.empty:
+        logger.warning("%s %s 本地筹码分布计算结果为空", symbolInfo.stock_name, symbolInfo.symbol)
+        return pd.DataFrame()
+
+    frame.to_csv(csv_path, index=False, encoding="utf-8")
+    record_cache_refresh(
+        cache_dir,
+        source="local_price_csv",
+        local_full_history=local_full_history,
+        price_source=str(price_path),
+    )
+    logger.info("已缓存%s %s 本地筹码分布到 %s", symbolInfo.stock_name, symbolInfo.symbol, csv_path)
+    return frame
+
+
 def _load_cninfo_hk_stock_map(
     *,
     force_refresh: bool = False,
@@ -1247,6 +1388,11 @@ def ensure_symbol_data(
     include_disclosures: bool = False,
     disclosure_lookback_days: int = 900,
     force_refresh_disclosures: bool = False,
+    include_chip_distribution: bool = False,
+    force_refresh_chip_distribution: bool = False,
+    chip_adjust: str = "qfq",
+    prefer_local_chip_distribution: bool = False,
+    local_full_history_chip_distribution: bool = False,
 ) -> str:
     """
     确保指定股票代码的所有基础数据都已缓存并可用
@@ -1323,6 +1469,17 @@ def ensure_symbol_data(
             force_refresh=force_refresh or force_refresh_disclosures,
         )
 
+    if include_chip_distribution and symbolInfo.is_cn_market():
+        update_chip_distribution_cached(
+            symbolInfo,
+            adjust=chip_adjust,
+            base_data_dir=base_data_dir,
+            logger=logger,
+            force_refresh=force_refresh or force_refresh_chip_distribution,
+            prefer_local=prefer_local_chip_distribution,
+            local_full_history=local_full_history_chip_distribution,
+        )
+
 
 
 __all__ = [
@@ -1338,6 +1495,7 @@ __all__ = [
     "update_hk_profit_forecast_cached",
     "update_financial_data_cached",
     "update_share_info_cached",
+    "update_chip_distribution_cached",
     "update_disclosures_cached",
 ]
 

@@ -21,9 +21,11 @@ import numpy as np
 import pandas as pd
 
 from core.logging import get_logger
+from services.selection_system.factor_registry import factor_registry_payload
 from services.selection_system.master_universe import load_master_universe
 from services.selection_system.paths import SelectionSystemPaths
 from services.selection_system.store import save_json_file
+from shared_data_access.cache_registry import CacheKind, build_cache_dir
 from utlity.stock_utils import SymbolFormatError, get_stock_data_dir, parse_symbol
 
 
@@ -31,46 +33,6 @@ LOGGER = get_logger("SelectionFactorStore")
 
 DEFAULT_MAX_STALENESS_DAYS = 10
 PARQUET_ENGINE = "pyarrow"
-
-HIGHER_BETTER = {
-    "roe",
-    "gross_margin",
-    "net_profit_margin",
-    "revenue_growth_yoy",
-    "net_income_growth_yoy",
-    "return_3m",
-    "return_6m",
-    "return_1y",
-    "sharpe_3m",
-    "sharpe_6m",
-    "sharpe_1y",
-    "max_drawdown_3m",
-    "max_drawdown_6m",
-    "max_drawdown_1y",
-    "amount",
-    "turnover_rate",
-    "avg_turnover_30d",
-    "liquidity_score",
-    "ma_bullish_score",
-    "volume_ratio_5d_20d",
-    "macd",
-    "deduct_net_income_growth_yoy",
-}
-
-LOWER_BETTER = {
-    "pe_ttm",
-    "pb",
-    "ps",
-    "peg",
-    "pe_3_5y_percentile",
-    "pe_current_vs_median",
-    "price_position_3_5y",
-    "price_percentile_3_5y",
-    "price_bucket_index_3_5y",
-    "volatility_20d",
-    "volatility_60d",
-}
-
 
 @dataclass(frozen=True)
 class FactorStoreConfig:
@@ -104,6 +66,7 @@ def build_factor_store_for_date(
                 stock_name=stock.name,
                 sector=stock.sector,
                 industry=stock.industry,
+                stock_type=stock.stock_type,
                 base_dir=paths.base_dir,
                 max_staleness_days=config.max_staleness_days,
             )
@@ -117,8 +80,8 @@ def build_factor_store_for_date(
     frame = pd.DataFrame(rows)
     if not frame.empty:
         frame = _normalize_numeric_columns(frame)
-        frame = _add_scores(frame)
-        frame = frame.sort_values(["combined_score", "short_score", "long_score"], ascending=False).reset_index(drop=True)
+        frame = _apply_factor_sanity_rules(frame)
+        frame = frame.sort_values(["data_quality_score", "symbol"], ascending=[False, True]).reset_index(drop=True)
         frame.insert(0, "factor_rank", range(1, len(frame) + 1))
 
     factor_dir = paths.base_dir / "factor_store"
@@ -147,12 +110,15 @@ def build_factor_store_for_date(
     save_json_file(selection_json, _factor_snapshot_payload(run_date, frame, config=config))
 
     manifest_path = factor_dir / "manifest.json"
+    registry_path = factor_dir / "factor_registry.json"
+    save_json_file(registry_path, factor_registry_payload())
     save_json_file(
         manifest_path,
         {
             "schema_version": 1,
             "updated_at": datetime.now().isoformat(),
             "latest_run_date": run_date,
+            "factor_registry": str(registry_path),
             "row_count": int(len(frame)),
             "by_date_csv": str(by_date_csv),
             "by_date_parquet": str(by_date_parquet) if config.write_parquet else None,
@@ -168,6 +134,7 @@ def build_factor_store_for_date(
         "factor_by_date_parquet": by_date_parquet,
         "factor_snapshot_csv": selection_csv,
         "factor_snapshot_json": selection_json,
+        "factor_registry": registry_path,
     }
 
 
@@ -178,6 +145,7 @@ def build_symbol_factor_row(
     stock_name: str = "",
     sector: str = "",
     industry: str = "",
+    stock_type: str = "growth",
     base_dir: str | Path = "data",
     max_staleness_days: int = DEFAULT_MAX_STALENESS_DAYS,
 ) -> dict[str, Any] | None:
@@ -201,6 +169,7 @@ def build_symbol_factor_row(
         "stock_name": stock_name or symbol_info.stock_name or basic_row.get("stock_name") or symbol,
         "sector": sector,
         "industry": industry,
+        "stock_type": stock_type or "growth",
     }
     row.update(basic_row)
 
@@ -212,6 +181,15 @@ def build_symbol_factor_row(
 
     valuation_features = _valuation_distribution_features(stock_root / "pe_pb_analysis", run_date, row.get("latest_price"))
     row.update(valuation_features)
+
+    chip_dir = build_cache_dir(
+        symbol_info,
+        CacheKind.CHIP_DISTRIBUTION,
+        base_dir=base_path,
+        ensure=False,
+    )
+    chip_features = _chip_distribution_features(chip_dir / "chip_distribution.csv", run_date, row.get("close") or row.get("latest_price"))
+    row.update(chip_features)
 
     row["data_quality_score"] = _data_quality_score(row)
     return row
@@ -390,6 +368,26 @@ def _valuation_distribution_features(valuation_dir: Path, run_date: str, latest_
         if result["deduct_net_income_growth_yoy"] is not None:
             result["deduct_net_income_growth_yoy"] *= 100
 
+    pb_stats = target.get("PB统计") or {}
+    historical_pe_rows = target.get("历史PE数据") or []
+    if isinstance(pb_stats, Mapping) and isinstance(historical_pe_rows, list):
+        current_pb = _safe_float(pb_stats.get("当前PB"))
+        pb_values = [
+            value
+            for item in historical_pe_rows
+            if isinstance(item, Mapping)
+            for value in [_safe_float(item.get("PB"))]
+            if value is not None and value > 0
+        ]
+        if current_pb is not None and current_pb > 0:
+            pb_values.append(current_pb)
+        if pb_values:
+            result["pb_3_5y_median"] = float(np.median(pb_values))
+            result["pb_3_5y_std"] = float(np.std(pb_values, ddof=0))
+            if current_pb is not None and current_pb > 0:
+                result["pb_3_5y_percentile"] = sum(value <= current_pb for value in pb_values) / len(pb_values)
+                result["pb_current_vs_median"] = current_pb / result["pb_3_5y_median"] - 1.0 if result["pb_3_5y_median"] else None
+
     price_distribution = target.get("价格区间分布") or {}
     summary = price_distribution.get("summary") if isinstance(price_distribution, Mapping) else {}
     table = price_distribution.get("table") if isinstance(price_distribution, Mapping) else []
@@ -421,6 +419,57 @@ def _valuation_distribution_features(valuation_dir: Path, run_date: str, latest_
             avg_pb = result.get("price_bucket_avg_pb")
             result["pe_vs_price_bucket_avg"] = current_pe / avg_pe - 1.0 if current_pe and avg_pe else None
             result["pb_vs_price_bucket_avg"] = current_pb / avg_pb - 1.0 if current_pb and avg_pb else None
+    return result
+
+
+def _chip_distribution_features(path: Path, run_date: str, latest_price: Any) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    if not path.exists():
+        return result
+    try:
+        frame = pd.read_csv(path)
+    except Exception as exc:
+        LOGGER.warning("读取筹码分布缓存失败: %s error=%s", path, exc)
+        return result
+    if frame.empty or "日期" not in frame.columns:
+        return result
+
+    work = frame.copy()
+    work["日期"] = pd.to_datetime(work["日期"], errors="coerce")
+    work = work.dropna(subset=["日期"]).sort_values("日期")
+    asof = pd.Timestamp(run_date).normalize()
+    work = work[work["日期"] <= asof]
+    if work.empty:
+        return result
+
+    item = work.iloc[-1]
+    result["chip_asof_date"] = pd.Timestamp(item["日期"]).strftime("%Y-%m-%d")
+    result["chip_profit_ratio"] = _safe_float(item.get("获利比例"))
+    result["chip_avg_cost"] = _safe_float(item.get("平均成本"))
+    result["chip_cost_70_low"] = _safe_float(item.get("70成本-低"))
+    result["chip_cost_70_high"] = _safe_float(item.get("70成本-高"))
+    result["chip_concentration_70"] = _safe_float(item.get("70集中度"))
+    result["chip_cost_90_low"] = _safe_float(item.get("90成本-低"))
+    result["chip_cost_90_high"] = _safe_float(item.get("90成本-高"))
+    result["chip_concentration_90"] = _safe_float(item.get("90集中度"))
+
+    current_price = _safe_float(latest_price)
+    if current_price is None or current_price <= 0:
+        return result
+
+    avg_cost = result.get("chip_avg_cost")
+    if avg_cost:
+        result["price_vs_chip_avg_cost"] = current_price / avg_cost - 1.0
+
+    cost_70_low = result.get("chip_cost_70_low")
+    cost_70_high = result.get("chip_cost_70_high")
+    cost_90_high = result.get("chip_cost_90_high")
+    if cost_70_low:
+        result["chip_support_distance_70"] = current_price / cost_70_low - 1.0
+    if cost_70_high:
+        result["overhead_pressure_70"] = max(cost_70_high / current_price - 1.0, 0.0)
+    if cost_90_high:
+        result["overhead_pressure_90"] = max(cost_90_high / current_price - 1.0, 0.0)
     return result
 
 
@@ -464,7 +513,20 @@ def _last_date_token(value: str) -> str:
 
 def _normalize_numeric_columns(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.copy()
-    skip = {"date", "symbol", "stock_name", "sector", "industry", "daily_change_pct", "basic_info_asof_date", "price_asof_date", "technical_asof_date", "valuation_asof_file"}
+    skip = {
+        "date",
+        "symbol",
+        "stock_name",
+        "sector",
+        "industry",
+        "stock_type",
+        "daily_change_pct",
+        "basic_info_asof_date",
+        "price_asof_date",
+        "technical_asof_date",
+        "valuation_asof_file",
+        "chip_asof_date",
+    }
     for col in frame.columns:
         if col in skip:
             continue
@@ -472,134 +534,25 @@ def _normalize_numeric_columns(frame: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def _add_scores(frame: pd.DataFrame) -> pd.DataFrame:
+def _apply_factor_sanity_rules(frame: pd.DataFrame) -> pd.DataFrame:
+    """Guard factor semantics that cannot be fixed by raw numeric ranking."""
+
     frame = frame.copy()
-    for field in HIGHER_BETTER:
-        if field in frame.columns:
-            frame[f"score_{field}"] = _rank_score(frame[field], lower_better=False)
-    for field in LOWER_BETTER:
-        if field in frame.columns:
-            frame[f"score_{field}"] = _rank_score(frame[field], lower_better=True, positive_only=field in {"pe_ttm", "pb", "ps", "peg"})
-
-    frame["valuation_score"] = _mean_scores(
-        frame,
-        [
-            "score_pe_ttm",
-            "score_pb",
-            "score_ps",
-            "score_peg",
-            "score_pe_3_5y_percentile",
-            "score_pe_current_vs_median",
-            "score_price_position_3_5y",
-            "score_price_percentile_3_5y",
-            "score_price_bucket_index_3_5y",
-        ],
-    )
-    frame["fundamental_score"] = _mean_scores(
-        frame,
-        [
-            "score_roe",
-            "score_gross_margin",
-            "score_net_profit_margin",
-            "score_revenue_growth_yoy",
-            "score_net_income_growth_yoy",
-        ],
-    )
-    frame["trend_score"] = _mean_scores(
-        frame,
-        [
-            "score_return_3m",
-            "score_return_6m",
-            "score_return_1y",
-            "score_sharpe_3m",
-            "score_sharpe_6m",
-            "score_ma_bullish_score",
-        ],
-    )
-    if "rsi_14" in frame.columns:
-        frame["rsi_range_score"] = frame["rsi_14"].map(_rsi_range_score).fillna(0.5)
-    else:
-        frame["rsi_range_score"] = 0.5
-    frame["technical_score"] = _mean_scores(
-        frame,
-        [
-            "score_ma_bullish_score",
-            "score_macd",
-            "rsi_range_score",
-            "score_volume_ratio_5d_20d",
-        ],
-    )
-    frame["liquidity_factor_score"] = _mean_scores(
-        frame,
-        [
-            "score_amount",
-            "score_turnover_rate",
-            "score_avg_turnover_30d",
-            "score_liquidity_score",
-        ],
-    )
-    frame["risk_drawdown_score"] = _mean_scores(
-        frame,
-        [
-            "score_max_drawdown_3m",
-            "score_max_drawdown_6m",
-            "score_max_drawdown_1y",
-            "score_volatility_20d",
-            "score_volatility_60d",
-        ],
-    )
-    # Placeholders for Phase 3 factors. They remain neutral until raw datasets exist.
-    frame["event_board_score"] = 0.5
-    frame["money_chip_score"] = 0.5
-
-    frame["short_score"] = (
-        0.25 * frame["trend_score"]
-        + 0.20 * frame["technical_score"]
-        + 0.15 * frame["liquidity_factor_score"]
-        + 0.15 * frame["risk_drawdown_score"]
-        + 0.15 * frame["money_chip_score"]
-        + 0.10 * frame["event_board_score"]
-    )
-    frame["long_score"] = (
-        0.30 * frame["fundamental_score"]
-        + 0.25 * frame["valuation_score"]
-        + 0.20 * _mean_scores(frame, ["score_revenue_growth_yoy", "score_net_income_growth_yoy", "score_deduct_net_income_growth_yoy"])
-        + 0.10 * frame["trend_score"]
-        + 0.10 * frame["risk_drawdown_score"]
-        + 0.05 * frame["event_board_score"]
-    )
-    frame["combined_score"] = 0.5 * frame["short_score"] + 0.5 * frame["long_score"]
+    if "pe_ttm" not in frame.columns:
+        return frame
+    pe = pd.to_numeric(frame["pe_ttm"], errors="coerce")
+    pe_valid = pe > 0
+    frame["pe_valuation_valid"] = pe_valid
+    invalid_mask = ~pe_valid.fillna(False)
+    if invalid_mask.any():
+        for field in ("pe_3_5y_percentile", "pe_current_vs_median", "peg"):
+            if field not in frame.columns:
+                continue
+            raw_field = f"{field}_raw"
+            if raw_field not in frame.columns:
+                frame[raw_field] = frame[field]
+            frame.loc[invalid_mask, field] = np.nan
     return frame
-
-
-def _rank_score(series: pd.Series, *, lower_better: bool, positive_only: bool = False) -> pd.Series:
-    values = pd.to_numeric(series, errors="coerce")
-    if positive_only:
-        values = values.where(values > 0)
-    if values.notna().sum() <= 1:
-        return pd.Series(0.5, index=series.index)
-    ranks = values.rank(pct=True, ascending=not lower_better)
-    return ranks.fillna(0.5)
-
-
-def _mean_scores(frame: pd.DataFrame, fields: Sequence[str]) -> pd.Series:
-    present = [field for field in fields if field in frame.columns]
-    if not present:
-        return pd.Series(0.5, index=frame.index)
-    return frame[present].mean(axis=1).fillna(0.5)
-
-
-def _rsi_range_score(value: Any) -> float:
-    rsi = _safe_float(value)
-    if rsi is None:
-        return 0.5
-    if 45 <= rsi <= 65:
-        return 1.0
-    if 35 <= rsi < 45 or 65 < rsi <= 75:
-        return 0.7
-    if 25 <= rsi < 35 or 75 < rsi <= 85:
-        return 0.35
-    return 0.15
 
 
 def _data_quality_score(row: Mapping[str, Any]) -> float:

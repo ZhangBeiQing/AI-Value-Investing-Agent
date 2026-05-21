@@ -51,6 +51,13 @@ class DisclosureBundle:
 
 
 @dataclass(frozen=True)
+class ChipDistributionBundle:
+    frame: pd.DataFrame
+    end: datetime
+    source_path: Optional[Path] = None
+
+
+@dataclass(frozen=True)
 class PreparedData:
     symbolInfo: SymbolInfo
     as_of: datetime
@@ -58,6 +65,7 @@ class PreparedData:
     prices: PriceDataBundle
     share_info: ShareInfo
     disclosures: Optional[DisclosureBundle] = None
+    chip_distribution: Optional[ChipDistributionBundle] = None
 
 
 __all__ = [
@@ -65,5 +73,6 @@ __all__ = [
     "PriceDataBundle",
     "ShareInfo",
     "DisclosureBundle",
+    "ChipDistributionBundle",
     "PreparedData",
 ]
