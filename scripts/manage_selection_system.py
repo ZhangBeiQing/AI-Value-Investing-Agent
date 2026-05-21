@@ -177,6 +177,108 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Only write CSV/JSON outputs, skip parquet.",
     )
 
+    chip_parser = subparsers.add_parser(
+        "refresh-chip-distribution",
+        help="Refresh cached chip-distribution raw data for master_universe or specified symbols.",
+    )
+    chip_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format, used for logging consistency.")
+    chip_parser.add_argument(
+        "--symbols",
+        default="",
+        help="Comma-separated symbols to refresh. Default: all master_universe symbols.",
+    )
+    chip_parser.add_argument(
+        "--adjust",
+        default="qfq",
+        choices=("", "qfq", "hfq"),
+        help="AkShare adjustment mode for stock_cyq_em. Default: qfq.",
+    )
+    chip_parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Ignore TTL and refresh chip-distribution cache.",
+    )
+    chip_parser.add_argument(
+        "--prefer-local",
+        action="store_true",
+        help="Skip AkShare and compute chip distribution from local price.csv.",
+    )
+    chip_parser.add_argument(
+        "--full-history",
+        action="store_true",
+        help="When using local calculation, compute all available price history instead of latest 90 rows.",
+    )
+    chip_parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Optional max number of symbols to refresh, useful for smoke tests.",
+    )
+
+    factor_scores_parser = subparsers.add_parser(
+        "build-factor-scores",
+        help="Build configured factor score outputs from 12_factor_snapshot.",
+    )
+    factor_scores_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    factor_scores_parser.add_argument(
+        "--config",
+        default="configs/selection_system/factor_scoring.yaml",
+        help="Factor scoring YAML config path.",
+    )
+    factor_scores_parser.add_argument(
+        "--max-staleness-days",
+        type=int,
+        default=10,
+        help="Max days between requested date and cached basic snapshot date. Default: 10.",
+    )
+    factor_scores_parser.add_argument(
+        "--no-build-factor-store",
+        action="store_true",
+        help="Do not auto-build factor store when 12_factor_snapshot is missing.",
+    )
+
+    quant_parser = subparsers.add_parser(
+        "build-quant-prefilter",
+        help="Build TopN quantitative prefilter outputs from factor snapshots.",
+    )
+    quant_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
+    quant_parser.add_argument("--top-n", type=int, default=20, help="Top N per score bucket. Default: 20.")
+    quant_parser.add_argument("--min-amount", type=float, default=0.5, help="Minimum amount/latest_volume filter. Default: 0.5.")
+    quant_parser.add_argument("--min-liquidity-score", type=float, default=0.05, help="Minimum liquidity_score. Default: 0.05.")
+    quant_parser.add_argument(
+        "--max-staleness-days",
+        type=int,
+        default=10,
+        help="Max days between requested date and cached basic snapshot date. Default: 10.",
+    )
+    quant_parser.add_argument(
+        "--no-build-factor-store",
+        action="store_true",
+        help="Do not auto-build factor store when 12_factor_snapshot is missing.",
+    )
+
+    quant_backtest_parser = subparsers.add_parser(
+        "backtest-quant-prefilter",
+        help="Backtest TopN quantitative prefilter forward returns from factor-store by_date snapshots.",
+    )
+    quant_backtest_parser.add_argument("--start-date", help="Backtest start date YYYY-MM-DD. Default: first available factor date.")
+    quant_backtest_parser.add_argument("--end-date", help="Backtest end date YYYY-MM-DD. Default: latest available factor date.")
+    quant_backtest_parser.add_argument("--output-date", help="Selection run date used for output files. Default: end date.")
+    quant_backtest_parser.add_argument("--top-n", type=int, default=20, help="Top N portfolio size. Default: 20.")
+    quant_backtest_parser.add_argument(
+        "--score-column",
+        default="combined_score",
+        choices=("combined_score", "short_score", "long_score"),
+        help="Score column to rank by. Default: combined_score.",
+    )
+    quant_backtest_parser.add_argument(
+        "--hold-days",
+        default="1,3,5,10,20",
+        help="Comma-separated holding periods in trading days. Default: 1,3,5,10,20.",
+    )
+    quant_backtest_parser.add_argument("--min-amount", type=float, default=0.5, help="Minimum amount/latest_volume filter. Default: 0.5.")
+    quant_backtest_parser.add_argument("--min-liquidity-score", type=float, default=0.05, help="Minimum liquidity_score. Default: 0.05.")
+
     return parser
 
 
@@ -366,6 +468,133 @@ def _handle_build_factor_store(
     return 0
 
 
+def _handle_refresh_chip_distribution(
+    base_dir: str,
+    run_date: str,
+    symbols: str,
+    adjust: str,
+    force_refresh: bool,
+    prefer_local: bool,
+    full_history: bool,
+    limit: int,
+) -> int:
+    from shared_data_access.cache_registry import update_chip_distribution_cached
+    from utlity.stock_utils import SymbolFormatError, parse_symbol
+
+    paths = _selection_paths(base_dir)
+    requested = [item.strip().upper() for item in symbols.split(",") if item.strip()]
+    if requested:
+        symbol_values = requested
+    else:
+        document = load_master_universe(paths)
+        symbol_values = [stock.symbol for stock in document.stocks]
+    if limit > 0:
+        symbol_values = symbol_values[:limit]
+
+    success_count = 0
+    for symbol in symbol_values:
+        try:
+            symbol_info = parse_symbol(symbol)
+        except SymbolFormatError as exc:
+            LOGGER.warning("跳过非法 symbol: %s error=%s", symbol, exc)
+            continue
+        frame = update_chip_distribution_cached(
+            symbol_info,
+            adjust=adjust,
+            base_data_dir=base_dir,
+            logger=LOGGER,
+            force_refresh=force_refresh,
+            prefer_local=prefer_local,
+            local_full_history=full_history,
+        )
+        if frame is not None and not frame.empty:
+            success_count += 1
+
+    LOGGER.info(
+        "筹码分布刷新完成: run_date=%s requested=%d available=%d",
+        run_date,
+        len(symbol_values),
+        success_count,
+    )
+    return 0
+
+
+def _handle_build_factor_scores(
+    base_dir: str,
+    run_date: str,
+    config_path: str,
+    max_staleness_days: int,
+    ensure_factor_store: bool,
+) -> int:
+    from services.selection_system.factor_scoring import FactorScoringConfig, build_factor_scores_for_date
+
+    outputs = build_factor_scores_for_date(
+        run_date,
+        base_dir=base_dir,
+        config=FactorScoringConfig(
+            config_path=config_path,
+            max_staleness_days=max_staleness_days,
+        ),
+        ensure_factor_store=ensure_factor_store,
+    )
+    LOGGER.info("factor scores 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_build_quant_prefilter(
+    base_dir: str,
+    run_date: str,
+    top_n: int,
+    min_amount: float,
+    min_liquidity_score: float,
+    max_staleness_days: int,
+    ensure_factor_store: bool,
+) -> int:
+    from services.selection_system.quant_prefilter import QuantPrefilterConfig, build_quant_prefilter_for_date
+
+    outputs = build_quant_prefilter_for_date(
+        run_date,
+        base_dir=base_dir,
+        config=QuantPrefilterConfig(
+            top_n=top_n,
+            min_amount=min_amount,
+            min_liquidity_score=min_liquidity_score,
+            max_staleness_days=max_staleness_days,
+        ),
+        ensure_factor_store=ensure_factor_store,
+    )
+    LOGGER.info("quant prefilter 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_backtest_quant_prefilter(
+    base_dir: str,
+    start_date: str | None,
+    end_date: str | None,
+    output_date: str | None,
+    top_n: int,
+    score_column: str,
+    hold_days: str,
+    min_amount: float,
+    min_liquidity_score: float,
+) -> int:
+    from services.selection_system.quant_prefilter import backtest_quant_prefilter, parse_hold_days
+
+    outputs = backtest_quant_prefilter(
+        base_dir=base_dir,
+        start_date=start_date,
+        end_date=end_date,
+        output_date=output_date,
+        top_n=top_n,
+        score_column=score_column,
+        hold_days=parse_hold_days(hold_days),
+        min_amount=min_amount,
+        min_liquidity_score=min_liquidity_score,
+    )
+    LOGGER.info("quant prefilter backtest 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -432,6 +661,47 @@ def main() -> int:
             args.date,
             args.max_staleness_days,
             not args.no_parquet,
+        )
+    if args.command == "refresh-chip-distribution":
+        return _handle_refresh_chip_distribution(
+            args.base_dir,
+            args.date,
+            args.symbols,
+            args.adjust,
+            args.force_refresh,
+            args.prefer_local,
+            args.full_history,
+            args.limit,
+        )
+    if args.command == "build-factor-scores":
+        return _handle_build_factor_scores(
+            args.base_dir,
+            args.date,
+            args.config,
+            args.max_staleness_days,
+            not args.no_build_factor_store,
+        )
+    if args.command == "build-quant-prefilter":
+        return _handle_build_quant_prefilter(
+            args.base_dir,
+            args.date,
+            args.top_n,
+            args.min_amount,
+            args.min_liquidity_score,
+            args.max_staleness_days,
+            not args.no_build_factor_store,
+        )
+    if args.command == "backtest-quant-prefilter":
+        return _handle_backtest_quant_prefilter(
+            args.base_dir,
+            args.start_date,
+            args.end_date,
+            args.output_date,
+            args.top_n,
+            args.score_column,
+            args.hold_days,
+            args.min_amount,
+            args.min_liquidity_score,
         )
     parser.error(f"未知命令: {args.command}")
     return 2

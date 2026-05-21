@@ -20,6 +20,7 @@ from utlity import resolve_base_dir, SymbolInfo
 from .cache_registry import CacheKind, build_cache_dir, check_cache, ensure_symbol_data
 from .exceptions import CacheIntegrityError, DataUnavailableError
 from .models import (
+    ChipDistributionBundle,
     DisclosureBundle,
     FinancialDataBundle,
     PreparedData,
@@ -102,6 +103,11 @@ class SharedDataAccess:
         include_disclosures: bool = False,
         disclosure_lookback_days: Optional[int] = None,
         force_refresh_disclosures: bool = False,
+        include_chip_distribution: bool = False,
+        force_refresh_chip_distribution: bool = False,
+        chip_adjust: str = "qfq",
+        prefer_local_chip_distribution: bool = False,
+        local_full_history_chip_distribution: bool = False,
         
     ) -> PreparedData:
         """
@@ -139,6 +145,11 @@ class SharedDataAccess:
             include_disclosures=include_disclosures,
             disclosure_lookback_days=disclosure_window,
             force_refresh_disclosures=force_refresh_disclosures,
+            include_chip_distribution=include_chip_distribution,
+            force_refresh_chip_distribution=force_refresh_chip_distribution,
+            chip_adjust=chip_adjust,
+            prefer_local_chip_distribution=prefer_local_chip_distribution,
+            local_full_history_chip_distribution=local_full_history_chip_distribution,
         )
 
         # 判断是否为指数或ETF
@@ -184,6 +195,10 @@ class SharedDataAccess:
                 disclosure_window,
             )
 
+        chip_distribution = None
+        if include_chip_distribution and symbolInfo.is_cn_market():
+            chip_distribution = self._load_chip_distribution_bundle(symbolInfo, as_of_dt)
+
         return PreparedData(
             symbolInfo=symbolInfo,
             as_of=as_of_dt,
@@ -191,6 +206,7 @@ class SharedDataAccess:
             prices=prices,
             share_info=share_info,
             disclosures=disclosures,
+            chip_distribution=chip_distribution,
         )
 
     def build_macro_objective_panel(
@@ -501,6 +517,33 @@ class SharedDataAccess:
             frame=frame,
             start=start_dt,
             end=as_of_dt + timedelta(days=1),
+            source_path=csv_path if csv_path.exists() else None,
+        )
+
+    def _load_chip_distribution_bundle(
+        self,
+        symbolInfo: SymbolInfo,
+        as_of_dt: datetime,
+    ) -> ChipDistributionBundle:
+        cache_dir = build_cache_dir(
+            symbolInfo,
+            CacheKind.CHIP_DISTRIBUTION,
+            base_dir=self.base_dir,
+            ensure=True,
+        )
+        csv_path = cache_dir / "chip_distribution.csv"
+        frame = self._read_csv(csv_path) if csv_path.exists() else pd.DataFrame()
+        if frame is None:
+            frame = pd.DataFrame()
+        if not frame.empty and "日期" in frame.columns:
+            normalized = frame.copy()
+            normalized["日期"] = pd.to_datetime(normalized["日期"], errors="coerce")
+            normalized = normalized.dropna(subset=["日期"])
+            normalized = normalized[normalized["日期"] <= as_of_dt]
+            frame = normalized.sort_values("日期").reset_index(drop=True)
+        return ChipDistributionBundle(
+            frame=frame,
+            end=as_of_dt,
             source_path=csv_path if csv_path.exists() else None,
         )
 

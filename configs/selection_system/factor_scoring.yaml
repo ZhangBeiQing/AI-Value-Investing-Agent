@@ -1,0 +1,163 @@
+schema_version: 1
+description: "配置化因子评分：原始因子 -> 单因子分 -> 分组分 -> short/long/combined"
+
+normalization:
+  default_missing_score: 0.5
+
+factors:
+  pe_ttm: {direction: lower_better, positive_only: true}
+  pb: {direction: lower_better, positive_only: true}
+  ps: {direction: lower_better, positive_only: true}
+  peg: {direction: lower_better, positive_only: true}
+  pe_3_5y_percentile: {direction: lower_better}
+  pe_current_vs_median: {direction: lower_better}
+  pb_3_5y_percentile: {direction: lower_better}
+  pb_current_vs_median: {direction: lower_better}
+  price_position_3_5y: {direction: lower_better}
+  price_percentile_3_5y: {direction: lower_better}
+  price_bucket_index_3_5y: {direction: lower_better}
+
+  roe: {direction: higher_better}
+  gross_margin: {direction: higher_better}
+  net_profit_margin: {direction: higher_better}
+  revenue_growth_yoy: {direction: higher_better}
+  net_income_growth_yoy: {direction: higher_better}
+  deduct_net_income_growth_yoy: {direction: higher_better}
+
+  return_3m: {direction: higher_better}
+  return_6m: {direction: higher_better}
+  return_1y: {direction: higher_better}
+  sharpe_3m: {direction: higher_better}
+  sharpe_6m: {direction: higher_better}
+  sharpe_1y: {direction: higher_better}
+  distance_to_52w_high: {direction: higher_better}
+  ma_bullish_score: {direction: higher_better}
+  macd: {direction: higher_better}
+  rsi_14:
+    direction: range_best
+    ranges:
+      - {min: 45, max: 65, score: 1.0}
+      - {min: 35, max: 75, score: 0.7}
+      - {min: 25, max: 85, score: 0.35}
+    default_score: 0.15
+  volume_ratio_5d_20d: {direction: higher_better}
+
+  amount: {direction: higher_better}
+  turnover_rate: {direction: higher_better}
+  avg_turnover_30d: {direction: higher_better}
+  liquidity_score: {direction: higher_better}
+
+  max_drawdown_3m: {direction: higher_better}
+  max_drawdown_6m: {direction: higher_better}
+  max_drawdown_1y: {direction: higher_better}
+  volatility_20d: {direction: lower_better}
+  volatility_60d: {direction: lower_better}
+
+  chip_profit_ratio: {direction: higher_better}
+  chip_concentration_70: {direction: lower_better}
+  chip_concentration_90: {direction: lower_better}
+  price_vs_chip_avg_cost: {direction: higher_better}
+  chip_support_distance_70: {direction: higher_better}
+  overhead_pressure_70: {direction: lower_better}
+  overhead_pressure_90: {direction: lower_better}
+
+score_groups:
+  valuation_score:
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        peg: 0.25
+        pe_3_5y_percentile: 0.25
+        pe_current_vs_median: 0.05
+        price_position_3_5y: 0.17
+        price_percentile_3_5y: 0.18
+        price_bucket_index_3_5y: 0.10
+      cyclical:
+        pb_3_5y_percentile: 0.35
+        pb_current_vs_median: 0.25
+        price_position_3_5y: 0.15
+        price_percentile_3_5y: 0.15
+        price_bucket_index_3_5y: 0.10
+      special:
+        price_position_3_5y: 0.34
+        price_percentile_3_5y: 0.33
+        price_bucket_index_3_5y: 0.33
+  quality_score:
+    roe: 0.40
+    gross_margin: 0.30
+    net_profit_margin: 0.30
+  growth_score:
+    revenue_growth_yoy: 0.30
+    net_income_growth_yoy: 0.40
+    deduct_net_income_growth_yoy: 0.30
+  trend_score:
+    return_3m: 0.22
+    return_6m: 0.18
+    return_1y: 0.15
+    sharpe_3m: 0.18
+    sharpe_6m: 0.12
+    ma_bullish_score: 0.15
+  technical_score:
+    ma_bullish_score: 0.25
+    macd: 0.25
+    rsi_14: 0.25
+    volume_ratio_5d_20d: 0.25
+  liquidity_factor_score:
+    amount: 0.30
+    turnover_rate: 0.25
+    avg_turnover_30d: 0.20
+    liquidity_score: 0.25
+  risk_drawdown_score:
+    max_drawdown_3m: 0.25
+    max_drawdown_6m: 0.20
+    max_drawdown_1y: 0.20
+    volatility_20d: 0.20
+    volatility_60d: 0.15
+  chip_score:
+    chip_profit_ratio: 0.25
+    chip_concentration_70: 0.20
+    chip_concentration_90: 0.10
+    price_vs_chip_avg_cost: 0.15
+    chip_support_distance_70: 0.10
+    overhead_pressure_70: 0.15
+    overhead_pressure_90: 0.05
+  money_flow_score: {}
+  event_board_score: {}
+
+short:
+  gates:
+    - {field: amount, min: 0.5, reason: "成交额过低"}
+    - {field: liquidity_score, min: 0.05, reason: "流动性评分过低"}
+  main_weights:
+    trend_score: 0.22
+    technical_score: 0.18
+    liquidity_factor_score: 0.14
+    risk_drawdown_score: 0.12
+    chip_score: 0.12
+    money_flow_score: 0.12
+    event_board_score: 0.10
+
+long:
+  stock_type_field: stock_type
+  default_stock_type: growth
+  type_gates:
+    growth:
+      - {field: pe_ttm, positive: true, reason: "PE 为负或缺失"}
+      - {field: peg, max: 4.0, allow_missing: true, reason: "PEG 高于 4"}
+    cyclical:
+      - {field: pb, positive: true, reason: "PB 缺失或无效"}
+      - {field: pb_3_5y_percentile, max: 0.80, allow_missing: true, reason: "PB 历史分位过高"}
+    special: []
+  main_weights:
+    quality_score: 0.15
+    valuation_score: 0.25
+    growth_score: 0.2
+    trend_score: 0.1
+    risk_drawdown_score: 0.1
+    chip_score: 0.15
+    event_board_score: 0.05
+
+combined:
+  short_score: 0.5
+  long_score: 0.5

@@ -660,12 +660,15 @@ class BasicStockInfoService:
             }
         reference_dt = datetime.combine(reference_date, datetime.min.time())
         three_point_five_years_ago = reference_dt - timedelta(days=int(3.5 * 365))
-        values = [
-            item["PE"]
-            for item in pe_history
-            if _safe_float(item["PE"]) and pd.to_datetime(item["报告期"]) >= three_point_five_years_ago
-        ]
-        if current_pe:
+        values = []
+        for item in pe_history:
+            pe_value = _safe_float(item["PE"])
+            if pe_value is None or pe_value <= 0:
+                continue
+            if pd.to_datetime(item["报告期"]) >= three_point_five_years_ago:
+                values.append(pe_value)
+        current_pe_positive = current_pe is not None and current_pe > 0
+        if current_pe_positive:
             values.append(current_pe)
         if not values:
             return {
@@ -676,9 +679,9 @@ class BasicStockInfoService:
             }
         median_val = float(np.median(values))
         std_val = float(np.std(values))
-        current_value = current_pe if current_pe is not None else values[-1]
-        percentile = sum(v <= current_value for v in values) / len(values)
-        ratio = current_value / median_val if median_val > 0 else None
+        current_value = current_pe if current_pe_positive else None
+        percentile = sum(v <= current_value for v in values) / len(values) if current_value is not None else None
+        ratio = current_value / median_val if current_value is not None and median_val > 0 else None
         return {
             "pe_3_5y_median": _round(median_val),
             "pe_3_5y_percentile": _round(percentile),
