@@ -1383,6 +1383,7 @@ def ensure_symbol_data(
     lookback_price_days: int,
     force_refresh: bool = False,
     force_refresh_price: bool = False,
+    skip_price_refresh: bool = False,
     force_refresh_financials: bool = False,
     skip_financial_refresh: bool = False,
     include_disclosures: bool = False,
@@ -1407,6 +1408,7 @@ def ensure_symbol_data(
         stock_name: 股票名称（必填）
         price_lookback_days: 价格数据回溯天数，默认730天（约2年）
         force_refresh: 是否强制刷新所有缓存数据
+        skip_price_refresh: 是否跳过价格刷新，仅使用已有价格缓存
         force_refresh_financials: 是否强制刷新财务数据（比force_refresh更细粒度）
         reference_date: 参考日期，用于确定数据的时间范围，默认使用当前日期
         
@@ -1451,14 +1453,30 @@ def ensure_symbol_data(
     else:
         logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，仅获取价格数据")
 
-    # 第三步：获取并缓存价格数据 - 所有证券类型都需要
-    update_price_data_cached(
+    # 第三步：获取并缓存价格数据 - 所有证券类型都需要。
+    # 历史因子回填只允许读取本地 price.csv，避免回测批量任务触发外部 API。
+    price_cache_dir = build_cache_dir(
         symbolInfo,
-        lookback_days=lookback_price_days,
-        force_refresh=force_refresh or force_refresh_price,
-        base_data_dir=base_data_dir,
-        logger=logger,
+        CacheKind.PRICE_SERIES,
+        base_dir=base_data_dir,
+        ensure=False,
     )
+    price_file = price_cache_dir / "price.csv"
+    if skip_price_refresh and price_file.exists() and not (force_refresh or force_refresh_price):
+        if logger:
+            logger.info(
+                "%s %s 使用已有价格缓存，跳过价格刷新",
+                symbolInfo.stock_name,
+                symbolInfo.symbol,
+            )
+    else:
+        update_price_data_cached(
+            symbolInfo,
+            lookback_days=lookback_price_days,
+            force_refresh=force_refresh or force_refresh_price,
+            base_data_dir=base_data_dir,
+            logger=logger,
+        )
 
     if include_disclosures and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market()):
         update_disclosures_cached(

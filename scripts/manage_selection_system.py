@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import sys
 from pathlib import Path
@@ -176,6 +177,81 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only write CSV/JSON outputs, skip parquet.",
     )
+    factor_parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=1,
+        help="Worker count for local factor row construction. Default: 1.",
+    )
+
+    factor_history_parser = subparsers.add_parser(
+        "build-factor-history",
+        help="Backfill historical factor-store and factor-score snapshots from available local caches.",
+    )
+    factor_history_parser.add_argument("--start-date", help="Start date YYYY-MM-DD. Default: first available date.")
+    factor_history_parser.add_argument("--end-date", help="End date YYYY-MM-DD. Default: latest available date.")
+    factor_history_parser.add_argument(
+        "--source",
+        choices=("local_factor_store", "computed_basic_info", "basic_info_cache", "factor_store_cache"),
+        default="local_factor_store",
+        help="Historical source. Default: local_factor_store.",
+    )
+    factor_history_parser.add_argument(
+        "--years",
+        type=int,
+        default=4,
+        help="Years to backfill when --start-date is omitted and source uses price history. Default: 4.",
+    )
+    factor_history_parser.add_argument(
+        "--min-symbol-count",
+        type=int,
+        default=1,
+        help="Minimum symbols available for a date. Default: 1.",
+    )
+    factor_history_parser.add_argument(
+        "--max-staleness-days",
+        type=int,
+        default=10,
+        help="Max days between requested date and cached basic snapshot date. Default: 10.",
+    )
+    factor_history_parser.add_argument(
+        "--price-lookback-days",
+        type=int,
+        default=1800,
+        help="Price lookback used by existing basic_info calculation. Default: 1800.",
+    )
+    factor_history_parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=1,
+        help="Worker count. local_factor_store is usually fastest at 1; computed_basic_info may benefit from higher values. Default: 1.",
+    )
+    factor_history_parser.add_argument(
+        "--config",
+        default="configs/selection_system/factor_scoring.yaml",
+        help="Factor scoring YAML config path.",
+    )
+    factor_history_parser.add_argument(
+        "--no-parquet",
+        action="store_true",
+        help="Only write CSV/JSON outputs, skip parquet.",
+    )
+    factor_history_parser.add_argument(
+        "--skip-scores",
+        action="store_true",
+        help="Only build raw factor-store snapshots.",
+    )
+    factor_history_parser.add_argument(
+        "--build-prefilter",
+        action="store_true",
+        help="Also build short/long quant prefilter outputs for each historical date.",
+    )
+    factor_history_parser.add_argument(
+        "--no-skip-existing",
+        action="store_true",
+        help="Rebuild dates even when factor outputs already exist.",
+    )
+    factor_history_parser.add_argument("--top-n", type=int, default=20, help="Top N per book when --build-prefilter is set. Default: 20.")
 
     chip_parser = subparsers.add_parser(
         "refresh-chip-distribution",
@@ -213,6 +289,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Optional max number of symbols to refresh, useful for smoke tests.",
+    )
+    chip_parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=1,
+        help="Worker count for local chip history calculation. Default: 1.",
     )
 
     factor_scores_parser = subparsers.add_parser(
@@ -267,9 +349,9 @@ def _build_parser() -> argparse.ArgumentParser:
     quant_backtest_parser.add_argument("--top-n", type=int, default=20, help="Top N portfolio size. Default: 20.")
     quant_backtest_parser.add_argument(
         "--score-column",
-        default="combined_score",
+        default="short_score",
         choices=("combined_score", "short_score", "long_score"),
-        help="Score column to rank by. Default: combined_score.",
+        help="Score column to rank by. Default: short_score.",
     )
     quant_backtest_parser.add_argument(
         "--hold-days",
@@ -452,6 +534,7 @@ def _handle_build_factor_store(
     run_date: str,
     max_staleness_days: int,
     write_parquet: bool,
+    max_workers: int,
 ) -> int:
     from services.selection_system.factor_store import FactorStoreConfig, build_factor_store_for_date
 
@@ -462,9 +545,52 @@ def _handle_build_factor_store(
             max_staleness_days=max_staleness_days,
             write_parquet=write_parquet,
             write_csv=True,
+            max_workers=max_workers,
         ),
     )
     LOGGER.info("factor store 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
+    return 0
+
+
+def _handle_build_factor_history(
+    base_dir: str,
+    start_date: str | None,
+    end_date: str | None,
+    min_symbol_count: int,
+    max_staleness_days: int,
+    source: str,
+    years: int,
+    price_lookback_days: int,
+    max_workers: int,
+    config_path: str,
+    write_parquet: bool,
+    build_scores: bool,
+    build_prefilter: bool,
+    skip_existing: bool,
+    top_n: int,
+) -> int:
+    from services.selection_system.factor_history import FactorHistoryConfig, build_factor_history
+
+    outputs = build_factor_history(
+        base_dir=base_dir,
+        config=FactorHistoryConfig(
+            start_date=start_date,
+            end_date=end_date,
+            source=source,
+            years=years,
+            price_lookback_days=price_lookback_days,
+            max_workers=max_workers,
+            min_symbol_count=min_symbol_count,
+            max_staleness_days=max_staleness_days,
+            write_parquet=write_parquet,
+            build_scores=build_scores,
+            build_prefilter=build_prefilter,
+            skip_existing=skip_existing,
+            top_n=top_n,
+            scoring_config_path=config_path,
+        ),
+    )
+    LOGGER.info("factor history 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
     return 0
 
 
@@ -477,6 +603,7 @@ def _handle_refresh_chip_distribution(
     prefer_local: bool,
     full_history: bool,
     limit: int,
+    max_workers: int,
 ) -> int:
     from shared_data_access.cache_registry import update_chip_distribution_cached
     from utlity.stock_utils import SymbolFormatError, parse_symbol
@@ -491,13 +618,12 @@ def _handle_refresh_chip_distribution(
     if limit > 0:
         symbol_values = symbol_values[:limit]
 
-    success_count = 0
-    for symbol in symbol_values:
+    def refresh_one(symbol: str) -> bool:
         try:
             symbol_info = parse_symbol(symbol)
         except SymbolFormatError as exc:
             LOGGER.warning("跳过非法 symbol: %s error=%s", symbol, exc)
-            continue
+            return False
         frame = update_chip_distribution_cached(
             symbol_info,
             adjust=adjust,
@@ -507,14 +633,31 @@ def _handle_refresh_chip_distribution(
             prefer_local=prefer_local,
             local_full_history=full_history,
         )
-        if frame is not None and not frame.empty:
-            success_count += 1
+        return frame is not None and not frame.empty
+
+    success_count = 0
+    worker_count = max(int(max_workers or 1), 1)
+    if worker_count <= 1 or len(symbol_values) <= 1:
+        for symbol in symbol_values:
+            if refresh_one(symbol):
+                success_count += 1
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_map = {executor.submit(refresh_one, symbol): symbol for symbol in symbol_values}
+            for future in as_completed(future_map):
+                symbol = future_map[future]
+                try:
+                    if future.result():
+                        success_count += 1
+                except Exception as exc:
+                    LOGGER.warning("筹码分布刷新失败: symbol=%s error=%s", symbol, exc)
 
     LOGGER.info(
-        "筹码分布刷新完成: run_date=%s requested=%d available=%d",
+        "筹码分布刷新完成: run_date=%s requested=%d available=%d max_workers=%d",
         run_date,
         len(symbol_values),
         success_count,
+        worker_count,
     )
     return 0
 
@@ -661,6 +804,25 @@ def main() -> int:
             args.date,
             args.max_staleness_days,
             not args.no_parquet,
+            args.max_workers,
+        )
+    if args.command == "build-factor-history":
+        return _handle_build_factor_history(
+            args.base_dir,
+            args.start_date,
+            args.end_date,
+            args.min_symbol_count,
+            args.max_staleness_days,
+            args.source,
+            args.years,
+            args.price_lookback_days,
+            args.max_workers,
+            args.config,
+            not args.no_parquet,
+            not args.skip_scores,
+            args.build_prefilter,
+            not args.no_skip_existing,
+            args.top_n,
         )
     if args.command == "refresh-chip-distribution":
         return _handle_refresh_chip_distribution(
@@ -672,6 +834,7 @@ def main() -> int:
             args.prefer_local,
             args.full_history,
             args.limit,
+            args.max_workers,
         )
     if args.command == "build-factor-scores":
         return _handle_build_factor_scores(

@@ -57,6 +57,29 @@ def build_chip_distribution_from_price_frame(
     return result.reset_index(drop=True)
 
 
+def build_latest_chip_distribution_from_price_frame(
+    price_frame: pd.DataFrame,
+    *,
+    source_lookback_rows: int | None = 210,
+    cyq_window: int = 120,
+    factor: int = 150,
+) -> pd.DataFrame:
+    """Compute only the latest CYQ summary row from cached price data."""
+
+    frame = _normalize_price_frame(price_frame)
+    if frame.empty:
+        return pd.DataFrame(columns=OUTPUT_COLUMNS)
+
+    if source_lookback_rows is not None and source_lookback_rows > 0:
+        effective_rows = max(source_lookback_rows, cyq_window)
+        frame = frame.tail(effective_rows).reset_index(drop=True)
+
+    row = _compute_cyq_row(frame, len(frame) - 1, cyq_window=cyq_window, factor=factor)
+    if not row:
+        return pd.DataFrame(columns=OUTPUT_COLUMNS)
+    return pd.DataFrame([row], columns=OUTPUT_COLUMNS)
+
+
 def build_chip_distribution_from_price_csv(
     price_csv_path: str,
     *,
@@ -126,42 +149,7 @@ def _compute_cyq_row(
         return {}
 
     accuracy = max(0.01, (max_price - min_price) / (factor - 1))
-    xdata = np.zeros(factor, dtype=float)
-
-    for _, row in window.iterrows():
-        open_price = float(row["开盘"])
-        close_price = float(row["收盘"])
-        high_price = float(row["最高"])
-        low_price = float(row["最低"])
-        turnover = _normalize_turnover(row.get("换手率"))
-        if not all(np.isfinite(value) for value in (open_price, close_price, high_price, low_price)):
-            continue
-
-        average_price = (open_price + close_price + high_price + low_price) / 4.0
-        xdata *= 1.0 - turnover
-
-        if abs(high_price - low_price) < 1e-12:
-            idx = _clip_index(np.floor((average_price - min_price) / accuracy), factor)
-            xdata[idx] += (factor - 1) * turnover / 2.0
-            continue
-
-        high_idx = _clip_index(np.floor((high_price - min_price) / accuracy), factor)
-        low_idx = _clip_index(np.ceil((low_price - min_price) / accuracy), factor)
-        slope = 2.0 / (high_price - low_price)
-
-        for price_idx in range(low_idx, high_idx + 1):
-            current_price = min_price + accuracy * price_idx
-            if current_price <= average_price:
-                if abs(average_price - low_price) < 1e-12:
-                    increment = slope * turnover
-                else:
-                    increment = (current_price - low_price) / (average_price - low_price) * slope * turnover
-            else:
-                if abs(high_price - average_price) < 1e-12:
-                    increment = slope * turnover
-                else:
-                    increment = (high_price - current_price) / (high_price - average_price) * slope * turnover
-            xdata[price_idx] += max(increment, 0.0)
+    xdata = _cyq_chip_distribution(window, min_price=min_price, accuracy=accuracy, factor=factor)
 
     total_chips = float(xdata.sum())
     current_close = float(frame.iloc[index]["收盘"])
@@ -188,6 +176,77 @@ def _compute_cyq_row(
         "70成本-高": round(p70_high, 2),
         "70集中度": p70_con,
     }
+
+
+def _cyq_chip_distribution(
+    window: pd.DataFrame,
+    *,
+    min_price: float,
+    accuracy: float,
+    factor: int,
+) -> np.ndarray:
+    """Vectorized equivalent of the AkShare CYQ rolling-window calculation."""
+
+    opens = window["开盘"].to_numpy(dtype=float)
+    closes = window["收盘"].to_numpy(dtype=float)
+    highs = window["最高"].to_numpy(dtype=float)
+    lows = window["最低"].to_numpy(dtype=float)
+    turnovers = window["换手率"].map(_normalize_turnover).to_numpy(dtype=float)
+    valid = np.isfinite(opens) & np.isfinite(closes) & np.isfinite(highs) & np.isfinite(lows) & np.isfinite(turnovers)
+    if not valid.any():
+        return np.zeros(factor, dtype=float)
+
+    opens = opens[valid]
+    closes = closes[valid]
+    highs = highs[valid]
+    lows = lows[valid]
+    turnovers = turnovers[valid]
+    averages = (opens + closes + highs + lows) / 4.0
+    grid = _price_grid(min_price, accuracy, factor)
+
+    day_count = len(opens)
+    price_grid = grid.reshape(1, -1)
+    low_grid = lows.reshape(-1, 1)
+    high_grid = highs.reshape(-1, 1)
+    avg_grid = averages.reshape(-1, 1)
+    turnover_grid = turnovers.reshape(-1, 1)
+    price_in_range = (price_grid >= low_grid) & (price_grid <= high_grid)
+    height = high_grid - low_grid
+
+    contribution = np.zeros((day_count, factor), dtype=float)
+    flat_mask = np.abs(height[:, 0]) < 1e-12
+    if flat_mask.any():
+        indices = np.floor((averages[flat_mask] - min_price) / accuracy).astype(int)
+        indices = np.clip(indices, 0, factor - 1)
+        contribution[np.where(flat_mask)[0], indices] = (factor - 1) * turnovers[flat_mask] / 2.0
+
+    normal_mask = ~flat_mask
+    if normal_mask.any():
+        slope = 2.0 / np.where(np.abs(height) < 1e-12, np.nan, height)
+        left_denominator = avg_grid - low_grid
+        right_denominator = high_grid - avg_grid
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            left_value = np.where(
+                np.abs(left_denominator) < 1e-12,
+                slope * turnover_grid,
+                (price_grid - low_grid) / left_denominator * slope * turnover_grid,
+            )
+            right_value = np.where(
+                np.abs(right_denominator) < 1e-12,
+                slope * turnover_grid,
+                (high_grid - price_grid) / right_denominator * slope * turnover_grid,
+            )
+        normal_value = np.where(price_grid <= avg_grid, left_value, right_value)
+        normal_value = np.where(price_in_range & normal_mask.reshape(-1, 1), normal_value, 0.0)
+        contribution += np.nan_to_num(np.maximum(normal_value, 0.0), nan=0.0, posinf=0.0, neginf=0.0)
+
+    retention = np.clip(1.0 - turnovers, 0.0, 1.0)
+    reverse_cumprod = np.cumprod(retention[::-1])[::-1]
+    decay_after = np.ones(day_count, dtype=float)
+    if day_count > 1:
+        decay_after[:-1] = reverse_cumprod[1:]
+    return (contribution * decay_after.reshape(-1, 1)).sum(axis=0)
 
 
 def _clip_index(value: Any, factor: int) -> int:
@@ -231,4 +290,5 @@ __all__ = [
     "OUTPUT_COLUMNS",
     "build_chip_distribution_from_price_csv",
     "build_chip_distribution_from_price_frame",
+    "build_latest_chip_distribution_from_price_frame",
 ]
