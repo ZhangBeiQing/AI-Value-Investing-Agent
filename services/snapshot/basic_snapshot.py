@@ -258,6 +258,8 @@ class BasicStockInfoService:
         price_lookback_days: int = DEFAULT_PRICE_LOOKBACK_DAYS,
         force_refresh: bool = False,
         force_refresh_financials: bool = False,
+        skip_price_refresh: bool = False,
+        skip_financial_refresh: bool = False,
         analysis_datetime: Optional[datetime] = None,
         symbol_infos: Optional[Dict[str, SymbolInfo]] = None,
         target_dates: Optional[Dict[str, date]] = None,
@@ -267,6 +269,8 @@ class BasicStockInfoService:
         self.max_workers = max_workers
         self.force_refresh = force_refresh
         self.force_refresh_financials = force_refresh_financials
+        self.skip_price_refresh = skip_price_refresh
+        self.skip_financial_refresh = skip_financial_refresh
         self.symbol_infos = symbol_infos or {}
         self.target_dates = target_dates or {}
         base_analysis_date = (
@@ -480,6 +484,8 @@ class BasicStockInfoService:
                 as_of_date=self.analysis_datetime.strftime("%Y-%m-%d"),
                 force_refresh=self.force_refresh,
                 force_refresh_financials=self.force_refresh_financials,
+                skip_price_refresh=self.skip_price_refresh,
+                skip_financial_refresh=self.skip_financial_refresh,
             )
             stock_name = dataset.symbolInfo.stock_name
         except (CacheIntegrityError, DataUnavailableError) as exc:
@@ -1026,6 +1032,8 @@ def basic_info(
     price_lookback_days: int = DEFAULT_PRICE_LOOKBACK_DAYS,
     force_refresh: bool = False,
     force_refresh_financials: bool = False,
+    skip_price_refresh: bool = False,
+    skip_financial_refresh: bool = False,
     today_time: Optional[Union[str, datetime]] = None,
     use_cache: bool = True,
 ) -> Dict[str, Any]:
@@ -1076,6 +1084,8 @@ def basic_info(
             price_lookback_days=price_lookback_days,
             force_refresh=force_refresh,
             force_refresh_financials=force_refresh_financials,
+            skip_price_refresh=skip_price_refresh,
+            skip_financial_refresh=skip_financial_refresh,
             analysis_datetime=analysis_dt,
             symbol_infos=symbol_infos,
             target_dates=target_dates,
@@ -1126,6 +1136,7 @@ def build_basic_snapshot(
         price_lookback_days=price_lookback_days,
         force_refresh=False,
         force_refresh_financials=False,
+        skip_financial_refresh=False,
         # 生成流水线产物时直接重算，避免 basic_info_cache 里的旧派生字段污染输出。
         use_cache=False,
     )

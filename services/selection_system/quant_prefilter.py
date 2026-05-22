@@ -25,6 +25,7 @@ DEFAULT_MIN_LIQUIDITY_SCORE = 0.05
 DEFAULT_BACKTEST_HOLD_DAYS = (1, 3, 5, 10, 20)
 DEFAULT_LONG_BACKTEST_HOLD_DAYS = (20, 60, 120, 250)
 SCORE_COLUMNS = {"combined_score", "short_score", "long_score"}
+PRIMARY_SCORE_COLUMNS = ("short_score", "long_score")
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class QuantPrefilterConfig:
     min_amount: float = DEFAULT_MIN_AMOUNT
     min_liquidity_score: float = DEFAULT_MIN_LIQUIDITY_SCORE
     max_staleness_days: int = 10
-    score_columns: tuple[str, str, str] = ("combined_score", "short_score", "long_score")
+    score_columns: tuple[str, str] = PRIMARY_SCORE_COLUMNS
 
 
 def build_quant_prefilter_for_date(
@@ -56,37 +57,36 @@ def build_quant_prefilter_for_date(
         max_staleness_days=config.max_staleness_days,
     )
     scored = _eligible_frame(frame, run_date, config=config)
-    top_groups = {
-        "combined_top": _top_items(scored, "combined_score", config.top_n),
-        "short_top": _top_items(scored, "short_score", config.top_n),
-        "long_top": _top_items(scored, "long_score", config.top_n),
-    }
-
-    combined_frame = pd.DataFrame(top_groups["combined_top"])
-    if not combined_frame.empty:
-        combined_frame.insert(0, "quant_rank", range(1, len(combined_frame) + 1))
+    top_groups = {f"{score_column.removesuffix('_score')}_top": _top_items(scored, score_column, config.top_n) for score_column in config.score_columns}
+    short_frame = _top_frame(top_groups.get("short_top", []), "short")
+    long_frame = _top_frame(top_groups.get("long_top", []), "long")
+    combined_frame = pd.concat([short_frame, long_frame], ignore_index=True)
 
     csv_path = paths.run_dir(run_date) / "12_quant_prefilter.csv"
+    short_csv_path = paths.run_dir(run_date) / "12_quant_prefilter_short.csv"
+    long_csv_path = paths.run_dir(run_date) / "12_quant_prefilter_long.csv"
     json_path = paths.run_dir(run_date) / "12_quant_prefilter.json"
     combined_frame.to_csv(csv_path, index=False)
+    short_frame.to_csv(short_csv_path, index=False)
+    long_frame.to_csv(long_csv_path, index=False)
     save_json_file(
         json_path,
         {
             "schema_version": 2,
             "run_date": run_date,
             "generated_at": datetime.now().isoformat(),
-            "selection_method": "factor_store_rank_v1",
+            "selection_method": "factor_store_short_long_rank_v1",
             "top_n": config.top_n,
             "summary": {
                 "scored_count": int(len(scored)),
-                "selected_count": len(top_groups["combined_top"]),
-                "short_top_count": len(top_groups["short_top"]),
-                "long_top_count": len(top_groups["long_top"]),
+                "selected_count": int(len(combined_frame)),
+                "short_top_count": len(top_groups.get("short_top", [])),
+                "long_top_count": len(top_groups.get("long_top", [])),
                 "min_amount": config.min_amount,
                 "min_liquidity_score": config.min_liquidity_score,
                 "max_staleness_days": config.max_staleness_days,
             },
-            "items": top_groups["combined_top"],
+            "items": combined_frame.replace({np.nan: None}).to_dict(orient="records"),
             **top_groups,
         },
     )
@@ -94,10 +94,12 @@ def build_quant_prefilter_for_date(
         "量化初筛已生成: run_date=%s scored=%d selected=%d",
         run_date,
         len(scored),
-        len(top_groups["combined_top"]),
+        len(combined_frame),
     )
     return {
         "quant_prefilter_csv": csv_path,
+        "quant_prefilter_short_csv": short_csv_path,
+        "quant_prefilter_long_csv": long_csv_path,
         "quant_prefilter_json": json_path,
     }
 
@@ -108,7 +110,7 @@ def backtest_quant_prefilter(
     start_date: str | None = None,
     end_date: str | None = None,
     top_n: int = DEFAULT_TOP_N,
-    score_column: str = "combined_score",
+    score_column: str = "short_score",
     hold_days: Sequence[int] = DEFAULT_BACKTEST_HOLD_DAYS,
     min_amount: float = DEFAULT_MIN_AMOUNT,
     min_liquidity_score: float = DEFAULT_MIN_LIQUIDITY_SCORE,
@@ -162,8 +164,9 @@ def backtest_quant_prefilter(
     metrics = _backtest_metrics(detail)
     target_date = output_date or (selected_dates[-1] if selected_dates else datetime.now().strftime("%Y-%m-%d"))
     paths.ensure_run_dir(target_date)
-    summary_path = paths.run_dir(target_date) / "12_quant_prefilter_backtest.json"
-    detail_path = paths.run_dir(target_date) / "12_quant_prefilter_backtest_detail.csv"
+    score_stem = score_column.removesuffix("_score")
+    summary_path = paths.run_dir(target_date) / f"12_quant_prefilter_backtest_{score_stem}.json"
+    detail_path = paths.run_dir(target_date) / f"12_quant_prefilter_backtest_{score_stem}_detail.csv"
     detail.to_csv(detail_path, index=False)
     save_json_file(
         summary_path,
@@ -292,6 +295,15 @@ def _top_items(frame: pd.DataFrame, score_column: str, top_n: int) -> list[dict[
         item["rank"] = idx
         item["rank_score_column"] = score_column
     return items
+
+
+def _top_frame(items: list[dict[str, Any]], book: str) -> pd.DataFrame:
+    frame = pd.DataFrame(items)
+    if frame.empty:
+        return frame
+    frame.insert(0, "book", book)
+    frame.insert(1, "quant_rank", range(1, len(frame) + 1))
+    return frame
 
 
 def _available_factor_dates(paths: SelectionSystemPaths) -> list[str]:

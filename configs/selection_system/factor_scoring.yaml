@@ -1,5 +1,5 @@
 schema_version: 1
-description: "配置化因子评分：原始因子 -> 单因子分 -> 分组分 -> short/long/combined"
+description: "配置化因子评分：原始因子 -> 单因子分 -> 分股票类型分组分 -> short/long"
 
 normalization:
   default_missing_score: 0.5
@@ -20,9 +20,39 @@ factors:
   roe: {direction: higher_better}
   gross_margin: {direction: higher_better}
   net_profit_margin: {direction: higher_better}
-  revenue_growth_yoy: {direction: higher_better}
-  net_income_growth_yoy: {direction: higher_better}
-  deduct_net_income_growth_yoy: {direction: higher_better}
+  revenue_growth_yoy:
+    direction: higher_better
+    type_configs:
+      cyclical:
+        direction: range_best
+        ranges:
+          - {min: -10, max: 60, score: 1.0}
+          - {min: 60, max: 120, score: 0.65}
+          - {min: 120, max: 300, score: 0.30}
+        default_score: 0.20
+      special: {direction: higher_better}
+  net_income_growth_yoy:
+    direction: higher_better
+    type_configs:
+      cyclical:
+        direction: range_best
+        ranges:
+          - {min: -20, max: 80, score: 1.0}
+          - {min: 80, max: 150, score: 0.60}
+          - {min: 150, max: 500, score: 0.25}
+        default_score: 0.20
+      special: {direction: higher_better}
+  deduct_net_income_growth_yoy:
+    direction: higher_better
+    type_configs:
+      cyclical:
+        direction: range_best
+        ranges:
+          - {min: -20, max: 80, score: 1.0}
+          - {min: 80, max: 150, score: 0.60}
+          - {min: 150, max: 500, score: 0.25}
+        default_score: 0.20
+      special: {direction: higher_better}
 
   return_3m: {direction: higher_better}
   return_6m: {direction: higher_better}
@@ -84,44 +114,150 @@ score_groups:
         price_percentile_3_5y: 0.33
         price_bucket_index_3_5y: 0.33
   quality_score:
-    roe: 0.40
-    gross_margin: 0.30
-    net_profit_margin: 0.30
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        roe: 0.40
+        gross_margin: 0.30
+        net_profit_margin: 0.30
+      cyclical:
+        roe: 0.50
+        gross_margin: 0.20
+        net_profit_margin: 0.30
+      special:
+        gross_margin: 0.55
+        net_profit_margin: 0.20
+        roe: 0.25
   growth_score:
-    revenue_growth_yoy: 0.30
-    net_income_growth_yoy: 0.40
-    deduct_net_income_growth_yoy: 0.30
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        revenue_growth_yoy: 0.30
+        net_income_growth_yoy: 0.40
+        deduct_net_income_growth_yoy: 0.30
+      cyclical:
+        revenue_growth_yoy: 0.20
+        net_income_growth_yoy: 0.40
+        deduct_net_income_growth_yoy: 0.40
+      special:
+        revenue_growth_yoy: 0.60
+        net_income_growth_yoy: 0.25
+        deduct_net_income_growth_yoy: 0.15
   trend_score:
-    return_3m: 0.22
-    return_6m: 0.18
-    return_1y: 0.15
-    sharpe_3m: 0.18
-    sharpe_6m: 0.12
-    ma_bullish_score: 0.15
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        return_3m: 0.22
+        return_6m: 0.18
+        return_1y: 0.15
+        sharpe_3m: 0.18
+        sharpe_6m: 0.12
+        ma_bullish_score: 0.15
+      cyclical:
+        return_3m: 0.16
+        return_6m: 0.16
+        return_1y: 0.12
+        sharpe_3m: 0.18
+        sharpe_6m: 0.18
+        ma_bullish_score: 0.20
+      special:
+        return_3m: 0.24
+        return_6m: 0.18
+        return_1y: 0.12
+        sharpe_3m: 0.18
+        sharpe_6m: 0.10
+        ma_bullish_score: 0.18
   technical_score:
-    ma_bullish_score: 0.25
-    macd: 0.25
-    rsi_14: 0.25
-    volume_ratio_5d_20d: 0.25
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        ma_bullish_score: 0.25
+        macd: 0.25
+        rsi_14: 0.25
+        volume_ratio_5d_20d: 0.25
+      cyclical:
+        ma_bullish_score: 0.30
+        macd: 0.25
+        rsi_14: 0.20
+        volume_ratio_5d_20d: 0.25
+      special:
+        ma_bullish_score: 0.25
+        macd: 0.25
+        rsi_14: 0.25
+        volume_ratio_5d_20d: 0.25
   liquidity_factor_score:
-    amount: 0.30
-    turnover_rate: 0.25
-    avg_turnover_30d: 0.20
-    liquidity_score: 0.25
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        amount: 0.30
+        turnover_rate: 0.25
+        avg_turnover_30d: 0.20
+        liquidity_score: 0.25
+      cyclical:
+        amount: 0.35
+        turnover_rate: 0.20
+        avg_turnover_30d: 0.20
+        liquidity_score: 0.25
+      special:
+        amount: 0.30
+        turnover_rate: 0.25
+        avg_turnover_30d: 0.20
+        liquidity_score: 0.25
   risk_drawdown_score:
-    max_drawdown_3m: 0.25
-    max_drawdown_6m: 0.20
-    max_drawdown_1y: 0.20
-    volatility_20d: 0.20
-    volatility_60d: 0.15
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        max_drawdown_3m: 0.25
+        max_drawdown_6m: 0.20
+        max_drawdown_1y: 0.20
+        volatility_20d: 0.20
+        volatility_60d: 0.15
+      cyclical:
+        max_drawdown_3m: 0.20
+        max_drawdown_6m: 0.20
+        max_drawdown_1y: 0.25
+        volatility_20d: 0.15
+        volatility_60d: 0.20
+      special:
+        max_drawdown_3m: 0.20
+        max_drawdown_6m: 0.20
+        max_drawdown_1y: 0.20
+        volatility_20d: 0.20
+        volatility_60d: 0.20
   chip_score:
-    chip_profit_ratio: 0.25
-    chip_concentration_70: 0.20
-    chip_concentration_90: 0.10
-    price_vs_chip_avg_cost: 0.15
-    chip_support_distance_70: 0.10
-    overhead_pressure_70: 0.15
-    overhead_pressure_90: 0.05
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        chip_profit_ratio: 0.25
+        chip_concentration_70: 0.20
+        chip_concentration_90: 0.10
+        price_vs_chip_avg_cost: 0.15
+        chip_support_distance_70: 0.10
+        overhead_pressure_70: 0.15
+        overhead_pressure_90: 0.05
+      cyclical:
+        chip_profit_ratio: 0.15
+        chip_concentration_70: 0.25
+        chip_concentration_90: 0.15
+        price_vs_chip_avg_cost: 0.10
+        chip_support_distance_70: 0.15
+        overhead_pressure_70: 0.15
+        overhead_pressure_90: 0.05
+      special:
+        chip_profit_ratio: 0.25
+        chip_concentration_70: 0.20
+        chip_concentration_90: 0.10
+        price_vs_chip_avg_cost: 0.15
+        chip_support_distance_70: 0.10
+        overhead_pressure_70: 0.15
+        overhead_pressure_90: 0.05
   money_flow_score: {}
   event_board_score: {}
 
@@ -150,13 +286,33 @@ long:
       - {field: pb_3_5y_percentile, max: 0.80, allow_missing: true, reason: "PB 历史分位过高"}
     special: []
   main_weights:
-    quality_score: 0.15
-    valuation_score: 0.25
-    growth_score: 0.2
-    trend_score: 0.1
-    risk_drawdown_score: 0.1
-    chip_score: 0.15
-    event_board_score: 0.05
+    stock_type_field: stock_type
+    default_stock_type: growth
+    type_weights:
+      growth:
+        quality_score: 0.15
+        valuation_score: 0.25
+        growth_score: 0.20
+        trend_score: 0.10
+        risk_drawdown_score: 0.10
+        chip_score: 0.15
+        event_board_score: 0.05
+      cyclical:
+        valuation_score: 0.35
+        chip_score: 0.20
+        quality_score: 0.12
+        growth_score: 0.08
+        trend_score: 0.10
+        risk_drawdown_score: 0.10
+        event_board_score: 0.05
+      special:
+        growth_score: 0.25
+        trend_score: 0.20
+        chip_score: 0.15
+        quality_score: 0.10
+        valuation_score: 0.10
+        risk_drawdown_score: 0.10
+        event_board_score: 0.10
 
 combined:
   short_score: 0.5

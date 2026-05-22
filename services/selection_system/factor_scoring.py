@@ -49,7 +49,8 @@ def build_factor_scores_for_date(
         max_staleness_days=config.max_staleness_days,
     )
     scored = score_factor_frame(snapshot, scoring_config)
-    scored = scored.sort_values(["combined_score", "short_score", "long_score"], ascending=False, na_position="last").reset_index(drop=True)
+    scored = _add_horizon_ranks(scored)
+    scored = scored.sort_values(["long_score", "short_score"], ascending=False, na_position="last").reset_index(drop=True)
     if "factor_score_rank" not in scored.columns:
         scored.insert(0, "factor_score_rank", range(1, len(scored) + 1))
     scored = _order_factor_score_columns(scored)
@@ -105,7 +106,12 @@ def score_factor_frame(frame: pd.DataFrame, scoring_config: Mapping[str, Any]) -
             continue
         factor_config = raw_config if isinstance(raw_config, Mapping) else {}
         score_col = f"score_{factor_name}"
-        work[score_col] = _score_factor(work[factor_name], factor_config, default_missing_score=default_missing_score)
+        work[score_col] = _score_factor_by_type(
+            work,
+            factor_name,
+            factor_config,
+            default_missing_score=default_missing_score,
+        )
 
     score_groups = scoring_config.get("score_groups") or {}
     if not isinstance(score_groups, Mapping):
@@ -132,6 +138,8 @@ def score_factor_frame(frame: pd.DataFrame, scoring_config: Mapping[str, Any]) -
 def _order_factor_score_columns(frame: pd.DataFrame) -> pd.DataFrame:
     priority_columns = [
         "factor_score_rank",
+        "long_rank",
+        "short_rank",
         "factor_rank",
         "date",
         "symbol",
@@ -143,6 +151,18 @@ def _order_factor_score_columns(frame: pd.DataFrame) -> pd.DataFrame:
     ordered = [column for column in priority_columns if column in frame.columns]
     remaining = [column for column in frame.columns if column not in ordered]
     return frame[ordered + remaining]
+
+
+def _add_horizon_ranks(frame: pd.DataFrame) -> pd.DataFrame:
+    work = frame.copy()
+    for score_column, rank_column in (("short_score", "short_rank"), ("long_score", "long_rank")):
+        if score_column not in work.columns:
+            continue
+        scores = pd.to_numeric(work[score_column], errors="coerce")
+        ranks = scores.rank(method="min", ascending=False, na_option="bottom")
+        work[rank_column] = ranks.astype("Int64")
+        work.loc[scores.isna(), rank_column] = pd.NA
+    return work
 
 
 def _load_factor_snapshot(
@@ -192,6 +212,43 @@ def _score_factor(series: pd.Series, factor_config: Mapping[str, Any], *, defaul
     else:
         ranked = pd.Series(default_missing_score, index=series.index)
     return ranked.fillna(default_missing_score)
+
+
+def _score_factor_by_type(
+    frame: pd.DataFrame,
+    factor_name: str,
+    factor_config: Mapping[str, Any],
+    *,
+    default_missing_score: float,
+) -> pd.Series:
+    type_configs = factor_config.get("type_configs")
+    if not isinstance(type_configs, Mapping):
+        return _score_factor(frame[factor_name], factor_config, default_missing_score=default_missing_score)
+
+    stock_type_field = str(factor_config.get("stock_type_field") or "stock_type")
+    default_stock_type = str(factor_config.get("default_stock_type") or "growth")
+    stock_types = (
+        frame[stock_type_field].fillna(default_stock_type).astype(str)
+        if stock_type_field in frame.columns
+        else pd.Series(default_stock_type, index=frame.index)
+    )
+    result = pd.Series(default_missing_score, index=frame.index, dtype=float)
+    for stock_type in stock_types.unique():
+        mask = stock_types == stock_type
+        typed_config = _merge_factor_config(factor_config, type_configs.get(stock_type))
+        result.loc[mask] = _score_factor(
+            frame.loc[mask, factor_name],
+            typed_config,
+            default_missing_score=default_missing_score,
+        )
+    return result
+
+
+def _merge_factor_config(base_config: Mapping[str, Any], raw_override: Any) -> dict[str, Any]:
+    merged = {key: value for key, value in base_config.items() if key != "type_configs"}
+    if isinstance(raw_override, Mapping):
+        merged.update(raw_override)
+    return merged
 
 
 def _range_score(value: Any, factor_config: Mapping[str, Any], *, default_missing_score: float) -> float:
@@ -281,6 +338,9 @@ def _apply_horizon_score(
 
 
 def _weighted_main_score(frame: pd.DataFrame, weights: Mapping[str, Any], *, default_missing_score: float) -> pd.Series:
+    if "type_weights" in weights:
+        return _typed_main_score(frame, weights, default_missing_score=default_missing_score)
+
     weighted_sum = pd.Series(0.0, index=frame.index)
     total_weight = 0.0
     for group_name, raw_weight in weights.items():
@@ -296,6 +356,30 @@ def _weighted_main_score(frame: pd.DataFrame, weights: Mapping[str, Any], *, def
     if total_weight <= 0:
         return pd.Series(default_missing_score, index=frame.index)
     return weighted_sum / total_weight
+
+
+def _typed_main_score(frame: pd.DataFrame, weights: Mapping[str, Any], *, default_missing_score: float) -> pd.Series:
+    type_weights = weights.get("type_weights")
+    if not isinstance(type_weights, Mapping):
+        return pd.Series(default_missing_score, index=frame.index)
+
+    stock_type_field = str(weights.get("stock_type_field") or "stock_type")
+    default_stock_type = str(weights.get("default_stock_type") or "growth")
+    stock_types = (
+        frame[stock_type_field].fillna(default_stock_type).astype(str)
+        if stock_type_field in frame.columns
+        else pd.Series(default_stock_type, index=frame.index)
+    )
+    result = pd.Series(default_missing_score, index=frame.index, dtype=float)
+    fallback_weights = type_weights.get(default_stock_type, {})
+    for stock_type in stock_types.unique():
+        mask = stock_types == stock_type
+        raw_weights = type_weights.get(stock_type, fallback_weights)
+        if not isinstance(raw_weights, Mapping) or not raw_weights:
+            result.loc[mask] = default_missing_score
+            continue
+        result.loc[mask] = _weighted_main_score(frame.loc[mask], raw_weights, default_missing_score=default_missing_score)
+    return result
 
 
 def _evaluate_gates(frame: pd.DataFrame, gates: Any) -> tuple[pd.Series, pd.Series]:

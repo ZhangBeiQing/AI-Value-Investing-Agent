@@ -98,6 +98,7 @@ class SharedDataAccess:
         as_of_date: str,
         force_refresh: bool = False,
         force_refresh_price: bool = False,
+        skip_price_refresh: bool = False,
         force_refresh_financials: bool = False,
         skip_financial_refresh: bool = False,
         include_disclosures: bool = False,
@@ -117,6 +118,7 @@ class SharedDataAccess:
             symbolInfo: 股票信息对象，包含股票代码和名称等信息
             as_of_date: 截至日期，格式为YYYY-MM-DD
             force_refresh: 是否强制刷新所有缓存数据
+            skip_price_refresh: 是否跳过价格刷新，仅使用已有价格缓存
             force_refresh_financials: 是否仅强制刷新财务数据
             include_disclosures: 是否加载公告列表数据
             disclosure_lookback_days: 公告回溯天数，默认使用初始化配置
@@ -140,6 +142,7 @@ class SharedDataAccess:
             lookback_price_days=self.price_lookback_days,
             force_refresh=force_refresh,
             force_refresh_price=force_refresh_price,
+            skip_price_refresh=skip_price_refresh,
             force_refresh_financials=force_refresh_financials,
             skip_financial_refresh=skip_financial_refresh,
             include_disclosures=include_disclosures,
@@ -164,6 +167,7 @@ class SharedDataAccess:
             prices = self._load_price_bundle(
                 symbolInfo,
                 as_of_dt,
+                allow_stale_cache=skip_price_refresh,
             )
             
             # 为财务数据提供空值
@@ -184,7 +188,11 @@ class SharedDataAccess:
         else:
             # 对于普通股票，加载所有数据
             financials = self._load_financial_bundle(symbolInfo, as_of_dt)
-            prices = self._load_price_bundle(symbolInfo, as_of_dt)
+            prices = self._load_price_bundle(
+                symbolInfo,
+                as_of_dt,
+                allow_stale_cache=skip_price_refresh,
+            )
             share_info = self._load_share_info(symbolInfo, as_of_dt)
 
         disclosures = None
@@ -393,6 +401,8 @@ class SharedDataAccess:
         self,
         symbolInfo: SymbolInfo,
         as_of_dt: datetime,
+        *,
+        allow_stale_cache: bool = False,
     ) -> PriceDataBundle:
         """
         加载并返回指定股票的价格数据包
@@ -412,7 +422,7 @@ class SharedDataAccess:
         status = check_cache(prices_dir, CacheKind.PRICE_SERIES)
         if not prices_dir.exists():
             raise CacheIntegrityError(f"缺少价格缓存目录: {prices_dir}")
-        if status.stale:
+        if status.stale and not allow_stale_cache:
             raise CacheIntegrityError(
                 f"价格缓存已过期 (last_updated={status.last_updated})"
             )
