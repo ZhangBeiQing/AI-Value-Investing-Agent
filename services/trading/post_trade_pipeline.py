@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from core.runtime_state import get_config_value, write_config_value
+from core.logging import init_component_logger
+
+logger = init_component_logger("PostTradePipeline")
 from services.trading.price_reference import add_no_trade_record
 from services.trading.trade_executor import execute_buy_orders, execute_sell_orders
 from services.trading.trade_summary import (
@@ -292,7 +295,10 @@ def validate_decision_json(
         present = {_entry_symbol(op) for op in ops if isinstance(op, dict)}
         missing = sorted(sym for sym in target_symbols if sym not in present)
         if missing:
-            errors.append(f"缺少股票池标的: {', '.join(missing)}")
+            logger.info(
+                "未深度分析的全池标的(不影响校验): %s",
+                ", ".join(missing),
+            )
 
     return errors
 
