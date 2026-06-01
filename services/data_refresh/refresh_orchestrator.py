@@ -199,31 +199,38 @@ def run_refresh_pipeline(
     base_dir: str = "data",
     stop_on_failure: bool = True,
     include_selection_universe: bool = False,
+    generate_prefilter: bool = True,
+    skip_news_boards: bool = False,
 ) -> OrchestratorResult:
     """按固定顺序刷新每日分析所需数据。
 
     **策略归属**：本编排层是"每日 fresh 数据"策略的唯一决策源。它决定：
     - 默认每日应刷新的股票范围 = TRACKED_A_STOCKS
-    - 仅当 `include_selection_universe=True` 时，额外合并 master_universe
+    - `generate_prefilter=True` 时，扩展至 master_universe 并生成量化初筛结果，
+      但跳过新闻/公告/信号/候选池等步骤
+    - `include_selection_universe=True` 时，扩展至 master_universe 并启用完整选股管线
     - 价格 / 财报结构化 / basic_info 由 manage_daily_data 负责
-    - 新闻采集 / 板块热度 默认执行，为渐进式热点总结提供输入
+    - 新闻采集 / 板块热度 默认执行，为渐进式热点总结提供输入；
+      `skip_news_boards=True` 时可跳过
     - 公告由 selection_system.build-announcements 单独负责（增量 + audit），
       因此 manage_daily_data 以 --skip-disclosures 跳过重复扫描
-    - 选股系统（候选池生成等）仅在 `include_selection_universe=True` 时启用
+    - 选股系统（信号/公告/共享上下文/候选池）仅在 `include_selection_universe=True` 时启用
 
     顺序依赖解释：
     1. manage_daily_data：宏观客观面板 + 行情快照 + basic_stock_info
     2. selection.run-news：全市场新闻采集/去重/增强 → 03_news_prompt_input.json
     3. selection.build-board-heat-state：板块热度分析 → 05_board_heat_state/digest.json
-    4. 仅在 include_selection_universe=True 时，继续执行信号/公告/共享上下文/候选池。
+    4. generate_prefilter 或 include_selection_universe 根据参数选择后续步骤。
     """
     result = OrchestratorResult(run_date=run_date, fresh_heavy=fresh_heavy)
 
+    expand_universe = include_selection_universe or generate_prefilter
+
     refresh_symbols = _load_daily_refresh_symbols(
         base_dir=base_dir,
-        include_selection_universe=include_selection_universe,
+        include_selection_universe=expand_universe,
     )
-    if include_selection_universe:
+    if expand_universe:
         LOGGER.info(
             "本次一键刷新覆盖 %d 只股票（TRACKED_A_STOCKS ∪ master_universe）",
             len(refresh_symbols),
@@ -246,36 +253,54 @@ def run_refresh_pipeline(
                 symbols=refresh_symbols,
             ),
         ),
-        (
-            "selection.run-news",
-            _selection_cmd("run-news", run_date, base_dir=base_dir),
-        ),
-        (
-            "selection.build-board-heat-state",
-            _selection_cmd("build-board-heat-state", run_date, "--force-refresh", base_dir=base_dir),
-        ),
     ]
-    if include_selection_universe:
-        steps.extend(
-            [
-                (
-                    "selection.run-signals",
-                    _selection_cmd("run-signals", run_date, base_dir=base_dir),
-                ),
-                (
-                    "selection.build-announcements",
-                    _selection_cmd("build-announcements", run_date, base_dir=base_dir),
-                ),
-                (
-                    "selection.build-shared-context",
-                    _selection_cmd("build-shared-context", run_date, base_dir=base_dir),
-                ),
-                (
-                    "selection.build-candidate-pools",
-                    _selection_cmd("build-candidate-pools", run_date, base_dir=base_dir),
-                ),
-            ]
-        )
+
+    if not skip_news_boards:
+        steps.extend([
+            (
+                "selection.run-news",
+                _selection_cmd("run-news", run_date, base_dir=base_dir),
+            ),
+            (
+                "selection.build-board-heat-state",
+                _selection_cmd("build-board-heat-state", run_date, "--force-refresh", base_dir=base_dir),
+            ),
+        ])
+
+    if generate_prefilter:
+        steps.extend([
+            (
+                "selection.build-factor-store",
+                _selection_cmd("build-factor-store", run_date, base_dir=base_dir),
+            ),
+            (
+                "selection.build-factor-scores",
+                _selection_cmd("build-factor-scores", run_date, base_dir=base_dir),
+            ),
+            (
+                "selection.build-quant-prefilter",
+                _selection_cmd("build-quant-prefilter", run_date, base_dir=base_dir),
+            ),
+        ])
+    elif include_selection_universe:
+        steps.extend([
+            (
+                "selection.run-signals",
+                _selection_cmd("run-signals", run_date, base_dir=base_dir),
+            ),
+            (
+                "selection.build-announcements",
+                _selection_cmd("build-announcements", run_date, base_dir=base_dir),
+            ),
+            (
+                "selection.build-shared-context",
+                _selection_cmd("build-shared-context", run_date, base_dir=base_dir),
+            ),
+            (
+                "selection.build-candidate-pools",
+                _selection_cmd("build-candidate-pools", run_date, base_dir=base_dir),
+            ),
+        ])
 
     for name, cmd in steps:
         step_result = _run_step(name, cmd)
@@ -296,11 +321,8 @@ def run_refresh_pipeline(
 
 
 def format_followup_checklist(run_date: str, *, include_selection_universe: bool = False) -> str:
-    """打印后续需要人工触发的 skill / 脚本清单。
+    """打印后续需要人工触发的 skill / 脚本清单。"""
 
-    这些动作要么依赖 LLM / 联网分析（skill），要么位于人工确认节点之后
-    （交易执行与后处理），不纳入一键刷新流水线自动执行。
-    """
     if include_selection_universe:
         lines = [
             "",
@@ -338,7 +360,7 @@ def format_followup_checklist(run_date: str, *, include_selection_universe: bool
     lines = [
         "",
         "=" * 72,
-        f"数据刷新完成（交易日 {run_date}）。接下来请依次人工触发：",
+        f"数据刷新 & 量化初筛完成（交易日 {run_date}）。接下来请依次人工触发：",
         "=" * 72,
         "",
         "【宏观与新闻总结 skill（需 LLM / 联网）】",
@@ -349,20 +371,24 @@ def format_followup_checklist(run_date: str, *, include_selection_universe: bool
         + run_date
         + "/06_hot_news_state.json",
         "",
-        "【固定股票池财报准备与总结】",
-        f"  3. python scripts/prepare_financial_report_skill.py --date {run_date} --sync-first --json",
-        "  4. /financial-report-summary         → fixed_tracked 各股 financial_reports/*.md",
+        "【财报准备与总结（fixed_tracked + 量化初筛短期股）】",
+        f"  3. python scripts/prepare_financial_report_skill.py --date {run_date} --sync-first --json --include-quant-prefilter",
+        "  4. /financial-report-summary         → 各股 financial_reports/*.md",
         "",
-        "【固定股票池 01-04 产物】",
-        f"  5. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6",
+        "【三账本 01-04 产物】",
+        f"  5. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6 --all-books",
         "",
-        "【固定股票池交易 skill（生成 05_decision.json 后人工确认）】",
+        "【三账本交易 skill（生成 05_decision.json 后人工确认）】",
         "  6. /auto-trading-fixed-tracked",
+        "  7. /auto-trading-short-book",
+        "  8. /auto-trading-long-book",
         "",
-        "【人工确认后执行后处理】",
-        f"  7. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
+        "【人工确认后分别执行后处理】",
+        f"  9. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
+        f"  10. python scripts/run_post_trade.py --date {run_date} --book-type short_book --signature book-short_book",
+        f"  11. python scripts/run_post_trade.py --date {run_date} --book-type long_book --signature book-long_book",
         "",
-        "说明：当前默认不跑 auto-selection-daily-pipeline、short_book、long_book。",
+        "说明：short_book 股票池来自 12_quant_prefilter_short.csv（量化初筛 Top20），long_book 来自 12_quant_prefilter_long.csv。",
         "=" * 72,
     ]
     return "\n".join(lines)

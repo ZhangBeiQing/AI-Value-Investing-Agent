@@ -86,6 +86,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="额外恢复旧口径：连同 master_universe 与选股系统链路一起刷新；默认仅处理固定股票池。",
     )
+    parser.add_argument(
+        "--no-generate-prefilter",
+        action="store_true",
+        help="跳过量化初筛生成；默认会自动生成 factor_store 和 12_quant_prefilter。",
+    )
+    parser.add_argument(
+        "--skip-news-boards",
+        action="store_true",
+        help="跳过新闻采集和板块热度分析步骤。",
+    )
     return parser
 
 
@@ -94,11 +104,12 @@ def main() -> int:
     run_date: str = args.date
 
     LOGGER.info(
-        "开始一键刷新：date=%s, fresh_heavy=%s, max_workers=%d, include_selection_universe=%s",
+        "开始一键刷新：date=%s, fresh_heavy=%s, max_workers=%d, include_selection_universe=%s, generate_prefilter=%s",
         run_date,
         args.fresh_heavy,
         args.max_workers,
         args.include_selection_universe,
+        not args.no_generate_prefilter,
     )
 
     result = run_refresh_pipeline(
@@ -110,6 +121,8 @@ def main() -> int:
         base_dir=args.base_dir,
         stop_on_failure=not args.continue_on_failure,
         include_selection_universe=args.include_selection_universe,
+        generate_prefilter=not args.no_generate_prefilter,
+        skip_news_boards=args.skip_news_boards,
     )
 
     print(summarize_result(result))
