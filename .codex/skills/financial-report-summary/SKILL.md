@@ -1,7 +1,7 @@
 ---
 name: financial-report-summary
 description: >
-  用于对固定跟踪股池/选股深研队列中的股票逐股生成深度财报分析文档。
+  用于对固定跟踪股池、长期股池、短期股池队列中的股票逐股生成深度财报分析文档。
   主 agent 运行准备脚本、派发 subagent（每只股票一个），subagent 自主完成阅读→搜索→诊断→验证→撰写的完整研究循环。
   用户说"生成财报总结"时使用。
 ---
@@ -12,21 +12,23 @@ description: >
 
 # Part A：主 agent 工作流
 
-## A.1 确定标的来源
+## A.1 确定需要准备财报基本面分析的股票
 
-- **默认**：仅覆盖固定跟踪股池 `configs/stock_pool.py` 中的 `TRACKED_A_STOCKS`
-- **用户明确要求才加**：最近一个选股深研队列 `data/selection_runs/YYYY-MM-DD/11_deep_research_queue.json`
-- 参数：
-  - 只深研队列不要 tracked：`--include-queue --no-include-tracked`
-  - 只特定账本：按 `final_mandate` 过滤 `short_book` / `long_book` / `tracked`
+- 本skill所需分析的股票位于以下位置：
+  1、固定股池 `configs/stock_pool.py` 中的 `TRACKED_A_STOCKS`
+  2、data/selection_runs/{run_date}/12_quant_prefilter_long.csv
+  3、data/selection_runs/{run_date}/12_quant_prefilter_short.csv 
+  他们分别代表固定股池、每日最新长期股池和短期股池，本skill的目的就是确保这三者中的股票的财报基本面都被分析过
 
-## A.2 运行准备脚本
+## A.2 准备分析基本面所需要的材料
+
+运行以下脚本
 
 ```bash
-source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/prepare_financial_report_skill.py --json
+source /home/zhangbeiqing/venv/ai_stock/bin/activate && python python scripts/prepare_financial_report_skill.py --date {run_date} --sync-first --json --include-quant-prefilter
 ```
 
-脚本输出 `ready_items` 和 `skipped_items`。
+脚本将输出`ready_items` 和 `skipped_items`，其中`ready_items`代表要分析的股票， `skipped_items`代表已经分析过不需要再分析的股票
 
 ## A.3 跳过规则
 
@@ -34,7 +36,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/prepare_f
 
 ## A.4 派发 subagent（并行，每只股票一个）
 
-对每只 `ready` 股票，启动一个 subagent。**subagent prompt 必须简洁——不要在其中复述方法论，方法论由 subagent 自己读本 SKILL.md 获取。**
+对每只 `ready` 股票，启动一个 subagent。并使用以下模板，要求 每个 subagent 自己阅读本 SKILL.md 的 Part B 章节来完成后续工作。
 
 ### subagent prompt 模板
 
@@ -84,27 +86,19 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/prepare_f
 ### 步骤 1：读 `05_agent_input.md`
 确认任务范围、输出路径、announcement_id、当前输入文件列表。
 
-### 步骤 2：读 `01_latest_report.md`（最新财报全文）
-季报通常几百行 → **逐页读完**。年报可能几千行 → 见步骤 3。
+### 步骤 2：读 `01_latest_report.md`和 `02_previous_report.md`
+你需要分析他们分别是年报/半年报还是季报，季报需要完整的阅读完，年报需要分层深度搜索提取关键信息
 
 重点关注：
-- 主要会计数据和财务指标表（含同比变动百分比）
+- 不同季度、年报公司的营收、净利润、毛利率、费用率、现金流等核心财务数据的同比、环比变动，并尽量从原始财报中提取出具体的变动原因，要区分是公司的经营业务变化还是类似汇率变动、原材料价格变动等外部因素引起的利润变化或者其它资产减值
 - 资产负债/利润/现金流各项目的**公司官方变动说明**（这是最权威的利润变化解释，所有后续分析必须以它为起点）
-- 管理层讨论分析（如有）
-- 季度分拆数据（如有）：Q1/Q2/Q3/Q4 各自的营收和净利
+- 公司的分部经营情况，比如公司具体有多少业务，每个业务的各季度的营收和营收占比、毛利率、增速变化等，如果有请，提取出哪些是拖后腿的业务，哪些是稳定的主营业务，
+哪些是快速增长的业务，并分析他们的逐季度的经营指标变化。如果有合并报表的重要子公司，请查看其是否披露了核心子公司的独立财务数据
+- 公司的在手合同、在手订单、应收账款、产能扩张计划等，梳理公司管理层对未来业务发展趋势的官方表述
+- 风险提示，公司官方在财报中通常会披露一些风险因素，看看有哪些是和你后续分析相关的，做好标记
 
-### 步骤 3：读 `02_previous_report.md`（上一期关键财报）
-年报通常很长，采用**分层阅读法**：
 
-| 层级 | 内容 | 优先级 | 目的 |
-|------|------|--------|------|
-| 第一层 | "公司从事的主要业务" | **必读** | 理解公司到底做什么、有几块业务 |
-| 第二层 | 主营业务分析（分产品/分行业营收、毛利率、增速） | **必读** | 建立业务全景和盈利结构认知 |
-| 第三层 | 核心竞争力分析 | **必读** | 理解公司自己声称的护城河 |
-| 第四层 | 季度分拆数据 | **必读** | 判断季节性是后续分析的前提 |
-| 第五层 | 研发成果、行业情况、风险提示 | 选读 | 需要时回头翻 |
-
-### 步骤 4：读 `03_report_analysis_prompt.md` 和 `04_future_outlook_prompt.md`
+### 步骤 3：读 `03_report_analysis_prompt.md` 和 `04_future_outlook_prompt.md`
 这两个文件定义了**核心研究任务**。每一个具体要求都必须被最终报告覆盖。它们是输出提纲，不是"参考意见"。
 
 ### 步骤 5：读 `manifest.json`
