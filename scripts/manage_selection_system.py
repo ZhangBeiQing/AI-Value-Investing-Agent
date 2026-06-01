@@ -361,6 +361,23 @@ def _build_parser() -> argparse.ArgumentParser:
     quant_backtest_parser.add_argument("--min-amount", type=float, default=0.5, help="Minimum amount/latest_volume filter. Default: 0.5.")
     quant_backtest_parser.add_argument("--min-liquidity-score", type=float, default=0.05, help="Minimum liquidity_score. Default: 0.05.")
 
+    turnover_parser = subparsers.add_parser(
+        "backtest-turnover",
+        help="Turnover-constrained backtest simulating daily portfolio with replacement limits and commissions.",
+    )
+    turnover_parser.add_argument("--start-date", required=True, help="Backtest start date YYYY-MM-DD.")
+    turnover_parser.add_argument("--end-date", required=True, help="Backtest end date YYYY-MM-DD.")
+    turnover_parser.add_argument("--score-column", default="long_score", choices=("short_score", "long_score"), help="Score column. Default: long_score.")
+    turnover_parser.add_argument("--hold-size", type=int, default=10, help="Number of stocks held. Default: 10 (long) or 7 (short).")
+    turnover_parser.add_argument("--pool-size", type=int, default=20, help="Candidate pool size (top N). Default: 20.")
+    turnover_parser.add_argument("--max-daily-replace", type=int, default=2, help="Max replacements per day. Default: 2.")
+    turnover_parser.add_argument("--forced-exit-days", type=int, default=None, help="Force-exit after N days (None = no forced exit). Default: None.")
+    turnover_parser.add_argument("--initial-capital", type=float, default=500000, help="Initial capital. Default: 500000.")
+    turnover_parser.add_argument("--commission-rate", type=float, default=0.0003, help="Commission rate. Default: 0.0003 (万三).")
+    turnover_parser.add_argument("--min-commission", type=float, default=5.0, help="Min commission per trade. Default: 5.0.")
+    turnover_parser.add_argument("--output-date", help="Output date for result files. Default: end_date.")
+    turnover_parser.add_argument("--use-market-timing", action="store_true", help="Enable CSI300 MA-based position sizing (95pct/60pct/25pct with 3-day confirm).")
+
     return parser
 
 
@@ -408,6 +425,12 @@ def _handle_run_news(
     batch_size: int,
 ) -> int:
     from services.selection_system.news_curation import run_news_curation_pipeline
+
+    paths = _selection_paths(base_dir)
+    output_file = paths.run_news_prompt_input_path(run_date)
+    if output_file.exists():
+        LOGGER.info("新闻 prompt input 已存在，跳过新闻采集: %s", output_file)
+        return 0
 
     outputs = run_news_curation_pipeline(
         run_date,
@@ -738,6 +761,52 @@ def _handle_backtest_quant_prefilter(
     return 0
 
 
+def _handle_backtest_turnover(
+    base_dir: str,
+    start_date: str,
+    end_date: str,
+    score_column: str,
+    hold_size: int,
+    pool_size: int,
+    max_daily_replace: int,
+    forced_exit_days: int | None,
+    initial_capital: float,
+    commission_rate: float,
+    min_commission: float,
+    output_date: str | None,
+    use_market_timing: bool = False,
+) -> int:
+    from services.selection_system.turnover_backtest import TurnoverBacktestConfig, run_turnover_backtest
+
+    result = run_turnover_backtest(
+        TurnoverBacktestConfig(
+            start_date=start_date,
+            end_date=end_date,
+            score_column=score_column,
+            hold_size=hold_size,
+            pool_size=pool_size,
+            max_daily_replace=max_daily_replace,
+            forced_exit_days=forced_exit_days,
+            initial_capital=initial_capital,
+            commission_rate=commission_rate,
+            min_commission=min_commission,
+            base_dir=base_dir,
+            output_date=output_date,
+            use_market_timing=use_market_timing,
+        ),
+    )
+    summary = result.get("summary", {})
+    LOGGER.info(
+        "换仓约束回测完成: score=%s 总收益=%.2f%% 年化=%.2f%% 最大回撤=%.2f%% 夏普=%.2f",
+        score_column,
+        summary.get("results", {}).get("total_return_pct", 0),
+        summary.get("results", {}).get("annual_return_pct", 0),
+        summary.get("results", {}).get("max_drawdown_pct", 0),
+        summary.get("results", {}).get("sharpe_ratio", 0),
+    )
+    return 0
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -865,6 +934,22 @@ def main() -> int:
             args.hold_days,
             args.min_amount,
             args.min_liquidity_score,
+        )
+    if args.command == "backtest-turnover":
+        return _handle_backtest_turnover(
+            args.base_dir,
+            args.start_date,
+            args.end_date,
+            args.score_column,
+            args.hold_size,
+            args.pool_size,
+            args.max_daily_replace,
+            args.forced_exit_days,
+            args.initial_capital,
+            args.commission_rate,
+            args.min_commission,
+            args.output_date,
+            args.use_market_timing,
         )
     parser.error(f"未知命令: {args.command}")
     return 2

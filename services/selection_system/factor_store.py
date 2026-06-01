@@ -235,6 +235,8 @@ def build_symbol_factor_row(
         )
     row.update(chip_features)
 
+    row.update(_fallback_price_returns(stock_root / "prices" / "price.csv", run_date, row))
+
     row["data_quality_score"] = _data_quality_score(row)
     return row
 
@@ -680,6 +682,36 @@ def _fallback_valuation_features(row: Mapping[str, Any]) -> dict[str, Any]:
         )
         if pe_ttm is not None and pe_ttm > 0 and growth is not None and growth > 0:
             result["peg"] = pe_ttm / growth
+    return result
+
+
+def _fallback_price_returns(path: Path, run_date: str, row: Mapping[str, Any]) -> dict[str, Any]:
+    """Fill missing return_3m/6m/1y from price.csv when basic_info didn't provide them."""
+    missing = any(row.get(field) is None or pd.isna(row.get(field)) for field in ("return_3m", "return_6m", "return_1y"))
+    if not missing:
+        return {}
+    result: dict[str, Any] = {}
+    if not path.exists():
+        return result
+    try:
+        frame = pd.read_csv(path)
+    except Exception:
+        return result
+    if frame.empty or "日期" not in frame.columns or "收盘" not in frame.columns:
+        return result
+    frame = frame.copy()
+    frame["日期"] = pd.to_datetime(frame["日期"], errors="coerce")
+    frame = frame.dropna(subset=["日期"]).sort_values("日期")
+    asof = pd.Timestamp(run_date).normalize()
+    frame = frame[frame["日期"] <= asof]
+    close = pd.to_numeric(frame["收盘"], errors="coerce").dropna()
+    if close.empty:
+        return result
+    for period, field in [(63, "return_3m"), (126, "return_6m"), (252, "return_1y")]:
+        if row.get(field) is not None and not pd.isna(row.get(field)):
+            continue
+        if len(close) >= period + 1:
+            result[field] = float(close.iloc[-1]) / float(close.iloc[-(period + 1)]) - 1.0
     return result
 
 

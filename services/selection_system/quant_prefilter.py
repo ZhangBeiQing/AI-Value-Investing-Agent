@@ -200,14 +200,33 @@ def load_factor_snapshot_frame(
     max_staleness_days: int,
 ) -> pd.DataFrame:
     paths = SelectionSystemPaths.from_base_dir(base_dir)
-    candidates = [
-        paths.run_dir(run_date) / "13_factor_scores.csv",
-        paths.run_dir(run_date) / "12_factor_snapshot.csv",
-        paths.base_dir / "factor_store" / "by_date" / f"{run_date}.csv",
-    ]
-    for path in candidates:
+    scores_path = paths.run_dir(run_date) / "13_factor_scores.csv"
+    snapshot_path = paths.run_dir(run_date) / "12_factor_snapshot.csv"
+    by_date_path = paths.base_dir / "factor_store" / "by_date" / f"{run_date}.csv"
+
+    if scores_path.exists():
+        return pd.read_csv(scores_path)
+
+    raw_exists = snapshot_path.exists() or by_date_path.exists()
+    if ensure_factor_store and raw_exists:
+        from services.selection_system.factor_scoring import FactorScoringConfig, build_factor_scores_for_date
+
+        try:
+            build_factor_scores_for_date(
+                run_date,
+                base_dir=paths.base_dir,
+                config=FactorScoringConfig(max_staleness_days=max_staleness_days),
+                ensure_factor_store=False,
+            )
+            if scores_path.exists():
+                return pd.read_csv(scores_path)
+        except Exception:
+            LOGGER.warning("自动生成 factor scores 失败，退回使用原始快照", exc_info=True)
+
+    for path in (snapshot_path, by_date_path):
         if path.exists():
             return pd.read_csv(path)
+
     if ensure_factor_store:
         from services.selection_system.factor_scoring import FactorScoringConfig, build_factor_scores_for_date
 
@@ -217,7 +236,7 @@ def load_factor_snapshot_frame(
             config=FactorScoringConfig(max_staleness_days=max_staleness_days),
             ensure_factor_store=True,
         )
-        for path in candidates:
+        for path in (scores_path, snapshot_path, by_date_path):
             if path.exists():
                 return pd.read_csv(path)
     raise FileNotFoundError(f"未找到 {run_date} 的 factor snapshot，请先运行 build-factor-store")
