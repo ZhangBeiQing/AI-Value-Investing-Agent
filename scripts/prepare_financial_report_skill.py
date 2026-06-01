@@ -239,6 +239,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="额外把 deep research queue 的股票也加入处理列表（默认关闭，仅处理固定股票池）。",
     )
+    parser.add_argument(
+        "--include-quant-prefilter",
+        action="store_true",
+        help="额外把 12_quant_prefilter_short.csv 中的股票也加入处理列表。",
+    )
     return parser
 
 
@@ -246,6 +251,26 @@ def _parse_symbol_list(raw: Optional[str]) -> List[str]:
     if not raw:
         return []
     return [token.strip() for token in raw.split(",") if token.strip()]
+
+
+def _load_quant_prefilter_symbols(run_date: str) -> List[str]:
+    """Read symbols from 12_quant_prefilter_short.csv and 12_quant_prefilter_long.csv."""
+    import csv
+
+    base_dir = PROJECT_ROOT / "data" / "selection_runs" / run_date
+    symbols: List[str] = []
+    for filename in ("12_quant_prefilter_short.csv", "12_quant_prefilter_long.csv"):
+        prefilter_path = base_dir / filename
+        if not prefilter_path.exists():
+            LOGGER.warning("量化初筛文件不存在: %s", prefilter_path)
+            continue
+        with open(prefilter_path, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                symbol = (row.get("symbol") or "").strip()
+                if symbol and symbol not in symbols:
+                    symbols.append(symbol)
+        LOGGER.info("从 %s 加载 %d 个 symbol", filename, len(symbols))
+    return symbols
 
 
 def _collect_extra_items(args: argparse.Namespace) -> List[dict]:
@@ -275,6 +300,13 @@ def _collect_extra_items(args: argparse.Namespace) -> List[dict]:
 def main() -> int:
     args = build_parser().parse_args()
     extra_symbols = _parse_symbol_list(args.symbols)
+    if args.include_quant_prefilter and args.date:
+        prefilter_symbols = _load_quant_prefilter_symbols(args.date)
+        for s in prefilter_symbols:
+            if s not in extra_symbols:
+                extra_symbols.append(s)
+        if extra_symbols:
+            args.symbols = ",".join(extra_symbols)
     if args.sync_first:
         sync_cmd = [
             sys.executable,
