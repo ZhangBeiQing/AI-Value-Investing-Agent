@@ -268,13 +268,17 @@ def _top_items(frame: pd.DataFrame, score_column: str, top_n: int) -> list[dict[
     work = frame.copy()
     work[score_column] = pd.to_numeric(work[score_column], errors="coerce")
     ranked = work.dropna(subset=[score_column]).sort_values(score_column, ascending=False).head(max(int(top_n), 0))
+    if score_column == "short_score":
+        score_fields = ["short_score"]
+    elif score_column == "long_score":
+        score_fields = ["long_score"]
+    else:
+        score_fields = [score_column]
     compact_fields = [
         "symbol",
         "stock_name",
         "stock_type",
-        "combined_score",
-        "short_score",
-        "long_score",
+        *score_fields,
         "basic_info_asof_date",
         "latest_price",
         "daily_change_pct",

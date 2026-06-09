@@ -85,9 +85,7 @@ description: >
 
 如果上述主输入仍不足以支撑某个高权重主题判断，可以联网补证。
 
-具体规则见 [事件链与风险规则](references/output-contract.md)。
-
-对于“是否应彻底移出今天主上下文”这个判断：
+对于"是否应彻底移出今天主上下文"这个判断：
 
 1. 普通低权重主题可直接基于现有主输入判断
 2. 高权重旧主题在准备移出前，建议联网补证
@@ -99,7 +97,7 @@ description: >
 
 - `06_hot_news_state.json`
 
-**逐主题生成并写入文件**：不要试图一次性把所有主题写入文件。06_hot_news_state.json 文件通常 6000+ 行、数十万字符，单次 Write 工具调用或单次 bash heredoc 必定被截断导致 JSON 损坏。
+**逐主题生成并写入文件**：不要试图一次性把所有主题写入文件。即使精简后的 JSON 体量减小，为确保不截断，仍然逐主题写入。
 
 正确的落盘流程：
 
@@ -121,7 +119,7 @@ description: >
 - 不要直接做最终选股结论
 - 不要把全部新闻直接挂到股票宇宙上
 - `linked_symbols_in_universe` 必须显式对照 `data/universe/master_universe.json`
-- 不要省略 `history_anchor / today_update / current_state / expected_duration / forward_paths / scenario_tree / key_risks / next_day_watchlist`
+- 不要省略 `history_anchor / today_update / current_state / scenarios / key_risks / next_day_watchlist`
 - `linked_boards` 必须使用 [输入约定](references/input-contract.md) 中的标准板块名清单
 - 不要把昨天出现过的主题机械地全部延续到今天
 - 不要把已结束、已证伪、已完全失去交易性的主题继续保留在今天的 `06_hot_news_state.json`

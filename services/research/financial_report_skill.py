@@ -20,11 +20,45 @@ STOCK_INFO_ROOT = DATA_ROOT / "stock_info"
 SELECTION_RUNS_ROOT = DATA_ROOT / "selection_runs"
 
 REPORT_PERIOD_PATTERNS = [
-    (re.compile(r"一季度|一季报|1季报|Q1|截至\d{4}年\d{1,2}月\d{1,2}日止三个月", re.IGNORECASE), "q1", 1),
-    (re.compile(r"半年度|半年报|中报|Q2|中期报告|中期业绩|截至\d{4}年\d{1,2}月\d{1,2}日止六个月", re.IGNORECASE), "interim", 2),
-    (re.compile(r"三季度|三季报|Q3|截至\d{4}年\d{1,2}月\d{1,2}日止九个月", re.IGNORECASE), "q3", 3),
+    (re.compile(r"三季度|三季报|Q3|截至\d{4}年\d{1,2}月\d{1,2}日止九个月|截至\d{4}年\d{1,2}月\d{1,2}日止三个月及九个月", re.IGNORECASE), "q3", 3),
     (re.compile(r"年度报告|年报|全年业绩|年度业绩|Q4|截至\d{4}年\d{1,2}月\d{1,2}日止年度", re.IGNORECASE), "annual", 4),
+    (re.compile(r"半年度|半年报|中报|Q2|中期报告|中期业绩|截至\d{4}年\d{1,2}月\d{1,2}日止六个月|截至\d{4}年\d{1,2}月\d{1,2}日止三个月及六个月", re.IGNORECASE), "interim", 2),
+    (re.compile(r"一季度|一季报|1季报|Q1|截至\d{4}年\d{1,2}月\d{1,2}日止三个月", re.IGNORECASE), "q1", 1),
 ]
+
+_CN_DIGITS = str.maketrans({
+    '零': '0', '〇': '0',
+    '一': '1', '二': '2', '三': '3', '四': '4',
+    '五': '5', '六': '6', '七': '7', '八': '8', '九': '9',
+})
+
+
+def _chinese_num_to_int(text: str) -> int:
+    if '十' in text:
+        parts = text.split('十', 1)
+        before = parts[0]
+        after = parts[1] if len(parts) > 1 else ''
+        value = 0
+        if before:
+            value = int(before.translate(_CN_DIGITS)) * 10 if before else 10
+        else:
+            value = 10
+        if after:
+            value += int(after.translate(_CN_DIGITS)) if after else 0
+        return value
+    return int(text.translate(_CN_DIGITS))
+
+
+_CN_DATE_RE = re.compile(
+    r'截至([零一二三四五六七八九十〇]+)年([零一二三四五六七八九十〇]+)月([零一二三四五六七八九十〇]+)日'
+)
+
+
+def _convert_chinese_date(title: str) -> str:
+    return _CN_DATE_RE.sub(
+        lambda m: f'截至{_chinese_num_to_int(m.group(1))}年{_chinese_num_to_int(m.group(2))}月{_chinese_num_to_int(m.group(3))}日',
+        title,
+    )
 
 FULL_REPORT_HINTS = (
     "年度报告", "年报", "半年度报告", "半年度报告全文", "半年报", "中期报告", "中期报告全文",
@@ -247,8 +281,10 @@ def _output_path(symbol: str, report_date: str) -> Path:
 
 
 def _resolve_report_type(title: str) -> tuple[Optional[str], Optional[int]]:
+    cleaned = title.replace(" ", "")
+    cleaned = _convert_chinese_date(cleaned)
     for pattern, report_type, quarter in REPORT_PERIOD_PATTERNS:
-        if pattern.search(title):
+        if pattern.search(cleaned):
             return report_type, quarter
     return None, None
 
