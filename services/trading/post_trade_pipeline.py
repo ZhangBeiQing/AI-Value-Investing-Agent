@@ -206,24 +206,20 @@ def extract_trades(decision: dict) -> Tuple[Dict[str, int], Dict[str, int]]:
 
 def _analysis_profile_fields(book_type: str, entry: dict | None = None) -> List[str]:
     normalized = (book_type or "").strip().lower()
-    legacy_fields = [
-        "forecast_reliability",
-        "valuation_mode",
-        "valuation_conclusion",
-    ]
     short_book_fields = [
         "catalyst_and_momentum",
         "trading_mode",
         "risk_reward_setup",
+        "max_holding_days",
     ]
     if normalized == "short_book":
         return short_book_fields
     if normalized:
-        return legacy_fields
+        return []
     probe = entry or {}
     if any(field in probe for field in short_book_fields):
         return short_book_fields
-    return legacy_fields
+    return []
 
 
 def validate_decision_json(
@@ -250,18 +246,19 @@ def validate_decision_json(
         "symbol",
         "stock_name",
         "scan",
-        "analysis_type",
+        "deep_analysis_date",
         "history_anchor",
-        "allow_reanchor_today",
+        "delta_summary",
+        "price_impression",
         "key_facts",
         "inferences",
+        "judgment_rationale",
         "motion",
         "court",
         "recommended_action",
         "action_type",
         "action_num",
         "price_target",
-        "stop_loss",
         "key_risks",
         "next_day_watchlist",
         "confidence_score",

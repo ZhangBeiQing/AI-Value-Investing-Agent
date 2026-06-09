@@ -94,6 +94,32 @@ def merge_decisions(baseline: dict, subagent_files: list[Path]) -> dict:
     return baseline, replaced, appended, errors
 
 
+def update_analysis_index(merged: dict, book_type: str, date: str, base_dir: Path) -> None:
+    """更新持久化分析索引，让主 agent 跨交易日知道每只股票的最后分析日期。"""
+    index_path = base_dir / "_analysis_index.json"
+    if index_path.exists():
+        with open(index_path, "r", encoding="utf-8") as f:
+            index = json.load(f)
+    else:
+        index = {}
+
+    if book_type not in index:
+        index[book_type] = {}
+
+    for entry in merged.get("stock_decisions", []):
+        symbol = entry.get("symbol", "")
+        if not symbol:
+            continue
+        index[book_type][symbol] = {
+            "deep_analysis_date": date,
+            "price_impression": entry.get("price_impression", ""),
+            "confidence_score": entry.get("confidence_score", 0),
+        }
+
+    with open(index_path, "w", encoding="utf-8") as f:
+        json.dump(index, f, ensure_ascii=False, indent=2)
+    print(f"  分析索引已更新: {index_path} ({book_type} -> {len(index[book_type])} 只)")
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="合并 subagent 单股 decision 到 05_decision.json")
     parser.add_argument("--date", required=True, help="交易日 YYYY-MM-DD")
@@ -143,13 +169,16 @@ def main() -> int:
     with open(decision_path, "w", encoding="utf-8") as f:
         json.dump(merged, f, ensure_ascii=False, indent=2)
 
+    # 更新持久化分析索引
+    update_analysis_index(merged, args.book_type, args.date, Path(args.base_dir))
+
     # 打印摘要
     new_count = len(merged.get("stock_decisions", []))
     print(f"合并完成 → {decision_path}")
     print(f"  subagent 文件数: {len(subagent_files)}")
     print(f"  替换 entry: {len(replaced)} 只 ({', '.join(replaced) if replaced else '无'})")
     print(f"  新增 entry: {len(appended)} 只 ({', '.join(appended) if appended else '无'})")
-    print(f"  stock_decisions: {orig_count} → {new_count} (P1 继承保留了 {new_count - len(replaced) - len(appended)} 只)")
+    print(f"  stock_decisions: {orig_count} → {new_count}")
 
     if errors:
         print(f"  错误: {len(errors)} 个")
