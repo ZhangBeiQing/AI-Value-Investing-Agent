@@ -54,6 +54,8 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("601138.SH", "工业富联", "英伟达40%DC订单代工商"),
     StockEntry("600584.SH", "长电科技", "封测龙头"),
     StockEntry("300476.SZ", "胜宏科技", "GB300 HDI板独家份额50%"),
+    StockEntry("688213.SH", "思特威-W", "sensor传感器"),
+    StockEntry("002415.SZ", "海康威视", "安防监控")
 ]
 
 TRACKED_SYMBOLS: List[str] = [entry.symbol for entry in TRACKED_A_STOCKS]

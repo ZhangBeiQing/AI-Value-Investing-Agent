@@ -246,12 +246,12 @@ short:
     - {field: amount, min: 0.5, reason: "成交额过低"}
     - {field: liquidity_score, min: 0.05, reason: "流动性评分过低"}
   main_weights:
-    trend_score: 0.22
-    technical_score: 0.18
-    liquidity_factor_score: 0.14
-    risk_drawdown_score: 0.12
-    chip_score: 0.12
-    money_flow_score: 0.12
+    trend_score: 0.00
+    technical_score: 0.25
+    liquidity_factor_score: 0.20
+    risk_drawdown_score: 0.15
+    chip_score: 0.15
+    money_flow_score: 0.15
     event_board_score: 0.10
 
 long:

@@ -103,32 +103,9 @@ def execute_buy_orders(trades: Dict[str, int]) -> Dict[str, Any]:
         logger.exception("buy 获取仓位失败")
         return {"error": f"Failed to get latest position: {exc}", "date": today_date}
 
-    try:
-        portfolio_value = compute_total_value(today_date, current_position)
-    except Exception as exc:
-        logger.warning("buy 计算总资产失败，跳过10%%限制: %s", exc)
-        portfolio_value = None
-
     stock_prices = _resolve_stock_prices(today_date, trades, "buy")
     if not isinstance(stock_prices, dict) or "error" in stock_prices:
         return stock_prices  # type: ignore[return-value]
-
-    violations = []
-    if portfolio_value is not None and portfolio_value > 0:
-        per_stock_limit = portfolio_value * 0.10
-        for symbol, amount in trades.items():
-            order_value = stock_prices[symbol] * amount
-            if order_value > per_stock_limit + 1e-6:
-                violations.append(
-                    {"symbol": symbol, "order_value": round(order_value, 2), "limit": round(per_stock_limit, 2)}
-                )
-        if violations:
-            logger.warning("buy 超过单日10%%限制: %s", violations)
-            return {
-                "error": "为了控制风险，用户强制要求使用金字塔分批买入法，单只股票单日买入金额不得超过总资产的10%。请调整仓位，具体规则参考decision_rules的【决策与风控要求】中的【加仓节奏：金字塔分批建仓】",
-                "violations": violations,
-                "date": today_date,
-            }
 
     total_cost = sum(stock_prices[symbol] * amount for symbol, amount in trades.items())
     try:
