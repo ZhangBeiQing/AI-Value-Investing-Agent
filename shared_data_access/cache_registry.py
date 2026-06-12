@@ -1536,4 +1536,4 @@ __all__ = [
 # - 清理过期缓存：python cache_manager.py clean
 # - 设置定时任务：python cache_manager.py setup-cron
 #
-# 详细设计文档请参考：docs/cache/cache_manager_design.md
+# 详细设计文档请参考：docs/cache/cache_registry_design.md
