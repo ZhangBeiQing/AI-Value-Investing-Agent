@@ -1,12 +1,13 @@
 # 05_board_heat_state 字段说明
 
-更新日期：2026-03-18
+更新日期：2026-06-12
 
 说明：
 
 1. 本文档解释 `data/selection_runs/YYYY-MM-DD/05_board_heat_state.json` 的字段含义。
-2. 当前目标是让人工和后续选股模型都能快速理解板块热度层的结构。
+2. 该文件由 `services/selection_system/board_heat.py` 在 `python scripts/manage_selection_system.py build-board-heat-state --date YYYY-MM-DD` 时生成，是渐进式热点新闻总结、AI 选股、auto-trading 三本账本的共同板块输入之一。
 3. 本文档只解释字段语义，不讨论策略规则或最终买卖结论。
+4. 文件级导航摘要见 `05_board_heat_digest.json`（见 `板块热度摘要与查询设计.md`）。
 
 ## 1. 文件层字段
 
