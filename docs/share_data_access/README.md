@@ -1,89 +1,129 @@
-# 数据共享模块使用说明
+# SharedDataAccess 使用说明
 
-## 模块使命
-`shared_data_access` 统一封装了行情、财报、股本等数据的下载、缓存与读取逻辑。借助该模块：
-- 上层智能体与工具只需要面对一份 `PreparedData`，无需关心 akshare 或缓存目录结构；
-- 所有外部数据访问都走同一套限流、异常兜底与日志记录策略，避免重复实现；
-- 缓存、增量刷新、数据校验等通用逻辑集中维护，减少脏数据导致的隐患。
+更新日期：2026-06-12
 
-## 核心入口：SharedDataAccess.prepare_dataset
-方法位于 shared_data_access/data_access.py，是所有数据消费方的唯一入口。
+## 1. 模块使命
 
-```
+`shared_data_access/` 是项目里访问 akshare、巨潮、东方财富等外部数据源的**唯一**入口。它统一了下载、缓存、读取、时间截断的全部细节，让上层只面对一份 `PreparedData`，不需要关心：
+
+- akshare 接口差异（A 股 / 港股 / 指数 / ETF）
+- 缓存目录布局、TTL、刷新元信息
+- 回测因果性（什么时候允许看到什么数据）
+- 限流、重试、异常兜底
+
+## 2. 核心入口：`SharedDataAccess.prepare_dataset`
+
+位于 `shared_data_access/data_access.py`。
+
+```python
 prepare_dataset(
     *,
     symbolInfo: SymbolInfo,
     as_of_date: str,
     force_refresh: bool = False,
+    force_refresh_price: bool = False,
     force_refresh_financials: bool = False,
+    skip_financial_refresh: bool = False,
+    include_disclosures: bool = False,
+    price_lookback_days: int | None = None,
+    disclosure_lookback_days: int = 730,
 ) -> PreparedData
 ```
 
-### 主要职责
-1. 调用 ensure_symbol_data 触发 akshare 抓取或刷新本地缓存，支持价格/财报/股本按需刷新。
-2. 自动识别指数或 ETF，只返回价格数据，防止对无财务数据的标的做无效请求。
-3. 组装 PreparedData：
-   - financials (FinancialDataBundle): 对应 profit_sheet.csv、balance_sheet.csv、cash_flow_sheet.csv、analysis_indicator.csv、financial_abstract.csv。
-   - prices (PriceDataBundle): price.csv 内最近 price_lookback_days（默认 1800 天）的行情，并包含起止日期、源文件。
-   - share_info (ShareInfo): 通过 ShareInfoProvider 读取或缓存总股本与流通股本，自动处理 TTL 与数据源优先级。
-   - disclosures (DisclosureBundle，可选): 当调用 `prepare_dataset(..., include_disclosures=True)` 时返回，载入近 lookback 天内的公告列表 DataFrame，供公告摘要、监控等模块直接复用。
-4. 返回值中包含 symbolInfo 与 as_of（datetime），方便报告注明基准日期。
+主要职责：
 
-## 目录与缓存
-- 财报缓存：data/stock_info/{股票名_代码}/financials_cache/
-- 行情缓存：data/stock_info/{股票名_代码}/price.csv
-- 股本缓存：data/stock_info/{股票名_代码}/share_info/stock_share_change_cninfo.csv  
-  - A 股通过 `ak.stock_share_change_cninfo` 更新，港股则走 `ak.stock_hk_financial_indicator_em`；抓取后会被写入上述 CSV。  
-  - 该 CSV 已纳入 `shared_data_access/cache_registry.py` 的 `CacheKind.SHARE_INFO` 策略中（参见 line 52-112 以及 `update_share_info_cached`），并由 `SharedDataAccess._load_share_info`/`ShareInfoProvider` 负责读取不同日期的股本数据。  
-- shared_data_access/cache_registry.py 负责文件完整性、TTL 校验，缺失时抛出 CacheIntegrityError 提醒补全。
-- 公告缓存：data/stock_info/{股票名_代码}/disclosures/cninfo_list.csv  
-  - `update_disclosures_cached` 统一负责从 `ak.stock_zh_a_disclosure_report_cninfo` 拉取数据并写入 CSV，`CacheKind.DISCLOSURES` 负责 TTL 管理。
+1. 调用 `ensure_symbol_data` 触发抓取或刷新本地缓存，支持价格 / 财报 / 股本按需独立刷新
+2. 自动识别指数或 ETF，只返回价格数据，防止对无财务数据的标的发起无效请求
+3. 组装 `PreparedData`：
+   - `financials` (`FinancialDataBundle`)：`profit_sheet.csv` / `balance_sheet.csv` / `cash_flow_sheet.csv` / `analysis_indicator.csv` / `financial_abstract.csv`
+   - `prices` (`PriceDataBundle`)：`price.csv` 内最近 `price_lookback_days`（默认 1800 天）的行情，包含起止日期、源文件
+   - `share_info` (`ShareInfo`)：通过 `ShareInfoProvider` 读取或缓存总股本与流通股本，自动处理 TTL 与数据源优先级
+   - `disclosures` (`DisclosureBundle`，可选)：当 `include_disclosures=True` 时返回，载入近 `disclosure_lookback_days` 天内的公告列表 DataFrame
+4. 返回值包含 `symbolInfo` 与 `as_of`（`datetime`），方便报告标注基准日期
 
-## 回测友好的缓存策略
-- 所有 `update_*` 函数（价格、财报、股本、公告）始终面向“真实世界的当前时间”抓取足量数据。比如价格默认抓取 1800 个交易日、公告默认抓取近 2 年（≈730 天），这些缓存一旦写入即可供未来任意回测日使用，无需按回测日期重新拉取。  
-- `prepare_dataset` 在读取缓存后，才会根据 `as_of_date` 做时间截断，确保回测环境只能看到该日期之前的数据，实现“先全量入库、后按需切片”的设计。  
-- 若需要更长窗口，可以通过 `SharedDataAccess` 初始化参数或缓存策略配置（如 LOOKBACK_PRICE_DAYS、disclosure_lookback_days）集中放大抓取范围，而不是在 update 阶段依赖 as_of。  
-- 这种分层策略既保证了回测的严格因果性，也避免了每次回测都重新向 akshare 请求历史数据。
+## 3. 缓存目录速查
 
-## 每日刷新策略归属（重要）
+| 缓存类型 | 路径 | 主入口 |
+| --- | --- | --- |
+| 财报 | `data/stock_info/<股票名_代码>/financials_cache/` | `update_financial_data_cached` |
+| 行情 | `data/stock_info/<股票名_代码>/prices/price.csv` | `update_price_data_cached` |
+| 股本 | `data/stock_info/<股票名_代码>/share_info/` | `update_share_info_cached` |
+| 公告 | `data/stock_info/<股票名_代码>/disclosures/` | `update_disclosures_cached` |
+| 筹码分布 | `data/stock_info/<股票名_代码>/chip_distribution/chip_distribution.csv` | `update_chip_distribution_cached`（含本地回退）|
+| 一致预期 | `data/stock_info/<股票名_代码>/profit_forecast/profit_forecast.csv` | `update_profit_forecast_cached` |
+| 板块 | `data/global_cache/board_history_ths/`、`board_metrics_ths/` | `shared_data_access/board_metrics.py` |
+| 宏观 | `data/global_cache/macro_objective_panel/` | `shared_data_access/macro_objective_panel.py` |
 
-`shared_data_access` 是**机制层**——只负责"抓、缓存、切片"，不决定"今天哪些股票该被强刷"。
+完整 `CacheKind` 与 TTL 见 `docs/cache/cache_registry_design.md`。
+
+## 4. 回测友好的缓存策略
+
+- 所有 `update_*` 函数始终面向「真实世界的当前时间」抓取足量数据
+  - 价格默认抓取 1800 个交易日
+  - 公告默认抓取近 2 年（约 730 天）
+- 一旦写入缓存就可供未来任意回测日使用，无需按回测日期重新拉取
+- `prepare_dataset` 在读取缓存后才会根据 `as_of_date` 做时间截断，保证回测环境只能看到该日期之前的数据
+- 若需要更长窗口，通过 `SharedDataAccess` 初始化参数（`price_lookback_days`）或缓存策略配置统一放大抓取范围，**不要**在 update 阶段依赖 `as_of`
+
+这种「先全量入库、后按需切片」的设计同时保证了：
+
+- 回测的严格因果性
+- 不会每次回测都重新向 akshare 请求历史数据
+
+## 5. 每日刷新策略归属（重要）
+
+`shared_data_access` 是**机制层**——只负责「抓 / 缓存 / 切片」，**不**决定「今天哪些股票该被强刷」。
+
 **策略由 `services/data_refresh/refresh_orchestrator.py` 唯一决定**：
 
-- **每日刷新股票范围** = `TRACKED_A_STOCKS` ∪ `master_universe`（约 116 只）
-  由 orchestrator 在启动时读取 `configs/stock_pool.py` 与 `data/universe/master_universe.json`，合并去重。
-- **价格 / 财报结构化 / basic_info** 由 `manage_daily_data`（接收 orchestrator 传入的扩展 symbol 列表）统一负责。
+- **每日刷新股票范围** = `TRACKED_A_STOCKS ∪ master_universe`（约 100+ 只）
+  - 由 orchestrator 启动时读取 `configs/stock_pool.py` 与 `data/universe/master_universe.json`，合并去重
+- **价格 / 财报结构化 / basic_info** 由 `manage_daily_data`（接收 orchestrator 传入的扩展 symbol 列表）统一负责
   - 轻量档：`--force-refresh-price`（默认开）
   - 重量档：`--force-refresh`（`--fresh-heavy` 开启，强刷财报结构化）
-- **公告（disclosures）** 由 `services/selection_system/announcement_summary.py` 的 `build-announcements` 子命令按 universe 增量负责；
-  因此 orchestrator 调用 `manage_daily_data` 时传入 `--skip-disclosures`，避免两层重复扫描。
-- **选股系统侧的 `_ensure_universe_snapshot_coverage` 是纯兜底路径**（只在缓存缺失时补抓）。
-  正常情况应全量命中缓存；若触发兜底分支并打印 warning，说明上游 refresh 有遗漏，需要排查而不是默认接受。
+- **公告（disclosures）** 由 `services/selection_system/announcement_summary.py` 的 `build-announcements` 子命令按 universe 增量负责
+  - 因此 orchestrator 调用 `manage_daily_data` 时传入 `--skip-disclosures`，避免两层重复扫描
+- **选股系统侧的 `_ensure_universe_snapshot_coverage` 是纯兜底路径**（只在缓存缺失时补抓）
+  - 正常情况应全量命中缓存
+  - 若触发兜底分支并打印 warning，说明上游 refresh 有遗漏，需要排查而不是默认接受
 
 规则沉淀：
-1. 任何新增数据集（比如新的选股因子、新的快照字段）都要回答"谁负责它的每日 fresh"——
-   答案应当是 `services/data_refresh/`，而不是消费端。
-2. 上层模块不得私下做 `force_refresh_*=True` 的调用；如果消费路径发现缓存过期，
-   应向 orchestrator 反馈（加一条 warning 或异常），由策略层统一修正，而不是就地绕过。
 
-## 项目规范
-1. 禁止在 Analyzer、Tool、Agent 层直接调用 akshare。凡涉及外部行情、财报、股本、指标的请求，一律走 SharedDataAccess。
-2. 若 prepare_dataset 尚无法提供某字段，应：
-   1. 在 shared_data_access 内补充数据装载逻辑（如扩展 _load_financial_bundle 或新增缓存类型）。
-   2. 在 shared_data_access/models.py 中更新数据类，让新字段成为 PreparedData 的一部分。
-   3. 必要时更新 shared_data_access/cache_registry.py 或 paths.py，保证缓存落地有据。
-3. 新脚本处理多只股票时，仅需实例化一次 SharedDataAccess，循环调用 prepare_dataset，避免重复初始化。
-4. 始终使用 SymbolInfo 作为股票标识，可通过 parse_symbol 从命令行或配置解析用户输入。
+1. 任何新增数据集（新的选股因子、新的快照字段）都要回答「谁负责它的每日 fresh」——答案应当是 `services/data_refresh/`，而不是消费端
+2. 上层模块不得私下做 `force_refresh_*=True` 的调用；如果消费路径发现缓存过期，应向 orchestrator 反馈（warning 或异常），由策略层统一修正
 
-## 典型使用流程
-1. symbol = parse_symbol("600406.SH")
-2. accessor = SharedDataAccess(base_dir=BASE_DIR, logger=LOGGER)
-3. dataset = accessor.prepare_dataset(symbolInfo=symbol, as_of_date="2025-11-30")
-4. 使用 dataset.prices.frame 计算技术指标，使用 dataset.financials.profit_sheet 计算估值，使用 dataset.share_info 推导市值或股本，必要时使用 dataset.disclosures.frame 获取公告元数据。
+## 6. 项目规范
 
-## 扩展指南
-- 需要新的 akshare 接口：先在 shared_data_access 下完成缓存和读取封装，再向上暴露整洁的 PreparedData 字段，切勿在上层直接发起网络请求。
-- 需要新增衍生指标：优先放在 indicator_library 或 shared_financial_utils 中实现，输入数据仍来自 PreparedData。
-- 调试刷新：通过 prepare_dataset(..., force_refresh=True) 或 force_refresh_financials=True 触发重新抓取，确保缓存一致。
+1. **禁止**在 Analyzer / Tool / Agent 层直接调用 akshare。凡涉及外部行情、财报、股本、指标的请求，一律走 `SharedDataAccess`
+2. 若 `prepare_dataset` 尚无法提供某字段，应：
+   1. 在 `shared_data_access` 内补充数据装载逻辑（如扩展 `_load_financial_bundle` 或新增缓存类型）
+   2. 在 `shared_data_access/models.py` 中更新数据类，让新字段成为 `PreparedData` 的一部分
+   3. 必要时更新 `shared_data_access/cache_registry.py` 或 `paths.py`，保证缓存落地有据
+3. 新脚本处理多只股票时，**只**实例化一次 `SharedDataAccess`，循环调用 `prepare_dataset`，避免重复初始化
+4. 始终使用 `SymbolInfo` 作为股票标识，可通过 `parse_symbol` 从命令行或配置解析用户输入
 
-遵循上述规则，智能体与工具就能共享同一份、可追溯的数据底座。一旦发现某类 akshare 数据尚未被封装，请优先在 shared_data_access 中实现，然后通知其它模块复用。
+## 7. 典型使用流程
+
+```python
+from shared_data_access.data_access import SharedDataAccess
+from utlity import parse_symbol
+
+symbol = parse_symbol("600406.SH")
+accessor = SharedDataAccess(base_dir=None, logger=LOGGER)
+dataset = accessor.prepare_dataset(symbolInfo=symbol, as_of_date="2026-06-11")
+
+# 使用
+prices_df = dataset.prices.frame                    # 行情
+profit_df = dataset.financials.profit_sheet          # 利润表
+total_shares = dataset.share_info.total_shares       # 股本
+if dataset.disclosures:
+    annc_df = dataset.disclosures.frame              # 公告（只在 include_disclosures=True 时存在）
+```
+
+## 8. 扩展指南
+
+- **新 akshare 接口**：先在 `shared_data_access` 下完成缓存和读取封装，再向上暴露整洁的 `PreparedData` 字段
+- **新衍生指标**：优先放在 `indicator_library` 或 `shared_financial_utils` 中实现，输入数据仍来自 `PreparedData`
+- **调试刷新**：通过 `prepare_dataset(..., force_refresh=True)` 或 `force_refresh_financials=True` 触发重新抓取——仅用于调试，**不要**写入业务代码
+
+详见 `.codex/rules/shared-data-access.md`。

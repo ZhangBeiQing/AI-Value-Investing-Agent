@@ -1,58 +1,340 @@
-更新日期：2026-05-15
+更新日期：2026-06-12
 
-# AI-Trader 项目系统白皮书
+# AI-Value-Investing-Agent 项目系统白皮书
 
-## 1. 顶层流程与运行方式
-- **当前默认主入口**：项目当前主流程已经切换为 `skill-only`，且默认只服务 `fixed_tracked`。推荐日常顺序为：`python scripts/refresh_all_for_date.py --date YYYY-MM-DD` → `/daily-macro-summary` → `python scripts/prepare_financial_report_skill.py --date YYYY-MM-DD --sync-first --json` → `/financial-report-summary` → `python scripts/run_daily_pipeline.py --date YYYY-MM-DD` → 本地 Agent 读取 `data/skill_runs/{date}/fixed_tracked/` → `python scripts/run_post_trade.py --date YYYY-MM-DD --book-type fixed_tracked --signature book-fixed_tracked`。
-- **三账本链路改为显式开启**：只有在用户明确要求恢复自动选股、渐进式热点主题、`short_book`、`long_book` 时，才使用 `python scripts/refresh_all_for_date.py --include-selection-universe`、`python scripts/prepare_financial_report_skill.py --include-queue`、`python scripts/run_daily_pipeline.py --all-books` 等旧口径入口。
-- **旧入口状态**：`main.sh`、`main.py` 与 `agent/base_agent/base_agent.py` 等旧主入口已从仓库中清理，不再保留。
-- **交易结果落地**：`tools.price_tools` 提供 `get_latest_position`、`get_open_prices`、`add_no_trade_record`、`compute_total_value` 等函数，所有买卖最终写入 `data/agent_data/{signature}/position/position.jsonl` 并更新 `IF_TRADE` 标记。
-- **运行前置与依赖**：`pip install -r requirements.txt` 安装依赖，`cp .env.example .env` 并填写密钥；当前主流程默认不再依赖启动 MCP 服务。
+## 0. 文档定位
 
-## 2. Agent 提示词、策略与上下文
-- **提示词生成**（`prompts/agent_prompt.py`）：当前默认 prompt flow 已切换到 `configs/prompt_flow/skill_flow.json`，角色设定、流程、决策约束等由该文件驱动，并自动注入 `{date}`、`{date_1}`、`{positions}`、`{today_buy_price}`、`{position_costs}`、`{position_profit}` 等上下文。
-- **财报风险提示口径**：`skill_flow.json` 中的财报危险期提示只用于提高验证强度与风险权重，不允许在缺乏公司公告、财报数据或高可信证据时，直接把“临近财报”写成“默认业绩不及预期”。
-- **逐股研究包与外部检索规则**：当前 prompt flow 与 auto-trading skill 明确要求 Agent 在分析某只股票前，必须把该股票对应的 `04_stock_research/*_research.md` 从头到尾完整读完；若文件过长，必须分段顺序读到末尾，禁止只看局部摘录、关键词命中或摘要后就下结论。只有在完整读完当前研究包后，才允许按需调用普通搜索/网页读取工具补充最新信息；复杂问题的工具升级顺序为“本地研究包 → 普通搜索/网页读取 → `deep_search` → `deep_research`”，其中 `deep_research` 只用于会实质影响估值和交易决策的高复杂度问题。
-- **历史总结注入**：`trade_summary.get_portfolio_historical_context` 会把 `decision_summary.json` 与最新 `portfolio_daily_summary.json` 中的要点合并成 JSON 块，作为 prompt 的“历史交易总结”输入，解决大模型“记忆断层”问题（详见 `docs/trade_summary/` 下的设计文档）。
-- **投资理念文件**：`AI agent的投资理念.md` 记录了深度投资策略、10 只固定股票池、变化响应机制等文字提示，可作为 prompt flow 的补充。
-- **停止信号与 JSON 提交**：所有 agent 回答必须输出指定结构的 JSON（包含 `stock_decisions`、`system_risk_notes` 等字段），`prompts/agent_prompt.extract_json_from_ai_output` 用于在日志中稳健抽取 JSON。
+本文是项目的「入口式」总览文档。新 session、大改动前，先读本文建立全局上下文，再按章节末尾的链接进入对应模块的细化设计。
+
+如果旧文档与本文冲突，以本文为准。`docs/` 已经清理过早期未落地的设计稿，目前保留的所有文档都对应当前实现。
+
+---
+
+## 1. 日常主流程（这是「每天真正跑的链路」）
+
+仓库当前的实际日常节奏：早上 7 点起床后，对**昨天收盘**的数据做分析，并为下一交易日生成预案。所有脚本的 `--date` 都指「要分析的交易日」，默认 `today - 1`；周末/节假日如果「昨天」不是交易日，需要手动指定最近一个交易日。
+
+### 1.1 一键刷数据 + 量化初筛
+
+```bash
+python scripts/refresh_all_for_date.py --date 2026-06-11
+```
+
+由 `services/data_refresh/refresh_orchestrator.py` 编排，按顺序执行：
+
+1. `manage_daily_data` — 刷新宏观面板、价格、财报、`basic_stock_info` 等基础缓存（`TRACKED_A_STOCKS ∪ master_universe`，约 100+ 只）
+2. `selection.run-news` — 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json`
+3. `selection.build-board-heat-state` — 板块热度分析 → `05_board_heat_state.json` / `05_board_heat_digest.json`
+4. `selection.build-factor-store` → `selection.build-factor-scores` → `selection.build-quant-prefilter` — 生成因子宽表、评分与短/长两本候选 → `12_factor_snapshot.*` / `13_factor_scores.*` / `12_quant_prefilter*.csv`
+5. 清理 `data/research_artifact_cache/{run_date}/` — 让下一次 `run_daily_pipeline` 必然基于最新数据重建 04 产物
+
+跑完后脚本会打印「后续 skill 清单」，下面 1.2~1.6 就是按这份清单逐条往下走。
+
+### 1.2 宏观与新闻总结（人工触发，需 LLM / 联网）
+
+```text
+1. /daily-macro-summary            → data/macro_economy/YYYYMMDD.md
+2. /gradual-hot-news-summary       → data/selection_runs/YYYY-MM-DD/06_hot_news_state.json
+```
+
+- 宏观总结是新闻主题状态的上游校准器；渐进式新闻主题状态是后续 03_agent_input 与各 subagent 的核心研究输入。
+- 详见 `.codex/skills/daily-macro-summary/SKILL.md` 与 `.codex/skills/gradual-hot-news-summary/SKILL.md`。
+
+### 1.3 财报准备与总结（fixed_tracked + 量化初筛短期股）
+
+```bash
+3. python scripts/prepare_financial_report_skill.py --date 2026-06-11 --sync-first --json --include-quant-prefilter
+4. /financial-report-summary       → 各股 data/stock_info/{name}_{symbol}/financial_reports/*.md
+```
+
+- `prepare_financial_report_skill.py` 会同步公告 PDF、整理待生成清单（`fixed_tracked` 全量 + 量化初筛短期股增量）。
+- `/financial-report-summary` 主 agent 派发 subagent，每只股票一个，subagent 自主完成「读公告 → 搜索 → 诊断 → 验证 → 撰写」全流程，写入 `financial_reports/`。
+- 详见 `.codex/skills/financial-report-summary/SKILL.md`。
+
+### 1.4 三账本 01-04 产物
+
+```bash
+5. python scripts/run_daily_pipeline.py --date 2026-06-11 --max-workers 6 --all-books
+```
+
+由 `services/pipeline/daily_pipeline.py` 编排，三本账本（**fixed_tracked / short_book / long_book**）并行生成各自的 01-04 产物：
+
+- **fixed_tracked** 取自 `configs/stock_pool.py` 的 `TRACKED_A_STOCKS`
+- **short_book** 优先取 `08_short_book_candidates.json`；若选股 skill 未跑，则回退到 `12_quant_prefilter_short.csv`
+- **long_book** 同理，优先 `09_long_book_candidates.json`，回退 `12_quant_prefilter_long.csv`
+
+输出目录：
+
+```text
+data/skill_runs/YYYY-MM-DD/
+├── run_manifest.json                     # 本日三账本来源、symbols、capital_budget
+├── fixed_tracked/
+│   ├── 01_global_context.md              # 宏观/大盘/渐进式新闻总结
+│   ├── 02_basic_snapshot_payload.json    # basic_stock_info 快照（用于定价基准）
+│   ├── 03_agent_input.md                 # 最终 user_query，包含规则与输出格式
+│   ├── 04_stock_research/                # 每只股票的研究包 *.md
+│   ├── 05_decision.json                  # 由 skill agent 在对话中生成
+│   └── subagent_result/                  # 各 subagent 单股决策落盘
+├── short_book/                           # 结构同上
+└── long_book/                            # 结构同上
+```
+
+详见 `.codex/rules/skill-pipeline.md`。
+
+### 1.5 三账本交易 skill（人工触发，生成决策后人工确认）
+
+```text
+6. /auto-trading-fixed-tracked     → fixed_tracked/05_decision.json
+7. /auto-trading-short-book        → short_book/05_decision.json
+8. /auto-trading-long-book         → long_book/05_decision.json
+```
+
+- 主 agent 不会自己读所有股票研究包，而是基于今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0 队列，对 P0 派发并行 subagent（每个 subagent 只负责 1 只股票），最终通过 `scripts/merge_subagent_decisions.py` 合并到 `05_decision.json`。
+- 三本账本相互独立串行执行；short_book 上限 7 只、最大持仓 20 个交易日；long_book 允许池子日变但已持仓不剔除。
+- 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` / `auto-trading-short-book/SKILL.md` / `auto-trading-long-book/SKILL.md`。
+
+### 1.6 人工确认后分别执行后处理
+
+```bash
+9.  python scripts/run_post_trade.py --date 2026-06-11 --book-type fixed_tracked --signature book-fixed_tracked
+10. python scripts/run_post_trade.py --date 2026-06-11 --book-type short_book  --signature book-short_book
+11. python scripts/run_post_trade.py --date 2026-06-11 --book-type long_book   --signature book-long_book
+```
+
+由 `services/trading/post_trade_pipeline.py` 编排，串联 `05` → `06-08` 后处理：
+
+- `06_execution_log.json`：交易执行结果（写入 `data/agent_data/{signature}/position/position.jsonl`）
+- `07_daily_summary.json`：当日组合级总结（system_risk_notes / system_focus_items / portfolio_overview）
+- `08_history_merge.json`：写入 `data/agent_data/{signature}/{stock_decisions.json, decision_summary.json, portfolio_daily_summary.json}` 并合并连续 HOLD/FLAT 序列
+
+历史决策合并逻辑详见 `docs/trade_summary/`。
+
+---
+
+## 2. 仓库主结构
+
+```text
+.
+├── scripts/                    # CLI 入口，仅做参数解析 + 调用 services
+│   ├── refresh_all_for_date.py
+│   ├── manage_daily_data.py
+│   ├── manage_selection_system.py
+│   ├── prepare_financial_report_skill.py
+│   ├── run_daily_pipeline.py
+│   ├── run_post_trade.py
+│   ├── merge_subagent_decisions.py
+│   └── ...
+├── services/                   # 业务编排层
+│   ├── data_refresh/           # 一键刷新编排（refresh_orchestrator.py）
+│   ├── pipeline/               # 01-04 产物生成（daily_pipeline.py + steps/）
+│   ├── prompting/              # system prompt 组装
+│   ├── research/               # 宏观/新闻/财报/个股研究的核心实现
+│   ├── selection_system/       # 选股系统：universe / news / board_heat / factor_store / quant_prefilter / candidate_selection
+│   ├── snapshot/               # basic_snapshot
+│   └── trading/                # 交易执行 + 06-08 后处理（post_trade_pipeline.py / trade_summary.py / trade_executor.py）
+├── shared_data_access/         # 统一外部数据访问与缓存
+│   ├── data_access.py          # SharedDataAccess.prepare_dataset() 唯一入口
+│   ├── cache_registry.py       # 缓存类型 / TTL / 路径登记
+│   ├── chip_distribution.py    # 筹码分布抓取/回退计算
+│   ├── board_metrics.py        # 板块行情/历史
+│   ├── indicator_library.py    # 统一指标库
+│   ├── macro_objective_panel.py
+│   ├── models.py / paths.py / exceptions.py / validation.py
+├── core/                       # 通用基础设施
+│   ├── logging.py              # 统一日志入口
+│   ├── llm_output.py
+│   └── runtime_state.py
+├── configs/
+│   ├── stock_pool.py           # TRACKED_A_STOCKS（fixed_tracked 静态池）
+│   ├── prompt_flow/            # skill_flow.json / skill_flow_short_book.json / skill_flow_long_book.json
+│   └── selection_system/       # factor_scoring.yaml 等评分配置
+├── data/                       # 运行产物与缓存
+├── logs/                       # 组件日志
+├── .codex/                     # 项目规则、skills、commands（主维护目录）
+│   ├── rules/
+│   ├── skills/
+│   └── commands/
+├── docs/                       # 设计与系统文档（本文所在）
+├── agent_tools/, tools/        # 历史兼容层，新代码不再向此处沉淀
+└── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py
+                                # 历史保留的顶层脚本，仍由 daily 链路调用，新逻辑不再继续堆在这里
+```
+
+---
 
 ## 3. 数据与缓存基座
-- **统一入口**：`shared_data_access.SharedDataAccess.prepare_dataset(symbolInfo, as_of_date, …)` 是**唯一**被允许访问 AkShare/巨潮的路径，负责：① 调用 `ensure_symbol_data` 刷新价格、财报、股本、公告缓存；② 按 `as_of_date` 对 DataFrame 截断；③ 汇总 `FinancialDataBundle`、`PriceDataBundle`、`ShareInfo`、`DisclosureBundle`，并对 ETF/指数自动降级为“仅价格”模式。`docs/share_data_access/README.md` 详细说明了调用姿势、回测因果性与 `include_disclosures` 用法。
-- **缓存注册表**：`shared_data_access/cache_registry.py` 定义 `CacheKind`（financials/prices/share_info/analysis/pe_pb_analysis/basic_info/disclosures）以及 TTL、目录结构和 `.cache_registry_meta.json` 元数据；`docs/cache/cache_registry_design.md` 给出设计原理。所有 `update_*_cached` 函数都需调用 `should_refresh` 和 `record_cache_refresh`，而 `tools` 目录下包含缓存迁移与巡检工具。
-- **股本与时间守卫**：`shared_financial_utils.ShareInfoProvider` 将股本缓存放到 `data/global_cache/share_info_cache.json` 并提供 TTL、`apply_dataframe_cutoff`、`filter_financial_abstract_by_cutoff` 等时间截断工具，确保任何回测都遵守因果性。
-- **Indicator Library**：`indicator_library/`（已被 `shared_data_access/indicator_library.py` 复用）统一了技术指标、收益风险、流动性、TTM 计算，包含 `schemas.py`（Pydantic 请求/响应）、`gateways.py`（DataFrame gateway）、`calculators/*`（momentum/risk/liquidity/fundamental/trend）。`IndicatorLibrary.calculate()` + `IndicatorSpec` 支持批量指标请求，所有新指标需注册在 `_build_registry` 内。
-- **数据落地**：每只股票的数据均存放于 `data/{stock_name}_{symbol}/`（财经缓存、价格、analysis、pe_pb_analysis、news/announcements等），运行日志按组件或工具写入 `logs/` 下的分类目录。
 
-## 4. 核心分析与研究模块
-- **一期选股系统基座**（`services/selection_system/`, `scripts/manage_selection_system.py`）：当前选股框架主线收敛到 `master_universe`、独立新闻链、渐进式新闻主题总结与 `board_heat_state`。其中 `04_recent_company_announcements.json` 已改为从各股票 `data/stock_info/<name_symbol>/news/news.json` 聚合最近 3 天公告 `summary`，仅保留选股阶段需要的轻量摘要字段。初始化后会在 `data/universe/master_universe.json` 写入主股票宇宙，并在 `data/market_state/`、`data/symbol_memory/`、`data/selection_runs/` 建立相关状态目录。
-- **短长池连续性约束**：`08_short_book_input.md` 会要求本地 agent 同时回看上一交易日的 `08_short_book_candidates.json` 与 `data/skill_runs/<prev>/short_book/05_decision.json`，用昨天的逐股分析判断短线催化是否还在、是否已经过贵、以及哪些票该剔除或继续跟踪；`09_long_book_input.md` 会同时回看上一交易日的 `09_long_book_candidates.json` 与 `data/skill_runs/<prev>/long_book/05_decision.json`，且若 `data/agent_data/book-long_book/position/position.jsonl` 中存在真实持仓，这些持仓股今日不得从 long_book 候选结果中剔除，只能保留并调整优先级或风险表述。
-- **基础指标批处理**（`basic_stock_info.py`）：`BasicStockInfoService` 会调用 `SharedDataAccess.prepare_dataset` + `IndicatorLibrary`，输出估值、财报增速、风险、流动性等字段并写入 `data/basic_info_cache/basic_info_{symbol}.json`（含历史快照）；CLI 支持 `--symbols`/`--history-days`。
-- **增强估值分析**（`enhanced_pe_pb_analyzer.py`）：以 `SymbolInfo` 为核心，串联财报/股本/价格缓存、TTM EPS、PEG、相似股比较、Markdown/CSV/JSON 报告写入。重构后通用指标计算迁移至 `indicator_library.calculators`，并通过 `cache_registry` 管理输出目录。
-- **股价动态总结**（`stock_price_dynamics_summarizer.py`）：围绕 `IndicatorLibrary` + `IndicatorBatchRequest` 计算 3/6/12 个月收益、夏普、相关性矩阵、MACD/RSI/MA、行业对比等信息，生成 Markdown + JSON 报告，供 `services/research/stock_analysis.py` 复用。
-- **公告与新闻**：`news/disclosures_builder.py` 把 `SharedDataAccess` 的公告索引下载到本地 PDF/Markdown，并通过 OpenAI/Qwen 模型提取结构化 `raw_facts`、`quantitative_data`、`category` 等字段；选股系统中的新闻链路负责生成新闻正文输入与渐进式主题总结输入。
-- **财报深度研究**（`fundamental/fundamental_research.py`）：以 `SharedDataAccess` + `disclosures_builder` 提供的公告 Markdown 为输入，`FinancialReportExtractor` 下载/提取要点，再由 `FundamentalResearchAgent` 按 `DOC_EXTRACTION_PROMPT` 与 `REPORT_ANALYSIS_AGENT_PROMPT` 生成结构化研究结果，落地到 `fundamental_reports/`。`docs/fundamental_research/README.md` 描述端到端流程。
+### 3.1 统一入口 `SharedDataAccess`
 
-## 5. 兼容层与运行治理
-- **兼容层状态**：`agent_tools/` 现在只保留少量历史导入路径兼容包装层，真实业务实现已经迁移到 `services/` 与 `core/`。项目当前不再保留 `start_mcp_services.py`、`tool_python.py`、`tool_math.py` 等旧 MCP 服务脚本。
-- **工具输出**：
-  - `TradeTools`：提供 `buy`/`sell`，校验输入、读取仓位、调用 `price_tools`, 并把成功交易写入 position 日志。
-- `StockAnalysis`：默认开放 `analyze_stock_dynamics_and_valuation`（整合价格+估值）以及 `get_basic_stock_info`（需单测时恢复装饰器），原先的 `run_enhanced_pe_pb_analysis` / `summarize_stock_price_dynamics` 逻辑仍保留为内部函数。
-  - `tool_stock_news_search.py`/`tool_macro_summary.py`/`tool_financial_report.py` 仅作为历史兼容入口，真实实现分别位于 `services/research/`。
-- **统一日志**：兼容包装层和脚本入口统一通过 `core/logging.py` 与 `agent_tools/logging_utils.init_tool_logger()` 获取 `logs/{model}/{tool}/{timestamp}.log` 的结构化日志，满足“工具级独立日志 + logging 分级”规范。
+- **唯一入口**：`shared_data_access.SharedDataAccess.prepare_dataset(symbolInfo, as_of_date, ...)` 是访问 akshare / 巨潮的唯一路径。
+- 它会先调用 `ensure_symbol_data` 刷新价格、财报、股本、公告缓存，再按 `as_of_date` 截断 DataFrame，组装 `FinancialDataBundle` / `PriceDataBundle` / `ShareInfo` / `DisclosureBundle` 返回。
+- ETF / 指数会自动降级为「仅价格」模式。
+- 设计与调用姿势详见 `docs/share_data_access/README.md`。
 
-## 6. 交易总结数据库与上下文
-- **数据文件布局**：`services/trading/trade_summary.py` 以 `data/agent_data/{signature}` 为根，维护 `stock_decisions.json`（每日原始逐股决策）、`decision_summary.json`（合并后的持有/买卖记录）与 `portfolio_daily_summary.json`（组合级别风险/焦点）。
-- **三步流程**：
-  1. `save_daily_operations(signature, ai_output_json)` 在 agent 产生最终 JSON 后写入原始表，并保证同日唯一。
-  2. `process_and_merge_operations` 以股票为单位合并连续 HOLD/FLAT 序列（考虑交易日跳变），买卖则逐条保留。
-  3. `get_historical_context` / `get_portfolio_historical_context` / `load_yesterday_daily_summary` 为 prompt 或风控调用提供最近 N 次操作、系统级风险提示。
-- **设计文档**：`docs/trade_summary/` 下的背景需求、详细设计与数据库设计文档详细描述了“记忆压缩、token 成本控制、表结构”。
+### 3.2 缓存注册表
 
-## 7. 文档、测试与开发规范
-- **项目说明**：`README.md`、`AGENTS.md`（仓库指南、缓存/回测/指令/语言要求）、`docs/PROJECT_SYSTEM_SUMMARY.md`（本文）作为快速入门材料。
-- **设计文档**：`docs/cache/`、`docs/share_data_access/`、`docs/trade_summary/`、`docs/news/`、`docs/fundamental_research/` 提供当前仍有效的模块说明；已完成的历史重构计划与阶段性总结文档已从仓库中清理。
-- **测试**：当前仓库以脚本级和集成级验证为主，重大修改后应至少回归 `manage_daily_data`、`run_daily_pipeline`、`run_post_trade` 三条主链路。
-- **运行规范**：所有股票标识必须使用 `SymbolInfo` + `代码.后缀` 格式，数据抓取一律通过 `SharedDataAccess`；更新分析目录前需保留 `.cache_registry_meta.json` 并清理旧输出；日志需通过统一 logger；所有脚本/工具在写 `analysis/`、`pe_pb_analysis/` 等目录前需清扫旧文件。
+- 所有缓存类型登记在 `shared_data_access/cache_registry.py` 的 `CacheKind` 与 `BASE_REGISTRY`。
+- 当前已注册：`FINANCIALS / PRICE_SERIES / SHARE_INFO / DISCLOSURES / ANALYSIS / PE_ANALYSIS / BASIC_INFO / CHIP_DISTRIBUTION`。
+- TTL、路径、必需文件、刷新元信息 (`.cache_registry_meta.json`) 等机制详见 `docs/cache/cache_registry_design.md`。
 
-以上内容覆盖了 2026 年 03 月 14 日最新的代码与文档结构，后续如有重大重构，请同步更新本文件以保持团队对系统的一致认知。
+### 3.3 每日刷新策略归属（重要）
+
+`shared_data_access` 只是**机制层**（负责「抓 / 缓存 / 切片」）。
+
+**「今天哪些股票该被强刷」由 `services/data_refresh/refresh_orchestrator.py` 唯一决定**：
+
+- 默认每日刷新范围 = `TRACKED_A_STOCKS ∪ master_universe`（约 100+ 只）
+- 价格 / 财报结构化 / basic_info 由 `manage_daily_data` 统一负责（轻量档 `--force-refresh-price`，重量档 `--force-refresh`）
+- 公告（disclosures）由 `selection_system.build-announcements` 按 universe 增量负责；`manage_daily_data` 用 `--skip-disclosures` 跳过重复扫描
+- **上层模块不得私设 `force_refresh_*=True`**；若读取阶段发现缓存过期，应向 orchestrator 反馈（warning / 异常）由策略层统一修正
+
+### 3.4 因子库 Factor Store
+
+- 路径：`data/factor_store/`
+- 结构：`by_symbol/{symbol}.{csv,parquet}` 是单股纵向视图，`by_date/{date}.{csv,parquet}` 是当日横截面视图
+- 由 `services/selection_system/factor_store.py + factor_history.py + factor_scoring.py + quant_prefilter.py` 统一管理
+- 评分配置：`configs/selection_system/factor_scoring.yaml`（按 `stock_type ∈ {growth, cyclical, special}` 配置门槛与权重）
+- 输出 `13_factor_scores.{csv,json}` 与 `12_quant_prefilter*.{csv,json}`，供 `run_daily_pipeline` 在选股 candidate 缺失时直接回退
+- 详细设计与历史回测口径详见 `docs/selection_system/因子库与量化初筛系统设计.md`
+
+### 3.5 数据落地约定
+
+- 每只股票一个目录：`data/stock_info/{stock_name}_{symbol}/`，下含 `prices/`、`financials_cache/`、`share_info/`、`disclosures/`、`news/`、`analysis/`、`pe_pb_analysis/`、`chip_distribution/`、`financial_reports/`、`forecast/` 等子目录
+- 全局缓存：`data/global_cache/`（板块、宏观、相似股、symbol 映射等）
+- 选股运行产物：`data/selection_runs/YYYY-MM-DD/`
+- 三账本运行产物：`data/skill_runs/YYYY-MM-DD/{fixed_tracked,short_book,long_book}/`
+- 交易归档：`data/agent_data/book-{book_type}/`
+
+---
+
+## 4. 选股系统现状（量化因子初筛主轴）
+
+当前主轴是「量化因子初筛 + 各账本独立深研」。LLM 直接从全宇宙选股的方案（`auto-selection-daily-pipeline` skill）保留为可选路径，日常默认不跑。
+
+### 4.1 当前在用的链路
+
+1. `master_universe` → `data/universe/master_universe.json`（选股股票宇宙，由 `bootstrap` 子命令初始化）
+2. `run-news` → 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json`
+3. `build-board-heat-state` → 板块热度研究 → `05_board_heat_state.json` / `05_board_heat_digest.json`
+4. `/daily-macro-summary` + `/gradual-hot-news-summary` → 宏观总结 + 渐进式主题状态 → `06_hot_news_state.json`
+5. `build-factor-store` → `data/factor_store/by_symbol/*` 与 `by_date/{date}.*` + `data/selection_runs/{date}/12_factor_snapshot.*`
+6. `build-factor-scores` → `13_factor_scores.{csv,json}`（按 `factor_scoring.yaml` 配置生成 short_score / long_score）
+7. `build-quant-prefilter` → `12_quant_prefilter.csv` + `12_quant_prefilter_short.csv` + `12_quant_prefilter_long.csv`
+
+### 4.2 量化初筛 → 三账本的衔接
+
+`run_daily_pipeline --all-books` 在生成 short_book / long_book 的 01-04 产物时，优先看 `08_short_book_candidates.json` / `09_long_book_candidates.json`；若不存在则回退到 `12_quant_prefilter_short.csv` / `12_quant_prefilter_long.csv`。
+
+日常默认走「量化初筛 → 直接进三账本」，因此 `08/09` 这两个 LLM 选股产物大多不存在，三账本会自动用 prefilter 结果作为股票池。
+
+### 4.3 设计文档索引
+
+- `docs/selection_system/因子库与量化初筛系统设计.md` — 当前主轴
+- `docs/selection_system/板块热度摘要与查询设计.md` — `05_board_heat_digest` / `query_board_snapshot.py`
+- `docs/selection_system/05_board_heat_state字段说明.md` — `05_board_heat_state.json` 字段字典
+
+---
+
+## 5. 交易后处理与历史决策合并
+
+### 5.1 文件布局（按账本一套）
+
+`data/agent_data/book-{book_type}/`：
+
+- `position/position.jsonl` — 每日仓位记录，由 `tools.price_tools` 写入；包含 `IF_TRADE` 标记
+- `position/manual_position_override.json` — 人工干预入口
+- `stock_decisions.json` — 原始逐股决策表（追加写入）
+- `decision_summary.json` — 合并后的决策摘要（连续 HOLD/FLAT 序列合并为一条）
+- `portfolio_daily_summary.json` — 组合级别的 system_risk_notes / system_focus_items / portfolio_overview
+
+### 5.2 三步流程
+
+1. `save_daily_operations(signature, ai_output_json)` 把 `05_decision.json` 的 `stock_decisions` 写入 `stock_decisions.json`（同日唯一）
+2. `process_and_merge_operations` 重建 `decision_summary.json`：连续 HOLD/FLAT 序列合并为一条，BUY/SELL 保留为独立记录
+3. `get_historical_context` / `get_portfolio_historical_context` / `load_yesterday_daily_summary` 为下一日 prompt 提供历史上下文
+
+### 5.3 设计文档
+
+`docs/trade_summary/README.md` — 完整的 JSON 契约、合并规则、与代码的对照。
+
+---
+
+## 6. 兼容层与运行治理
+
+### 6.1 兼容层现状
+
+- `agent_tools/` 与 `tools/` 仍保留少量历史导入路径兼容包装，真实业务实现已经迁移到 `services/` 与 `core/`
+- 旧时代的 MCP 服务脚本（`start_mcp_services.py`、`tool_python.py`、`tool_math.py`）已经清理
+- `basic_stock_info.py`、`enhanced_pe_pb_analyzer.py`、`stock_price_dynamics_summarizer.py`、`shared_financial_utils.py`、`tool_financial_report.py` 仍位于仓库根目录，是历史保留的顶层脚本，仍被日常链路调用，但**不再继续在此沉淀新逻辑**
+
+### 6.2 日志规范
+
+- 禁止在 `services/`、`core/`、`shared_data_access/`、`agent_tools/` 等库代码里直接用 `print`
+- 统一通过 `core.logging` 入口：`get_logger()` / `init_component_logger()` / `init_tool_logger()`
+- Logger 名必须是业务语义明确的 PascalCase（如 `ManageDailyData`、`DailyPipeline`、`TradeSummary`）
+- 详见 `.codex/rules/code-style.md`
+
+---
+
+## 7. 规则与 skills 索引
+
+### 7.1 主维护目录：`.codex/`
+
+仓库规则、skills、commands 都以 `.codex/` 为唯一主维护目录（`.claude` 是软链）。
+
+### 7.2 Rules（`.codex/rules/`）
+
+| 文件 | 用途 |
+| --- | --- |
+| `pre_commit_rule.md` | Angular 风格 + 简体中文的 commit 规范 |
+| `code-style.md` | Python 代码风格 + 统一日志规范 |
+| `shared-data-access.md` | 缓存 / 时间截断 / SymbolInfo / 数据访问统一入口 |
+| `skill-pipeline.md` | 01-08 产物契约、脚本分层、交易后处理约束 |
+| `testing.md` | evidence-first 调试、最小复现、主链路验证要求 |
+
+### 7.3 Skills（`.codex/skills/`）
+
+| Skill | 触发场景 |
+| --- | --- |
+| `daily-macro-summary` | 用户说「更新今天的宏观总结」 → `data/macro_economy/YYYYMMDD.md` |
+| `gradual-hot-news-summary` | 用户说「更新今日热点主题总结」 → `06_hot_news_state.json` |
+| `auto-selection-daily-pipeline` | 用户说「开始今天自动选股」（实验性，日常通常不跑） |
+| `financial-report-summary` | 用户说「生成财报总结」 → 各股 `financial_reports/*.md` |
+| `auto-trading-fixed-tracked` | 用户说「开始今天固定股票池交易」 → `fixed_tracked/05_decision.json` |
+| `auto-trading-short-book` | 用户说「开始今天短线股票池交易」 → `short_book/05_decision.json` |
+| `auto-trading-long-book` | 用户说「开始今天长期股票池交易」 → `long_book/05_decision.json` |
+| `add-skill-pipeline-step` | 修改 / 新增 01-08 流水线步骤时使用 |
+| `extend-shared-data-access` | 新增数据源、缓存目录、衍生指标时使用 |
+| `debug-skill-run` | 主链路（`manage_daily_data` / `run_daily_pipeline` / `run_post_trade`）失败时使用 |
+
+### 7.4 Commands（`.codex/commands/`）
+
+| Command | 用途 |
+| --- | --- |
+| `review-skill-run` | 检查某一天的 skill 运行产物、日志与交易后处理是否完整且一致 |
+
+---
+
+## 8. docs 子目录索引
+
+| 路径 | 用途 |
+| --- | --- |
+| `docs/PROJECT_SYSTEM_SUMMARY.md` | **当前文档**，项目入口总览 |
+| `docs/cache/cache_registry_design.md` | 缓存注册表机制与所有 `CacheKind` 说明 |
+| `docs/share_data_access/README.md` | `SharedDataAccess.prepare_dataset()` 调用姿势与策略归属 |
+| `docs/manage_data/data_refresh_plan.md` | 一键刷数据流水线设计（`refresh_all_for_date.py` + `refresh_orchestrator.py`） |
+| `docs/selection_system/因子库与量化初筛系统设计.md` | 选股主轴：因子库 + 评分配置 + 量化初筛 + 回测 |
+| `docs/selection_system/板块热度摘要与查询设计.md` | `05_board_heat_digest` + `query_board_snapshot.py` |
+| `docs/selection_system/05_board_heat_state字段说明.md` | `05_board_heat_state.json` 字段字典 |
+| `docs/news/README.md` | 上市公司公告新闻系统设计 |
+| `docs/trade_summary/README.md` | 每日操盘总结 JSON 契约与处理流程 |
+| `docs/fundamental_research/README.md` | 财报研究文件约定与 skill 入口 |
+| `docs/财报样例` | 财报研究 prompt 样例（人工资料）|
+
+---
+
+## 9. 重大重构时的更新约定
+
+- 任何修改 01-08 文件契约（字段、目录、文件名）、缓存策略、`shared_data_access` 入口、交易执行规则、`factor_scoring.yaml` 评分口径的改动，都应**先在对应 docs 中同步更新**，再提交代码；不要让设计文档与代码脱节。
+- 新增 skill / command / rule 时，更新本文「7. 规则与 skills 索引」表格；新增 docs 子目录时，更新「8. docs 子目录索引」表格。
+- 重大主流程调整后，更新本文顶部的「更新日期」与「1. 日常主流程」章节。
