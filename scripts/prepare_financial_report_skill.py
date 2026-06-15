@@ -39,9 +39,9 @@ _PDF_CONVERTER: Any | None = None
 def _get_pdf_converter() -> Any:
     global _PDF_CONVERTER
     if _PDF_CONVERTER is None:
-        from news.gemini_utility import PDFMarkdownConverter
+        from services.document_conversion import PDFMarkdownConverter
 
-        LOGGER.info("首次创建 PDF 转 Markdown 转换器，后续财报转换将复用当前进程内模型")
+        LOGGER.info("首次创建 MinerU API 客户端，后续财报转换将复用当前连接配置")
         _PDF_CONVERTER = PDFMarkdownConverter()
     return _PDF_CONVERTER
 
@@ -55,7 +55,7 @@ def _default_markdown_path_for_pdf(pdf_path: Path) -> Path:
 
 def _convert_pdf_to_markdown(pdf_path: Path, md_path: Path | None = None) -> Path:
     md_path = md_path or _default_markdown_path_for_pdf(pdf_path)
-    from news.gemini_utility import (
+    from services.document_conversion import (
         is_pdf_markdown_cache_current,
         write_pdf_conversion_artifacts,
     )
@@ -71,7 +71,7 @@ def _convert_pdf_to_markdown(pdf_path: Path, md_path: Path | None = None) -> Pat
 
 def _ensure_markdown_path(md_path: Path | None, pdf_path: Path | None) -> Path | None:
     if md_path and pdf_path and pdf_path.exists():
-        from news.gemini_utility import is_pdf_markdown_cache_current
+        from services.document_conversion import is_pdf_markdown_cache_current
 
         if is_pdf_markdown_cache_current(md_path, pdf_path, profile="financial_report"):
             return md_path

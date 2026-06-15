@@ -21,7 +21,7 @@ from .symbols import build_symbol_info_map
 
 LOGGER = get_logger("SelectionAnnouncements")
 DEFAULT_DISCLOSURE_MODEL = "qwen-doc-turbo"
-DEFAULT_AUDIT_MODEL = "deepseek-v3.2-exp"
+DEFAULT_AUDIT_MODEL = "deepseek-v4-flash"
 DEFAULT_ANNOUNCEMENT_LOOKBACK_DAYS = 30
 AUDITED_PREPARE_LOOKBACK_DAYS = 120
 MAX_PREPARE_WORKERS = 8

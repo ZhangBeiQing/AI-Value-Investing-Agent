@@ -26,7 +26,7 @@ from .store import save_json_file
 LOGGER = get_logger("SelectionNewsCuration")
 load_dotenv(".env")
 
-DEFAULT_DEDUP_MODEL = "deepseek-v3.2-exp"
+DEFAULT_DEDUP_MODEL = "deepseek-v4-flash"
 DEFAULT_BATCH_SIZE = 20
 SOURCE_BATCH_LIMITS = {
     "em_breakfast": 80,

@@ -4,7 +4,7 @@ utlity包 - 提供通用的工具函数和缓存管理功能
 主要模块:
 - utility: 缓存管理和通用工具函数
 - utils: 重试机制、数据过滤和格式化工具
-- pdf_marker: PDF处理工具
+- PDF 转 Markdown 由 services.document_conversion 统一提供
 """
 
 # 从utility模块导入常用的缓存管理函数
@@ -76,7 +76,7 @@ __all__ = [
     'resolve_base_dir',
     'is_cn_etf',
     'is_cn_etf_symbol',
-    # pdf_marker模块的函数
+    # 行情回退函数
     'fetch_cn_a_daily_with_fallback',
     'fetch_hk_a_daily_with_fallback'
 ]

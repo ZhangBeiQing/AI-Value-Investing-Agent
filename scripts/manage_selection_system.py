@@ -64,7 +64,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     news_parser = subparsers.add_parser("run-news", help="Run the standalone news acquisition/dedup/enrichment pipeline.")
     news_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
-    news_parser.add_argument("--model", default="deepseek-v3.2-exp", help="Dedup model name.")
+    news_parser.add_argument("--model", default="deepseek-v4-flash", help="Dedup model name.")
     news_parser.add_argument("--batch-size", type=int, default=20, help="Batch size for LLM dedup.")
 
     market_parser = subparsers.add_parser(
@@ -97,7 +97,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     board_heat_parser.add_argument(
         "--model",
-        default="deepseek-v3.2-exp",
+        default="deepseek-v4-flash",
         help="Deep research model name.",
     )
     board_heat_parser.add_argument(

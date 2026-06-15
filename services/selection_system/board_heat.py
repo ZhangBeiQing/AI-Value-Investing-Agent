@@ -25,7 +25,7 @@ from .store import load_json_file, save_json_file
 LOGGER = get_logger("SelectionBoardHeat")
 DEFAULT_TOP_N = 3
 DEFAULT_STOCKS_PER_BOARD = 3
-DEFAULT_RESEARCH_MODEL = "deepseek-v3.2-exp"
+DEFAULT_RESEARCH_MODEL = "deepseek-v4-flash"
 DEFAULT_DIGEST_TOP_K = 10
 
 load_dotenv(".env")
