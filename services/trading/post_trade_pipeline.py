@@ -75,6 +75,18 @@ def _decision_entries(decision: dict) -> List[dict]:
     return []
 
 
+def _dated_decision_entries(decision: dict, summary_date: str) -> List[dict]:
+    dated_entries: List[dict] = []
+    for entry in _decision_entries(decision):
+        dated_entry = dict(entry)
+        dated_entry["operation_date"] = summary_date
+        symbol = _entry_symbol(dated_entry)
+        if symbol and "symbol" not in dated_entry:
+            dated_entry["symbol"] = symbol
+        dated_entries.append(dated_entry)
+    return dated_entries
+
+
 def _entry_symbol(entry: dict) -> str | None:
     symbol = entry.get("symbol") or entry.get("stock_code")
     return symbol if isinstance(symbol, str) and symbol.strip() else None
@@ -333,6 +345,52 @@ def call_trade_functions(buys: Dict[str, int], sells: Dict[str, int]) -> List[di
     return results
 
 
+def _load_matching_execution_log(
+    log_path: Path,
+    *,
+    summary_date: str,
+    signature: str,
+    buys: Dict[str, int],
+    sells: Dict[str, int],
+) -> dict | None:
+    """复用同一决策的成功执行日志，避免汇总失败后重复真实交易。"""
+    if not log_path.exists():
+        return None
+
+    try:
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"已有执行日志无法读取: {log_path}") from exc
+
+    if payload.get("error"):
+        return None
+
+    expected_actions: list[dict] = []
+    if sells:
+        expected_actions.append({"tool": "sell", "trades": sells})
+    if buys:
+        expected_actions.append({"tool": "buy", "trades": buys})
+    actual_actions = [
+        {"tool": action.get("tool"), "trades": action.get("trades") or {}}
+        for action in payload.get("actions", [])
+    ]
+    actions_match = (
+        actual_actions == expected_actions
+        and bool(payload.get("no_trade")) == (not buys and not sells)
+    )
+    if (
+        payload.get("summary_date") == summary_date
+        and payload.get("signature") == signature
+        and actions_match
+    ):
+        return payload
+
+    raise RuntimeError(
+        "检测到已有成功执行记录，但它与当前决策不一致。"
+        f"为防止重复交易，已停止执行: {log_path}"
+    )
+
+
 def execute_trade_from_decision(
     run_date: str,
     *,
@@ -383,6 +441,21 @@ def execute_trade_from_decision(
     ensure_position_file(resolved_signature, summary_date, symbols=expected_symbols)
 
     buys, sells = extract_trades(decision)
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = resolved_output_dir / "06_execution_log.json"
+    if _load_matching_execution_log(
+        log_path,
+        summary_date=summary_date,
+        signature=resolved_signature,
+        buys=buys,
+        sells=sells,
+    ):
+        logger.info(
+            "检测到同一决策已成功执行，跳过重复交易: date=%s, signature=%s",
+            summary_date,
+            resolved_signature,
+        )
+        return log_path
 
     execution_log = {
         "summary_date": summary_date,
@@ -418,8 +491,6 @@ def execute_trade_from_decision(
         execution_log["error"] = str(exc)
         raise
 
-    resolved_output_dir.mkdir(parents=True, exist_ok=True)
-    log_path = resolved_output_dir / "06_execution_log.json"
     log_path.write_text(
         json.dumps(execution_log, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -466,8 +537,11 @@ def merge_trade_summary(
         )
 
     initialize_data_files(resolved_signature)
-    saved_operations = save_daily_operations(resolved_signature, decision)
+    normalized_decision = dict(decision)
+    normalized_decision["summary_date"] = summary_date
+    saved_operations = save_daily_operations(resolved_signature, normalized_decision)
     process_and_merge_operations(resolved_signature, saved_operations)
+    decision_operations = _dated_decision_entries(normalized_decision, summary_date)
 
     daily_summary = {
         "summary_date": summary_date,
@@ -475,18 +549,20 @@ def merge_trade_summary(
         "decision_file": str(decision_path),
         "system_risk_notes": decision.get("system_risk_notes", []),
         "system_focus_items": decision.get("system_focus_items", []),
-        "saved_operations_count": len(saved_operations),
+        "saved_operations_count": len(decision_operations),
     }
     daily_summary_path = resolved_output_dir / "07_daily_summary.json"
     daily_summary_path.write_text(
         json.dumps(daily_summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    stock_codes = [_entry_symbol(op) for op in saved_operations if _entry_symbol(op)]
+    stock_codes = [
+        _entry_symbol(op) for op in decision_operations if _entry_symbol(op)
+    ]
     history_merge = {
         "summary_date": summary_date,
         "signature": resolved_signature,
-        "saved_operations": saved_operations,
+        "saved_operations": decision_operations,
         "latest_portfolio_context": get_portfolio_historical_context(
             resolved_signature, stock_codes, n=2
         ),

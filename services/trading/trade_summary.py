@@ -262,19 +262,31 @@ def save_daily_operations(signature: str, ai_output_json: dict) -> List[dict]:
 
     # 提取并处理股票操作
     summary_date = ai_output_json.get("summary_date")
+    try:
+        datetime.strptime(str(summary_date), "%Y-%m-%d")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"无效的 summary_date: {summary_date!r}") from exc
+
     new_operations = ai_output_json.get("stock_decisions") or ai_output_json.get(
         "stock_operations", []
     )
 
     # 为每条新操作记录添加操作日期，并检查是否重复
+    existing_keys = {
+        json.dumps(op, ensure_ascii=False, sort_keys=True) for op in all_operations
+    }
     saved_operations: list[dict] = []
     for op in new_operations:
-        op["operation_date"] = summary_date
-        if _entry_symbol(op) and "symbol" not in op:
-            op["symbol"] = _entry_symbol(op)
-        # 允许同一天同一只股票有多条记录（追加模式），支持 Force Run 的重新决策
-        all_operations.append(op)
-        saved_operations.append(op)
+        saved_op = dict(op)
+        saved_op["operation_date"] = summary_date
+        if _entry_symbol(saved_op) and "symbol" not in saved_op:
+            saved_op["symbol"] = _entry_symbol(saved_op)
+        operation_key = json.dumps(saved_op, ensure_ascii=False, sort_keys=True)
+        if operation_key in existing_keys:
+            continue
+        all_operations.append(saved_op)
+        saved_operations.append(saved_op)
+        existing_keys.add(operation_key)
 
     # 提取并处理系统信息
     portfolio_summary = {
@@ -312,7 +324,22 @@ def save_daily_operations(signature: str, ai_output_json: dict) -> List[dict]:
 def _rebuild_operation_summary(signature: str, summary_file: str | None = None) -> None:
     summary_file = summary_file or _operation_summary_file(signature)
     operations_file = _stock_operations_file(signature)
-    all_operations = read_json_file(operations_file)
+    raw_operations = read_json_file(operations_file)
+    all_operations = []
+    invalid_date_count = 0
+    for operation in raw_operations:
+        try:
+            datetime.strptime(str(operation.get("operation_date")), "%Y-%m-%d")
+        except (TypeError, ValueError):
+            invalid_date_count += 1
+            continue
+        all_operations.append(operation)
+
+    if invalid_date_count:
+        LOGGER.warning(
+            "全量重建时跳过 %d 条 operation_date 无效的历史记录",
+            invalid_date_count,
+        )
     if not all_operations:
         LOGGER.info("没有原始操作记录可供处理")
         return
@@ -376,6 +403,9 @@ def process_and_merge_operations(
     signature: str, new_operations: List[dict] | None = None
 ):
     summary_file = _operation_summary_file(signature)
+    if new_operations == [] and read_json_file(summary_file):
+        LOGGER.info("没有新的股票操作记录，保留现有 operation_summary")
+        return
     if new_operations:
         summary_entries = read_json_file(summary_file)
         if _incremental_update_summary(summary_entries, new_operations):
