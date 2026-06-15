@@ -1376,6 +1376,32 @@ def update_disclosures_cached(
     frame.to_csv(csv_path, index=False, encoding="utf-8")
     record_cache_refresh(cache_dir)
         
+def _share_info_cache_file(
+    symbol_info: SymbolInfo,
+    base_data_dir: str | Path,
+) -> Path | None:
+    cache_dir = build_cache_dir(
+        symbol_info,
+        CacheKind.SHARE_INFO,
+        base_dir=base_data_dir,
+        ensure=False,
+    )
+    if symbol_info.is_cn_market():
+        return cache_dir / "stock_share_change_cninfo.csv"
+    if symbol_info.is_hk_market():
+        return cache_dir / "stock_hk_financial_indicator_em.csv"
+    return None
+
+
+def _csv_cache_has_rows(path: Path | None) -> bool:
+    if path is None or not path.exists() or path.stat().st_size <= 0:
+        return False
+    try:
+        return not pd.read_csv(path, nrows=1).empty
+    except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+        return False
+
+
 def ensure_symbol_data(
     base_data_dir: str | Path,
     symbolInfo: SymbolInfo,
@@ -1425,29 +1451,43 @@ def ensure_symbol_data(
         financial_cache_dir = build_cache_dir(
             symbolInfo, CacheKind.FINANCIALS, base_dir=base_data_dir, ensure=False
         )
-        financial_cache_exists = financial_cache_dir.exists()
+        financial_status = check_cache(financial_cache_dir, CacheKind.FINANCIALS)
+        financial_cache_ready = (
+            financial_cache_dir.exists() and not financial_status.missing_files
+        )
 
-        if not skip_financial_refresh or not financial_cache_exists:
-            if skip_financial_refresh and not financial_cache_exists:
+        if not skip_financial_refresh or not financial_cache_ready:
+            if skip_financial_refresh and not financial_cache_ready:
                 logger.info(
-                    "%s %s 财报缓存目录不存在，忽略 skip_financial_refresh 执行初始化抓取",
+                    "%s %s 财报缓存不完整，忽略 skip_financial_refresh 执行初始化抓取",
                     symbolInfo.stock_name,
                     symbolInfo.symbol,
                 )
-            # 第一步：获取并缓存财务数据
             update_financial_data_cached(
                 symbolInfo,
                 base_data_dir,
                 force_refresh=force_refresh,
-                force_refresh_financials=force_refresh_financials or not financial_cache_exists,
+                force_refresh_financials=force_refresh_financials or not financial_cache_ready,
                 logger=logger,
             )
 
-            # 第二步：获取并缓存股本数据
+        share_cache_file = _share_info_cache_file(symbolInfo, base_data_dir)
+        share_cache_ready = _csv_cache_has_rows(share_cache_file)
+        if (
+            force_refresh
+            or force_refresh_financials
+            or not share_cache_ready
+        ):
+            if not share_cache_ready:
+                logger.info(
+                    "%s %s 股本缓存缺失或无效，执行初始化抓取",
+                    symbolInfo.stock_name,
+                    symbolInfo.symbol,
+                )
             update_share_info_cached(
                 symbolInfo,
                 base_data_dir=base_data_dir,
-                force_refresh=force_refresh or force_refresh_financials or not financial_cache_exists,
+                force_refresh=force_refresh or force_refresh_financials or not share_cache_ready,
                 logger=logger,
             )
     else:
@@ -1477,6 +1517,19 @@ def ensure_symbol_data(
             base_data_dir=base_data_dir,
             logger=logger,
         )
+
+        # 分时回填：日线数据更新延迟到晚上 9 点以后（港股/ETF 更慢），
+        # 若 price.csv 最新日期刚好差一天（即今天交易日但日线还没出），
+        # 用 1 分钟 K 线聚合当天的 OHLCV 补回 price.csv。
+        try:
+            from shared_data_access.intraday_backfill import IntradayBackfillProvider
+
+            IntradayBackfillProvider(logger=logger).backfill_if_needed(
+                symbol_info=symbolInfo,
+                price_csv_path=price_file,
+            )
+        except Exception:
+            pass
 
     if include_disclosures and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market()):
         update_disclosures_cached(
