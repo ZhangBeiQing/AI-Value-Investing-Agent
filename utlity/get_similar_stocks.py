@@ -20,7 +20,7 @@ load_dotenv()
 DEEPSEEK_MODEL = (
     os.getenv("DEEPSEEK_SIMILAR_STOCK_MODEL")
     or os.getenv("DEEPSEEK_MODEL")
-    or "deepseek-chat"
+    or "deepseek-v4-pro"
 )
 DEEPSEEK_TIMEOUT = int(os.getenv("DEEPSEEK_TIMEOUT", "60"))
 LOGGER = get_logger("SimilarStocks")

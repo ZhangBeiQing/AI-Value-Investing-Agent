@@ -66,9 +66,9 @@ _PDF_CONVERTER = None
 def _get_pdf_converter():
     global _PDF_CONVERTER
     if _PDF_CONVERTER is None:
-        from news.gemini_utility import PDFMarkdownConverter
+        from services.document_conversion import PDFMarkdownConverter
 
-        LOGGER.info("首次创建 PDF 转 Markdown 转换器，后续财报转换将复用当前进程内模型")
+        LOGGER.info("首次创建 MinerU API 客户端，后续财报转换将复用当前连接配置")
         _PDF_CONVERTER = PDFMarkdownConverter()
     return _PDF_CONVERTER
 
@@ -82,7 +82,7 @@ def _default_markdown_path_for_pdf(pdf_path: Path) -> Path:
 
 def _convert_one(pdf_path: Path, md_path: Path) -> Tuple[str, str]:
     """Returns (status, detail). status ∈ {'cached', 'converted', 'error'}."""
-    from news.gemini_utility import (
+    from services.document_conversion import (
         is_pdf_markdown_cache_current,
         write_pdf_conversion_artifacts,
     )

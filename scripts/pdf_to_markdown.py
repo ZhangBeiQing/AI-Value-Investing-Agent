@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert a local PDF file to Markdown using the existing marker-based converter."""
+"""Convert a local PDF file to Markdown through the configured MinerU API."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def main() -> int:
         group="tools",
         filename_prefix="pdf_to_markdown",
     )
-    from news.gemini_utility import PDFMarkdownConverter, write_pdf_conversion_artifacts
+    from services.document_conversion import PDFMarkdownConverter, write_pdf_conversion_artifacts
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info("开始转换 PDF: %s, profile=%s", pdf_path, args.profile)

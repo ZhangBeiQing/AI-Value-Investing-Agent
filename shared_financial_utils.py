@@ -56,6 +56,7 @@ class ShareInfoProvider:
     ) -> ShareInfoResult:
         """Return share info, fetching and caching when necessary."""
 
+        result = None
         if symbolInfo.is_cn_market():
             fetched = self._fetch_share_info_from_cninfo(symbolInfo, cutoff=cutoff)
             if fetched:

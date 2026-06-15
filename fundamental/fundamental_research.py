@@ -867,7 +867,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="财报提取与分析")
     parser.add_argument("--symbol", required=True, default="002028.SZ", help="股票代码，如 600000.SH")
     parser.add_argument("--extract-model", default="qwen-doc-turbo", help="提取模型名称")
-    parser.add_argument("--analysis-model", default="deepseek-v3.2-exp", help="分析模型名称")
+    parser.add_argument("--analysis-model", default="deepseek-v4-flash", help="分析模型名称")
     parser.add_argument("--lookback-days", type=int, default=540, help="公告回溯天数")
     parser.add_argument(
         "--direct-pdf",

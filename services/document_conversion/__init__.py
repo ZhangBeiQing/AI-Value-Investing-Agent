@@ -1,6 +1,6 @@
-"""Backward-compatible imports for the MinerU document conversion service."""
+"""Document conversion services."""
 
-from services.document_conversion import (
+from services.document_conversion.mineru import (
     DEFAULT_PDF_CONVERSION_PROFILE,
     PDF_MARKDOWN_CONVERTER_VERSION,
     SUPPORTED_PDF_CONVERSION_PROFILES,

@@ -28,7 +28,7 @@ from configs.stock_pool import TRACKED_A_STOCKS
 from openai import OpenAI
 from shared_data_access.cache_registry import CacheKind, build_cache_dir
 from shared_data_access.data_access import SharedDataAccess
-from news.gemini_utility import (
+from services.document_conversion import (
     PDFMarkdownConverter,
     is_pdf_markdown_cache_current,
     write_pdf_conversion_artifacts,
@@ -1221,7 +1221,7 @@ def sync_financial_reports_for_stock(
         as_of_date=datetime.now().strftime("%Y-%m-%d"),
         include_disclosures=True,
         disclosure_lookback_days=lookback_days,
-        force_refresh_disclosures=True,
+        force_refresh_disclosures=False,
     )
     disclosure_bundle = prepared.disclosures
     if disclosure_bundle is None or disclosure_bundle.frame.empty:
@@ -1597,7 +1597,7 @@ def main() -> int:
     parser.add_argument("--lookback", type=int, default=120, help="首次入池回溯天数，默认365")
     parser.add_argument("--all", action="store_true", help="批量更新 TRACKED_A_STOCKS")
     parser.add_argument("--model", type=str, default="qwen-doc-turbo", help="用于原子摘要的AI模型")
-    parser.add_argument("--audit-model", default="deepseek-v3.2-exp", type=str, help="（可选）用于战略审计的AI模型，提供此参数将触发审计流程")
+    parser.add_argument("--audit-model", default="deepseek-v4-flash", type=str, help="（可选）用于战略审计的AI模型，提供此参数将触发审计流程")
     parser.add_argument("--max-workers", type=int, default=4, help="批量更新/审计时的最大并发数")
     args = parser.parse_args()
 
