@@ -91,6 +91,7 @@ data/skill_runs/YYYY-MM-DD/
 
 - 主 agent 不会自己读所有股票研究包，而是基于今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0 队列，对 P0 派发并行 subagent（每个 subagent 只负责 1 只股票），最终通过 `scripts/merge_subagent_decisions.py` 合并到 `05_decision.json`。
 - 三本账本相互独立串行执行；short_book 上限 7 只、最大持仓 20 个交易日；long_book 允许池子日变但已持仓不剔除。
+- fixed_tracked 与 long_book 的买入规则采用“严格准入、分批建仓、有效初仓、证伪退出”：基本面、估值和逻辑先过关；买点不要求完美，时点不确定性通过分批处理；初仓和目标仓位必须按真实总资产计算并具有实际意义；确认后加仓，逻辑证伪后退出。short_book 继续沿用短线催化与量价确认规则。
 - 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` / `auto-trading-short-book/SKILL.md` / `auto-trading-long-book/SKILL.md`。
 
 ### 1.6 人工确认后分别执行后处理
