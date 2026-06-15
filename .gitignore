@@ -80,6 +80,8 @@ logs/
 tmp/
 test/
 **/test_*
+!/tests/
+!/tests/**
 *.html
 *.jpg
 *.jpeg
