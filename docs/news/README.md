@@ -96,7 +96,7 @@ news/
 触发时机：
 
 - 可独立脚本触发，或在批量更新后自动运行
-- 当前 `manage_daily_data` 调用 `disclosures_builder.py --all --audit-model deepseek-v3.2-exp` 默认在 PDF 摘要之后自动跑审计
+- 当前 `manage_daily_data` 调用 `disclosures_builder.py --all --audit-model deepseek-v4-flash` 默认在 PDF 摘要之后自动跑审计
 
 核心逻辑：
 
@@ -126,7 +126,7 @@ get_news_context(stock_code, simulation_date, lookback_days=60)
 | 角色 | 当前默认 | 备注 |
 | --- | --- | --- |
 | 原子摘要模型 | `qwen-doc-turbo` | 支持 PDF 直读，速度 / 性价比优先 |
-| 审计模型 | `deepseek-v3.2-exp` | 由 `--audit-model` 指定，能力更强，深度分析 |
+| 审计模型 | `deepseek-v4-flash` | 由 `--audit-model` 指定，兼顾成本与分析能力 |
 
 审计模型由 `.env` 中的 `AUDIT_MODEL_BASE_URL` / `AUDIT_MODEL_API_KEY` 提供凭证。
 
