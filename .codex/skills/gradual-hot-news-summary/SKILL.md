@@ -76,6 +76,13 @@ description: >
 2. 哪些旧主题只应降级到 `cooling_themes`
 3. 哪些旧主题应从今天的 `06_hot_news_state.json` 中移出
 
+**主题合并原则**（节省 token，提高可读性）：
+
+1. **共享根因的主题必须合并**：如果多个主题的根因是同一个事件（如 MOU 和平协议→油价暴跌/黄金暴涨/股市反弹/以色列拒绝），必须合并为一个主题，在 `history_anchor` 中逐节分述各条传导链，而非拆成多个独立主题
+2. **不嵌套小主题**：不要在一个大主题里再嵌套"子主题"结构，用节标题（如"一、二、三"）在 `history_anchor` 中线性叙述因果链即可
+3. **判断标准**：问自己"去掉根因，这些主题还存在吗？"——如果同时消失，就是同一个主题
+4. **active_themes 数量上限**：通常不超过 5 个，底线是 3-4 个高度凝练的主题，每个主题承载完整的因果链
+
 注意：
 
 1. 被移出的主题不再出现在今天新的 `06_hot_news_state.json`
@@ -118,10 +125,10 @@ description: >
 - 不要替代板块热度层
 - 不要直接做最终选股结论
 - 不要把全部新闻直接挂到股票宇宙上
-- `linked_symbols_in_universe` 必须显式对照 `data/universe/master_universe.json`
 - 不要省略 `history_anchor / today_update / current_state / scenarios / key_risks / next_day_watchlist`
-- `linked_boards` 必须使用 [输入约定](references/input-contract.md) 中的标准板块名清单
 - 不要把昨天出现过的主题机械地全部延续到今天
 - 不要把已结束、已证伪、已完全失去交易性的主题继续保留在今天的 `06_hot_news_state.json`
+- **共享根因的主题必须合并**——若多个主题源于同一事件（如和平协议→油价/黄金/股市/地缘），合并为一个主题，用节标题分述因果链，严禁拆成多个独立主题
+- **active_themes 不超过 5 个**，优先合并相关主题，保持高度凝练
 - **必须逐主题生成并写入文件**，严禁一次性输出全部主题（JSON 体量过大，单次写入必定截断导致文件损坏）
 

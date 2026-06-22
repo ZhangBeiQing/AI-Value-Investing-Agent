@@ -13,10 +13,12 @@ def run_refresh_data(
     *,
     symbols: Iterable[str] | None = None,
     max_workers: int = 4,
+    skip_disclosures: bool = False,
 ) -> None:
     run_manage_daily_data(
         run_date,
         signature=signature,
         symbols=symbols,
         max_workers=max_workers,
+        skip_disclosures=skip_disclosures,
     )

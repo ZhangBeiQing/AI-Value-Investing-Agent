@@ -44,6 +44,7 @@ from .stock_utils import (
     fetch_hk_a_daily_with_fallback,
     is_cn_etf,
     is_cn_etf_symbol,
+    is_etf_symbol,
 )
 
 # 定义包的公开接口
@@ -76,6 +77,7 @@ __all__ = [
     'resolve_base_dir',
     'is_cn_etf',
     'is_cn_etf_symbol',
+    'is_etf_symbol',
     # 行情回退函数
     'fetch_cn_a_daily_with_fallback',
     'fetch_hk_a_daily_with_fallback'

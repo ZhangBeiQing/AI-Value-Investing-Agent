@@ -13,7 +13,7 @@
 5. 接下来可能怎么发展
 6. 有哪些证伪或反转风险
 7. 明天还要继续跟踪什么
-8. 它关联哪些宏观主题、板块和股票
+8. 它关联哪些宏观主题
 
 ## 2. 顶层结构
 
@@ -31,9 +31,9 @@
 
 ## 3. 输出的JSON结构介绍
 
-每个主题只保留 **12 个字段**（旧版 18 个），删除了冗余字段：
+每个主题只保留 **10 个字段**（旧版 18 个），删除了冗余字段：
 
-- 删除：`key_events`（与 `today_update` 重叠）、`forward_paths`（与 `scenarios` 重叠）、`expected_duration`（合并到 `current_state`）、`evidence_news_ids`（实现细节）、`search_trigger`（合并到 `next_day_watchlist`）
+- 删除：`key_events`（与 `today_update` 重叠）、`forward_paths`（与 `scenarios` 重叠）、`expected_duration`（合并到 `current_state`）、`evidence_news_ids`（实现细节）、`search_trigger`（合并到 `next_day_watchlist`）、`linked_boards`（体力活/下游可自行推断）、`linked_symbols_in_universe`（体力活/下游可自行推断）
 - 合并：`scenario_tree` + `forward_paths` → `scenarios`
 
 ```json
@@ -83,8 +83,6 @@
       ],
       "why_it_matters": "影响油气、航运、军工、输入性通胀，是当前全球资产定价最核心的地缘变量",
       "linked_macro_topics": ["中东冲突", "油价", "Fed更难转鸽"],
-      "linked_boards": ["油气开采及服务", "港口航运", "军工装备"],
-      "linked_symbols_in_universe": ["600000.SH", "000001.SZ"],
       "outside_universe_names_to_check": ["某油运股", "某军工股"],
       "next_day_watchlist": [
         "跟踪霍尔木兹是否恢复通行",
@@ -203,14 +201,6 @@
 
 ## 6. 主题如何映射到股票
 
-主题层不直接负责最终选股，但必须提供股票映射线索。
+主题层不直接负责最终选股，也不在手写股票列表。`history_anchor`、`today_update`、`current_state` 中的文字描述已包含足够信息，下游 agent 可据此自行推断关联板块和个股。
 
-建议至少输出：
-
-1. `linked_symbols_in_universe` — 宇宙内相关股票
-2. `outside_universe_names_to_check` — 宇宙外值得关注的标的
-
-作用：
-
-1. 帮助 agent 在宇宙内优先看哪些股票
-2. 触发 agent 在宇宙外搜索新的龙头或弹性股
+如需显式提示，在 `outside_universe_names_to_check` 中列出宇宙外值得关注的标的，触发 agent 在宇宙外搜索新的龙头或弹性股。

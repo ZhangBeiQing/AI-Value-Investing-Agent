@@ -115,6 +115,40 @@ def _safe_int(value: object) -> Optional[int]:
     return None
 
 
+def _stock_name_to_code_map() -> Dict[str, str]:
+    """构建 股票名称 → 股票代码 的映射表（以 master_universe.json 为准）。"""
+    from pathlib import Path as _Path
+    import json as _json
+    universe_path = _Path(__file__).resolve().parents[1] / "data" / "universe" / "master_universe.json"
+    name_map: Dict[str, str] = {}
+    if universe_path.exists():
+        try:
+            data = _json.loads(universe_path.read_text(encoding="utf-8"))
+            for entry in data.get("stocks", []):
+                name = entry.get("name")
+                symbol = entry.get("symbol")
+                if name and symbol:
+                    name_map[name] = symbol
+        except Exception:
+            pass
+    return name_map
+
+
+def _resolve_position_keys(positions: dict) -> dict:
+    """将行情文件中的股票名称键转换为股票代码键。"""
+    name_map = _stock_name_to_code_map()
+    resolved: dict = {}
+    for key, value in positions.items():
+        if key == "CASH":
+            resolved[key] = value
+            continue
+        if key in name_map:
+            resolved[name_map[key]] = value
+        else:
+            resolved[key] = value
+    return resolved
+
+
 def _load_manual_position_override(modelname: str) -> Optional[Dict[str, object]]:
     override_file = _manual_position_override_file(modelname)
     if not override_file.exists():
@@ -153,6 +187,8 @@ def _load_manual_position_override(modelname: str) -> Optional[Dict[str, object]
     if cash_value is None and not isinstance(positions_raw.get("CASH"), dict):
         cash_value = _safe_float(positions_raw.get("CASH"))
     flat_positions["CASH"] = round(float(cash_value or 0.0), 4)
+
+    positions_raw = _resolve_position_keys(positions_raw)
 
     for symbol, raw_entry in positions_raw.items():
         if symbol == "CASH":
@@ -233,9 +269,6 @@ def _resolve_position_state_on_or_before(
         return latest_positions, latest_id, latest_date, "position_jsonl"
 
     if not isinstance(override_date, date) or override_date > target_dt:
-        return latest_positions, latest_id, latest_date, "position_jsonl"
-
-    if latest_date is not None and latest_date > override_date:
         return latest_positions, latest_id, latest_date, "position_jsonl"
 
     return (
@@ -447,7 +480,7 @@ def compute_total_value(today_date: str, positions: Dict[str, float]) -> float:
     """
     计算当日持仓总价值（股票持仓市值 + 现金）。
 
-    - 股票市值 = 当日开盘价 * 持股数量（若价格缺失则按0计）
+    - 股票市值 = 当日收盘价 * 持股数量（若价格缺失则按0计）
     - 现金直接取 `positions['CASH']`
 
     Args:
@@ -465,7 +498,7 @@ def compute_total_value(today_date: str, positions: Dict[str, float]) -> float:
     prices: Dict[str, Optional[float]] = {}
     if symbols:
         try:
-            price_map = get_open_prices(today_date, symbols)
+            price_map = _get_on_date_close_prices(today_date, symbols)
             # 将 {"CODE.SUFFIX_price": value} 转回按 symbol 索引
             for sym in symbols:
                 prices[sym] = price_map.get(f"{sym}_price")

@@ -36,6 +36,7 @@ DEFAULT_API_CALL_DELAY = 0.5
 HK_HIST_MAX_RETRIES = 3
 T = TypeVar("T")
 ETF_CODE_PREFIXES = ("51", "58", "15", "16", "50", "53")
+ETF_KEYWORDS = ("ETF", "基金", "杠杆", "做多", "做空", "2倍", "一倍", "反向", "每日")
 
 
 def _sanitize_stock_name_value(value: Any) -> str:
@@ -202,11 +203,13 @@ def normalize_symbol(symbol: str) -> str:
 def parse_symbol(symbol: str) -> SymbolInfo:
     """Parse the normalized symbol into structured metadata."""
     normalized = normalize_symbol(symbol)
-    stock_name = get_stock_name(normalized)
     code, suffix = normalized.split(".", 1)
     metadata = SYMBOL_SUFFIX_INFO[suffix]
     stock_entry = _SYMBOL_METADATA_MAP.get(normalized)
-    resolved_name = _sanitize_stock_name_value(stock_entry.name if stock_entry else stock_name)
+    stock_name = _sanitize_stock_name_value(stock_entry.name if stock_entry else "")
+    if not stock_name:
+        stock_name = get_stock_name(normalized)
+    resolved_name = _sanitize_stock_name_value(stock_name)
     if not resolved_name:
         resolved_name = normalized
     return SymbolInfo(
@@ -244,6 +247,22 @@ def is_cn_etf_symbol(symbol: str) -> bool:
 def is_cn_etf(symbolInfo: SymbolInfo) -> bool:
     """判断是否为常见前缀的 A 股 ETF/基金标的。"""
     return is_cn_etf_symbol(symbolInfo.symbol)
+
+
+def is_etf_symbol(symbol: str) -> bool:
+    """判断是否为 ETF/基金/杠杆产品类标的。"""
+    try:
+        normalized = normalize_symbol(symbol)
+    except SymbolFormatError:
+        return False
+    if is_cn_etf_symbol(normalized):
+        return True
+    stock_entry = _SYMBOL_METADATA_MAP.get(normalized)
+    if stock_entry is None:
+        return False
+    text = f"{stock_entry.name} {stock_entry.description}".upper()
+    return any(keyword.upper() in text for keyword in ETF_KEYWORDS)
+
 
 def resolve_base_dir(base_dir: Path | str | None = None) -> Path:
     """Resolve a base directory relative to the repository root."""
@@ -742,24 +761,49 @@ def get_stock_name(symbol: str, logger: Optional[logging.Logger] = None) -> str:
         raise ValueError(error_msg)
 
 
+def _fetch_via_stock_zh_a_daily(ak_symbol: str, start_date: str, end_date: str, adjust: str, logger) -> pd.DataFrame:
+    import time as _time
+    max_attempts = 3
+    base_delay = 2.0
+    last_error = None
+    for attempt in range(max_attempts):
+        try:
+            df = api_call_with_delay(
+                ak.stock_zh_a_daily,
+                symbol=ak_symbol,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust,
+                logger=logger,
+            )
+            if df is None or df.empty:
+                raise ValueError("stock_zh_a_daily 返回空数据")
+            return df
+        except Exception as exc:
+            last_error = exc
+            if attempt < max_attempts - 1:
+                delay = base_delay * (2 ** attempt)
+                if logger:
+                    logger.info(
+                        "stock_zh_a_daily 抓取失败(第 %d/%d 次)，%ss 后重试: %s",
+                        attempt + 1,
+                        max_attempts,
+                        delay,
+                        exc,
+                    )
+                _time.sleep(delay)
+    raise last_error
+
+
 def fetch_cn_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end_date: str, adjust: str = "qfq", logger: logging.Logger = None) -> pd.DataFrame:
-    """优先使用 stock_zh_a_daily 获取A股行情，失败时回退到 stock_zh_a_hist。"""
+    """优先使用 stock_zh_a_daily（新浪），带重试；最终回退到 stock_zh_a_hist。"""
 
     adjust = adjust or ""
+    ak_symbol = symbol_info.to_akshare_equity()
     hist_symbol = symbol_info.code
 
     try:
-        ak_symbol = symbol_info.to_akshare_equity()
-        df = api_call_with_delay(
-            ak.stock_zh_a_daily,
-            symbol=ak_symbol,
-            start_date=start_date,
-            end_date=end_date,
-            adjust=adjust,
-            logger=logger,
-        )
-        if df is None or df.empty:
-            raise ValueError(f"stock_zh_a_daily 也未返回 {symbol_info.symbol} 数据")
+        df = _fetch_via_stock_zh_a_daily(ak_symbol, start_date, end_date, adjust, logger)
         df = df.rename(
             columns={
                 "date": "日期",
@@ -776,11 +820,11 @@ def fetch_cn_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end
         return df
     except Exception as exc:
         logger.warning(
-            "stock_zh_a_daily 获取 %s 失败，改用 stock_zh_a_hist: %s",
+            "stock_zh_a_daily 获取 %s 失败(已重试)，改用 stock_zh_a_hist: %s",
             symbol_info.symbol,
             exc,
         )
-        
+
     df_hist = api_call_with_delay(
         ak.stock_zh_a_hist,
         symbol=hist_symbol,
@@ -791,8 +835,8 @@ def fetch_cn_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end
         logger=logger
     )
     if df_hist is not None and not df_hist.empty:
-        if "流通股本" not in df.columns:
-            df["流通股本"] = np.nan
+        if "流通股本" not in df_hist.columns:
+            df_hist["流通股本"] = np.nan
         return df_hist
     raise ValueError("stock_zh_a_hist 返回空数据")
 

@@ -10,6 +10,7 @@ from typing import Any, Sequence
 import numpy as np
 import pandas as pd
 
+from configs.stock_pool import FORCED_SHORT_BOOK_STOCKS
 from core.logging import get_logger
 from services.selection_system.master_universe import load_master_universe
 from services.selection_system.paths import SelectionSystemPaths
@@ -58,6 +59,9 @@ def build_quant_prefilter_for_date(
     )
     scored = _eligible_frame(frame, run_date, config=config)
     top_groups = {f"{score_column.removesuffix('_score')}_top": _top_items(scored, score_column, config.top_n) for score_column in config.score_columns}
+    force_short_items = _forced_short_items(scored, top_groups.get("short_top", []))
+    if force_short_items:
+        top_groups["short_top"] = [*top_groups.get("short_top", []), *force_short_items]
     short_frame = _top_frame(top_groups.get("short_top", []), "short")
     long_frame = _top_frame(top_groups.get("long_top", []), "long")
     combined_frame = pd.concat([short_frame, long_frame], ignore_index=True)
@@ -82,6 +86,7 @@ def build_quant_prefilter_for_date(
                 "selected_count": int(len(combined_frame)),
                 "short_top_count": len(top_groups.get("short_top", [])),
                 "long_top_count": len(top_groups.get("long_top", [])),
+                "forced_short_count": len(force_short_items),
                 "min_amount": config.min_amount,
                 "min_liquidity_score": config.min_liquidity_score,
                 "max_staleness_days": config.max_staleness_days,
@@ -317,6 +322,42 @@ def _top_items(frame: pd.DataFrame, score_column: str, top_n: int) -> list[dict[
     for idx, item in enumerate(items, start=1):
         item["rank"] = idx
         item["rank_score_column"] = score_column
+    return items
+
+
+def _forced_short_items(frame: pd.DataFrame, existing_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if frame.empty or not FORCED_SHORT_BOOK_STOCKS:
+        return []
+    if "symbol" not in frame.columns:
+        return []
+
+    existing_symbols = {str(item.get("symbol")) for item in existing_items}
+    force_by_symbol = {entry.symbol: entry for entry in FORCED_SHORT_BOOK_STOCKS}
+    force_symbols = [entry.symbol for entry in FORCED_SHORT_BOOK_STOCKS if entry.symbol not in existing_symbols]
+    if not force_symbols:
+        return []
+
+    work = frame[frame["symbol"].astype(str).isin(force_symbols)].copy()
+    if work.empty:
+        LOGGER.warning("人工强制短线股票未在当日因子表中找到: symbols=%s", ",".join(force_symbols))
+        return []
+
+    if "short_score" in work.columns:
+        work["short_score"] = pd.to_numeric(work["short_score"], errors="coerce")
+        work = work.sort_values("short_score", ascending=False, na_position="last")
+
+    items = _top_items(work, "short_score", len(work))
+    for item in items:
+        symbol = str(item.get("symbol"))
+        config_entry = force_by_symbol.get(symbol)
+        item["rank"] = None
+        item["rank_score_column"] = "manual_force_short"
+        item["force_include_reason"] = config_entry.reason if config_entry else "人工强制纳入短线候选"
+        if config_entry and not item.get("stock_name"):
+            item["stock_name"] = config_entry.name
+    missing_symbols = [symbol for symbol in force_symbols if symbol not in {str(item.get("symbol")) for item in items}]
+    if missing_symbols:
+        LOGGER.warning("人工强制短线股票未能追加: symbols=%s", ",".join(missing_symbols))
     return items
 
 

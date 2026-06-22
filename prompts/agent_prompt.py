@@ -21,10 +21,8 @@ sys.path.insert(0, project_root)
 from tools.price_tools import (
     compute_total_value,
     get_open_prices,
-    get_today_init_position,
     get_yesterday_open_and_close_price,
     compute_position_costs_and_profit,
-    get_prev_trading_day_total_value,
     get_latest_position,
 )
 from tools.general_tools import get_config_value
@@ -413,13 +411,13 @@ def get_agent_system_prompt(
     except Exception:
         historical_summary_value = SUMMARY_PLACEHOLDER
 
-    prev_total_value = get_prev_trading_day_total_value(today_date, signature)
-    if prev_total_value is None and today_init_position:
+    current_total_value = None
+    if today_init_position:
         try:
-            prev_total_value = compute_total_value(today_date, today_init_position)
+            current_total_value = compute_total_value(today_date, today_init_position)
         except Exception:
-            prev_total_value = None
-    if prev_total_value is None:
+            current_total_value = None
+    if current_total_value is None:
         fallback_cash = get_config_value("INITIAL_CASH") or get_config_value("INIT_CASH") or 500000.0
         try:
             fallback_cash = float(fallback_cash)
@@ -427,7 +425,7 @@ def get_agent_system_prompt(
             fallback_cash = 500000.0
         portfolio_value_text = f"{fallback_cash:,.2f} 元（默认初始资产），"
     else:
-        portfolio_value_text = f"{prev_total_value:,.2f} 元，"
+        portfolio_value_text = f"{current_total_value:,.2f} 元，"
 
     context = {
         "date": today_date,

@@ -17,6 +17,7 @@ def run_manage_daily_data(
     *,
     symbols: Iterable[str] | None = None,
     max_workers: int = 4,
+    skip_disclosures: bool = False,
 ) -> None:
     command = [
         sys.executable,
@@ -27,6 +28,8 @@ def run_manage_daily_data(
     if signature:
         command.extend(["--signature", signature])
     command.extend(["--max-workers", str(max(1, int(max_workers or 1)))])
+    if skip_disclosures:
+        command.append("--skip-disclosures")
     target_symbols = [symbol for symbol in (symbols or []) if symbol]
     if target_symbols:
         command.extend(["--symbols", *target_symbols])

@@ -21,7 +21,7 @@ from utlity import (  # type: ignore
     normalize_symbol,
     parse_symbol,
     resolve_base_dir,
-    is_cn_etf_symbol,
+    is_etf_symbol,
 )
 
 from shared_data_access import SharedDataAccess
@@ -494,7 +494,7 @@ class BasicStockInfoService:
         price_df = self._normalize_price_frame(dataset.prices.frame)
         indicator_price_df = self._build_indicator_gateway_frame(symbol_info, price_df)
 
-        is_etf = is_cn_etf_symbol(symbol_info.symbol)
+        is_etf = is_etf_symbol(symbol_info.symbol)
         if is_etf:
             latest_price = _round(self._latest_close(symbol_info.symbol, price_df))
             latest_volume = _round(self._latest_volume(symbol_info.symbol, price_df))
