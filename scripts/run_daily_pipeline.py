@@ -17,7 +17,7 @@ from services.pipeline.daily_pipeline import SKILL_FLOW_CONFIG, run_daily_pipeli
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="运行 daily pipeline；默认仅生成 fixed_tracked，显式指定时才跑三账本。")
+    parser = argparse.ArgumentParser(description="运行 daily pipeline；默认仅生成综合 fixed_tracked，显式指定时加跑 short_book。")
     parser.add_argument(
         "--date",
         dest="run_date",
@@ -47,13 +47,18 @@ def main() -> None:
     parser.add_argument(
         "--all-books",
         action="store_true",
-        help="启用三账本模式：基于 manifest/selection 输出生成 fixed_tracked + short_book + long_book。",
+        help="启用全部交易账本：生成综合 fixed_tracked + short_book。long_book 只作为 fixed_tracked 的候选来源，不单独生成。",
     )
     parser.add_argument(
         "--max-workers",
         type=int,
         default=4,
         help="Max concurrent workers for snapshot/research generation.",
+    )
+    parser.add_argument(
+        "--skip-disclosures",
+        action="store_true",
+        help="跳过公告（disclosures）刷新阶段，加速 pipeline。",
     )
     args = parser.parse_args()
 
@@ -68,6 +73,8 @@ def main() -> None:
         signature=args.signature,
         manifest_path=args.manifest,
         max_workers=args.max_workers,
+        skip_disclosures=args.skip_disclosures,
+        all_books=args.all_books,
     )
 
 

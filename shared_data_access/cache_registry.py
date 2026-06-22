@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterable, Optional
@@ -27,7 +27,7 @@ from urllib.parse import quote
 from shared_data_access.chip_distribution import build_chip_distribution_from_price_csv
 
 # 导入ETF数据获取函数
-from utlity.stock_utils import fetch_cn_etf_daily, fetch_cn_index_daily
+from utlity.stock_utils import fetch_cn_etf_daily, fetch_cn_index_daily, is_etf_symbol
 
 
 HK_METADATA_COLUMNS: tuple[str, ...] = (
@@ -240,7 +240,7 @@ BASE_REGISTRY: Dict[CacheKind, CacheSpec] = {
         kind=CacheKind.FINANCIALS,
         subdir="financials_cache",
         description="利润表/资产负债表/现金流表/财务摘要等 CSV/PKL 缓存",
-        ttl_days=7,
+        ttl_days=3650,
         required_files=(
             "profit_sheet.csv",
             "balance_sheet.csv",
@@ -582,7 +582,7 @@ def update_cn_profit_forecast_cached(
         logger = get_logger("CacheRegistry")
 
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(("51", "58", "15", "16", "50", "53"))
+    is_etf = is_etf_symbol(symbolInfo.symbol)
     if not symbolInfo.is_cn_market() or is_index or is_etf:
         return pd.DataFrame()
 
@@ -678,7 +678,7 @@ def update_financial_data_cached(
 
     # 判断是否为指数或ETF，跳过财务数据获取
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(('51', '58', '15', '16', '50', '53'))
+    is_etf = is_etf_symbol(symbolInfo.symbol)
     if is_index or is_etf:
         logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，跳过财务数据获取")
         return {}
@@ -893,7 +893,7 @@ def update_price_data_cached(
                     )
                 else:
                     # 判断是否为ETF（A股ETF代码通常以51、58、15、16、50、53等开头）
-                    is_etf = symbolInfo.code.startswith(('51', '58', '15', '16', '50', '53'))
+                    is_etf = symbolInfo.is_cn_market() and is_etf_symbol(symbolInfo.symbol)
                     
                     if is_etf:
                         # 使用ETF专用函数获取数据
@@ -950,7 +950,7 @@ def update_share_info_cached(
 
     # 判断是否为index和ETF（A股ETF代码通常以51、58、15、16、50、53等开头）
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(('51', '58', '15', '16', '50', '53'))
+    is_etf = is_etf_symbol(symbolInfo.symbol)
     if is_etf or is_index:
         logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为ETF或指数，跳过股本数据获取")
         return
@@ -1037,7 +1037,7 @@ def update_chip_distribution_cached(
         logger = get_logger("CacheRegistry")
 
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(("51", "58", "15", "16", "50", "53"))
+    is_etf = is_etf_symbol(symbolInfo.symbol)
     if not symbolInfo.is_cn_market() or is_index or is_etf:
         logger.info("%s %s 暂不支持筹码分布缓存，跳过", symbolInfo.stock_name, symbolInfo.symbol)
         return pd.DataFrame()
@@ -1402,6 +1402,52 @@ def _csv_cache_has_rows(path: Path | None) -> bool:
         return False
 
 
+def _expected_latest_report_period(today: date | None = None) -> str:
+    """根据当前日期，计算此刻应已披露的最新财报报告期（YYYYMMDD）。
+
+    A股法定披露截止日：
+    - 12/31 年报 → 次年 4/30
+    - 3/31 一季报 → 当年 4/30
+    - 6/30 半年报 → 当年 8/31
+    - 9/30 三季报 → 当年 10/31
+    """
+    if today is None:
+        today = date.today()
+    y = today.year
+    if today >= date(y, 10, 31):
+        return f"{y}0930"
+    if today >= date(y, 8, 31):
+        return f"{y}0630"
+    if today >= date(y, 4, 30):
+        return f"{y}0331"
+    return f"{y - 1}0930"
+
+
+def _financial_cache_behind(cache_dir: Path, today: date | None = None) -> tuple[bool, str]:
+    """检查财报缓存中最新的 REPORT_DATE 是否落后于应已披露的报告期。
+
+    Returns:
+        (is_behind, detail) — is_behind=True 表示缓存需要刷新；
+        detail 是用于日志的说明字符串。
+    """
+    profit_path = cache_dir / "profit_sheet.csv"
+    if not profit_path.exists():
+        return True, "profit_sheet.csv 不存在"
+    try:
+        df = pd.read_csv(profit_path, usecols=["REPORT_DATE"])
+        df["REPORT_DATE"] = pd.to_datetime(df["REPORT_DATE"], errors="coerce")
+        df = df.dropna(subset=["REPORT_DATE"])
+        if df.empty:
+            return True, "profit_sheet.csv 无有效 REPORT_DATE"
+        latest_in_cache = df["REPORT_DATE"].max().strftime("%Y%m%d")
+        expected = _expected_latest_report_period(today)
+        if latest_in_cache < expected:
+            return True, f"缓存最新报告期={latest_in_cache}，期望>={expected}"
+        return False, ""
+    except Exception as exc:
+        return True, f"读取 profit_sheet.csv 异常: {exc}"
+
+
 def ensure_symbol_data(
     base_data_dir: str | Path,
     symbolInfo: SymbolInfo,
@@ -1444,7 +1490,7 @@ def ensure_symbol_data(
 
     # 判断是否为指数或ETF
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(('51', '58', '15', '16', '50', '53'))
+    is_etf = is_etf_symbol(symbolInfo.symbol)
     
     # 对于普通股票，获取所有数据
     if not is_index and not is_etf:
@@ -1456,12 +1502,21 @@ def ensure_symbol_data(
             financial_cache_dir.exists() and not financial_status.missing_files
         )
 
-        if not skip_financial_refresh or not financial_cache_ready:
+        financial_behind, behind_detail = _financial_cache_behind(financial_cache_dir) if financial_cache_dir.exists() else (True, "缓存目录不存在")
+
+        if not skip_financial_refresh or not financial_cache_ready or financial_behind:
             if skip_financial_refresh and not financial_cache_ready:
                 logger.info(
                     "%s %s 财报缓存不完整，忽略 skip_financial_refresh 执行初始化抓取",
                     symbolInfo.stock_name,
                     symbolInfo.symbol,
+                )
+            elif skip_financial_refresh and financial_behind:
+                logger.info(
+                    "%s %s 财报缓存报告期落后（%s），触发刷新",
+                    symbolInfo.stock_name,
+                    symbolInfo.symbol,
+                    behind_detail,
                 )
             update_financial_data_cached(
                 symbolInfo,
@@ -1517,19 +1572,6 @@ def ensure_symbol_data(
             base_data_dir=base_data_dir,
             logger=logger,
         )
-
-        # 分时回填：日线数据更新延迟到晚上 9 点以后（港股/ETF 更慢），
-        # 若 price.csv 最新日期刚好差一天（即今天交易日但日线还没出），
-        # 用 1 分钟 K 线聚合当天的 OHLCV 补回 price.csv。
-        try:
-            from shared_data_access.intraday_backfill import IntradayBackfillProvider
-
-            IntradayBackfillProvider(logger=logger).backfill_if_needed(
-                symbol_info=symbolInfo,
-                price_csv_path=price_file,
-            )
-        except Exception:
-            pass
 
     if include_disclosures and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market()):
         update_disclosures_cached(

@@ -21,7 +21,7 @@ from shared_data_access.cache_registry import (
     update_cn_profit_forecast_cached,
     update_hk_profit_forecast_cached,
 )
-from utlity import SymbolInfo, get_stock_data_dir, is_cn_etf_symbol, parse_symbol
+from utlity import SymbolInfo, get_stock_data_dir, is_etf_symbol, parse_symbol
 
 
 load_dotenv()
@@ -230,7 +230,7 @@ def _load_cn_profit_forecast(symbol_info: SymbolInfo) -> pd.DataFrame:
     if not symbol_info.is_cn_market():
         return pd.DataFrame()
     is_index = symbol_info.market == "CN_INDEX"
-    is_etf = symbol_info.code.startswith(("51", "58", "15", "16", "50", "53"))
+    is_etf = is_etf_symbol(symbol_info.symbol)
     if is_index or is_etf:
         return pd.DataFrame()
 
@@ -282,7 +282,7 @@ def _format_cn_profit_forecast_sections(symbol_info: SymbolInfo) -> str:
     if not symbol_info.is_cn_market():
         return ""
     is_index = symbol_info.market == "CN_INDEX"
-    is_etf = symbol_info.code.startswith(("51", "58", "15", "16", "50", "53"))
+    is_etf = is_etf_symbol(symbol_info.symbol)
     if is_index or is_etf:
         return ""
 
@@ -514,7 +514,7 @@ def _decorate_content(
 
 def get_financial_report_summary(symbol: str, today_time: str, *, report_release_slack_days: int = 0) -> dict:
     stock_code = symbol.strip()
-    if is_cn_etf_symbol(stock_code):
+    if is_etf_symbol(stock_code):
         message = {"error": "ETF/基金类标的没有季度财报摘要数据，请选择股票标的。", "stock": stock_code}
         logger.info("get_financial_report_summary ETF 预检测: %s", stock_code)
         return message

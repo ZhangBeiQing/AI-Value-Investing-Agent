@@ -19,7 +19,6 @@ from .cache_registry import (
     update_cn_profit_forecast_cached,
     update_hk_profit_forecast_cached,
 )
-from .intraday_backfill import IntradayBackfillProvider
 from .board_metrics import build_board_quant_snapshot, update_board_history_ths_cached
 from .chip_distribution import (
     build_chip_distribution_from_price_csv,
@@ -32,7 +31,6 @@ from .macro_objective_panel import (
 )
 
 __all__ = [
-    "IntradayBackfillProvider",
     "SharedDataAccess",
     "IndicatorLibrary",
     "build_board_quant_snapshot",

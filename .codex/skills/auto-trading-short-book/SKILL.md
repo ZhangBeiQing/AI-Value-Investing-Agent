@@ -212,6 +212,14 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 - 写入合并后的 `05_decision.json`
 - 输出替换/新增摘要
 
+#### 8.2.5 subagent 结果文件损坏处理（❌ 严禁重新跑）
+
+若合并脚本（步骤 8.2）报告某 subagent 结果文件 JSON 解析失败：
+- 主 agent **可以尝试修复 JSON 格式错误**（如中文引号、转义字符等纯格式问题），但**不得修改 subagent 给出的分析结论内容**（action_type、price_impression、verdict 等字段值）。
+- **严禁重新派发 subagent 重跑该股票**——subagent 每次运行结论可能不同，重跑会丢失原始分析结果。
+- 若修复成功（JSON 合法），继续执行合并脚本。
+- 若修复不了，主 agent 应**立即暂停全部流程**，向用户报告：哪只股票的 subagent 结果文件损坏、错误详情、已尝试的修复方式。由用户决定下一步。
+
 #### 9.3 出池股票处理
 
 若基线中存在某只 symbol 但今日已不在股票池，从 `stock_decisions` 中删除该 entry。

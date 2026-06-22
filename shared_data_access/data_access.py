@@ -15,7 +15,7 @@ from shared_financial_utils import (
     apply_dataframe_cutoff,
     filter_financial_abstract_by_cutoff,
 )
-from utlity import resolve_base_dir, SymbolInfo
+from utlity import resolve_base_dir, SymbolInfo, is_etf_symbol
 
 from .cache_registry import CacheKind, build_cache_dir, check_cache, ensure_symbol_data
 from .exceptions import CacheIntegrityError, DataUnavailableError
@@ -157,7 +157,7 @@ class SharedDataAccess:
 
         # 判断是否为指数或ETF
         is_index = symbolInfo.market == "CN_INDEX"
-        is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(('51', '58', '15', '16', '50', '53'))
+        is_etf = is_etf_symbol(symbolInfo.symbol)
         
         # 对于指数和ETF，只加载价格数据，跳过财务和股本数据
         if is_index or is_etf:
@@ -265,7 +265,7 @@ class SharedDataAccess:
         """
         # 判断是否为指数或ETF，直接返回空的财务数据
         is_index = symbolInfo.market == "CN_INDEX"
-        is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(('51', '58', '15', '16', '50', '53'))
+        is_etf = is_etf_symbol(symbolInfo.symbol)
         if is_index or is_etf:
             self.logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，返回空财务数据")
             return FinancialDataBundle(
@@ -471,7 +471,7 @@ class SharedDataAccess:
         """
         # 判断是否为指数或ETF，直接返回默认的股本数据
         is_index = symbolInfo.market == "CN_INDEX"
-        is_etf = symbolInfo.is_cn_market() and symbolInfo.code.startswith(('51', '58', '15', '16', '50', '53'))
+        is_etf = is_etf_symbol(symbolInfo.symbol)
         if is_index or is_etf:
             self.logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，返回默认股本数据")
             return ShareInfo(

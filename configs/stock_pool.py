@@ -16,6 +16,13 @@ class StockEntry:
     name: str
     description: str
 
+
+@dataclass(frozen=True)
+class ForcedShortBookEntry:
+    symbol: str
+    name: str
+    reason: str
+
 TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("600685.SH", "中船防务", "国防海军舰船"),
     StockEntry("600584.SH", "长电科技", "封测龙头"),
@@ -55,7 +62,17 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("600584.SH", "长电科技", "封测龙头"),
     StockEntry("300476.SZ", "胜宏科技", "GB300 HDI板独家份额50%"),
     StockEntry("688213.SH", "思特威-W", "sensor传感器"),
-    StockEntry("002415.SZ", "海康威视", "安防监控")
+    StockEntry("002415.SZ", "海康威视", "安防监控"),
+    StockEntry("002466.SZ", "天齐锂业", "锂矿资源"),
+    StockEntry("300014.SZ", "亿纬锂能", "锂电池"),
+    StockEntry("605117.SH", "德业股份", "光伏逆变器"),
+    StockEntry("02513.HK", "智谱", "人工智能大模型"),
+    StockEntry("07709.HK", "南方东英海力士2倍做多", "SK海力士2倍杠杆产品"),
+]
+
+FORCED_SHORT_BOOK_STOCKS: List[ForcedShortBookEntry] = [
+    ForcedShortBookEntry("02513.HK", "智谱", "人工强制纳入短线候选"),
+    ForcedShortBookEntry("07709.HK", "南方东英海力士2倍做多", "人工强制纳入短线候选"),
 ]
 
 TRACKED_SYMBOLS: List[str] = [entry.symbol for entry in TRACKED_A_STOCKS]

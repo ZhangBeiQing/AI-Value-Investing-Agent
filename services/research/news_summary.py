@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from core.logging import init_tool_logger
 from configs.stock_pool import TRACKED_A_STOCKS
-from utlity import is_cn_etf_symbol, parse_symbol
+from utlity import is_etf_symbol, parse_symbol
 
 
 load_dotenv()
@@ -190,7 +190,7 @@ def search_stock_news(symbol: str, today_time: str) -> str:
     stock_code = symbol.strip()
     stock_name = SYMBOL_NAME_MAP.get(stock_code, stock_code)
 
-    if is_cn_etf_symbol(stock_code):
+    if is_etf_symbol(stock_code):
         payload = {
             "stock": f"{stock_name} ({stock_code})",
             "today": today_time,
@@ -248,4 +248,3 @@ def search_stock_news(symbol: str, today_time: str) -> str:
 
 
 __all__ = ["search_stock_news"]
-

@@ -34,7 +34,7 @@ from shared_data_access.chip_distribution import build_latest_chip_distribution_
 from shared_data_access.data_access import SharedDataAccess
 from shared_data_access.exceptions import CacheIntegrityError, DataUnavailableError
 from shared_data_access.models import PreparedData, PriceDataBundle
-from utlity.stock_utils import SymbolFormatError, get_stock_data_dir, parse_symbol
+from utlity.stock_utils import SymbolFormatError, get_stock_data_dir, is_etf_symbol, parse_symbol
 
 
 LOGGER = get_logger("SelectionFactorStore")
@@ -311,7 +311,7 @@ def _computed_basic_info_row(
         logger=QUIET_DATA_LOGGER,
     )
 
-    is_etf = symbol_info.is_cn_market() and symbol_info.code.startswith(("51", "58", "15", "16", "50", "53"))
+    is_etf = is_etf_symbol(symbol_info.symbol)
     is_index = symbol_info.market == "CN_INDEX"
     try:
         if is_etf or is_index:
