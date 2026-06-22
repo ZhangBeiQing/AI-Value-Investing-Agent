@@ -264,7 +264,6 @@ def validate_decision_json(
         "price_impression",
         "key_facts",
         "inferences",
-        "judgment_rationale",
         "motion",
         "court",
         "recommended_action",
