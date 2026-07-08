@@ -215,6 +215,10 @@ def manage_daily_data(args: argparse.Namespace) -> int:
             "--symbols",
             *symbols,
         ]
+        if args.force_refresh:
+            basic_cmd.append("--force-refresh-financials")
+        else:
+            basic_cmd.append("--skip-financial-refresh")
         LOGGER.info("开始运行 basic_stock_info")
         steps.append(run_subprocess('basic_stock_info', basic_cmd, log_file))
         LOGGER.info("basic_stock_info 完成")

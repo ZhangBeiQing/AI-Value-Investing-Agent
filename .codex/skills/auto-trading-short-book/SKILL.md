@@ -3,14 +3,14 @@ name: auto-trading-short-book
 description: >
   动态短线股票池每日股票自动交易程序。Agent 读取用户已经准备好的短线股票池中的每日最新股票数据，
   根据用户规则详细分析股票后，生成每日交易决策 JSON，经人工确认后，再执行交易、然后生成每日操盘总结，
-  最后合并到历史操盘总结中。短线池上限 7 只，最大持仓 20 个交易日，到限不论盈亏应了结。
+  最后合并到历史操盘总结中。短线池最大持仓 20 个交易日，到限不论盈亏应了结。
   当用户要求"开始今天短线股票池交易"时触发。
 ---
 
 # 1. 适用场景 / 触发说明
 - 用户说"开始今天短线股票池交易"。
 - 目标：通过固定流程生成决策文件，人工确认后执行交易与总结归档。
-- 短线核心约束：池上限 7 只，最大持仓 20 个交易日（到限应了结）
+- 短线核心约束：最大持仓 20 个交易日（到限应了结）
 - **股票池来源**：`data/selection_runs/YYYY-MM-DD/12_quant_prefilter_short.csv`（由 `refresh_all_for_date.py --generate-prefilter` 自动生成，量化初筛短期 Top20）。
 
 # 2. Python 环境要求（应遵守）
@@ -96,7 +96,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 
 ### 步骤 6：确认股票池并等待用户确认
 
-主 agent 读取 `data/selection_runs/{run_date}/12_quant_prefilter_short.csv` 获取今日短线候选股票池（Top20），结合当前持仓状态筛选出当日分析池（上限 7 只），向用户输出：
+主 agent 读取 `data/selection_runs/{run_date}/12_quant_prefilter_short.csv` 获取今日短线候选股票池（Top20），结合当前持仓状态筛选出当日分析池，向用户输出：
 - 全量 Top20 列表（名称 + symbol + short_score + 今日涨幅）
 - 当前持仓股标注持仓天数，已满 20 个交易日建议退出
 - 当日分析池选出逻辑（优先持仓股、优 high-score + 强催化确认）

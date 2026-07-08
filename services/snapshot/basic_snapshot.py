@@ -1219,6 +1219,11 @@ def _parse_args() -> argparse.Namespace:
         help="仅强制刷新财务相关缓存",
     )
     parser.add_argument(
+        "--skip-financial-refresh",
+        action="store_true",
+        help="跳过财务缓存刷新，仅使用已有财务缓存",
+    )
+    parser.add_argument(
         "--price_lookback",
         type=int,
         default=DEFAULT_PRICE_LOOKBACK_DAYS,
@@ -1313,6 +1318,7 @@ def _main() -> None:
                 price_lookback_days=args.price_lookback,
                 force_refresh=args.force_refresh,
                 force_refresh_financials=args.force_refresh_financials,
+                skip_financial_refresh=args.skip_financial_refresh,
                 today_time=target_str,
                 use_cache=False,
             )
@@ -1324,6 +1330,7 @@ def _main() -> None:
         price_lookback_days=args.price_lookback,
         force_refresh=args.force_refresh,
         force_refresh_financials=args.force_refresh_financials,
+        skip_financial_refresh=args.skip_financial_refresh,
         today_time=args.today_time,
         use_cache=False,
     )
