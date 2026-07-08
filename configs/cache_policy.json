@@ -1,6 +1,6 @@
 {
   "financials_cache": {
-    "ttl_days": 7
+    "ttl_days": 3650
   },
   "prices": {
     "ttl_days": 1

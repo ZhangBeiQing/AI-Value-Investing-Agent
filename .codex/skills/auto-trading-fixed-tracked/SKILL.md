@@ -181,7 +181,7 @@ subagent 写入文件的 JSON 应结构化包含以下字段：
 
 #### 7.1 subagent 分析完成后：文件落盘（建议）
 
-subagent 完成上述 19 字段分析后，**应将结果写入文件**，而不是通过对话上下文回传完整底稿给主 agent。
+subagent 完成上述 18 字段分析后，**应将结果写入文件**，而不是通过对话上下文回传完整底稿给主 agent。
 
 **输出目录**：
 ```bash
@@ -219,7 +219,7 @@ data/skill_runs/2026-04-28/fixed_tracked/subagent_result/世运电路_603920.SH_
 603920.SH 世运电路 分析完成 → 世运电路_603920.SH_2026-04-28_decision.json | action=HOLD | 置信度=0.75
 ```
 
-subagent **不宜**把完整 19 字段底稿塞进回传消息中——主 agent 不需要看到详细底稿，合并脚本会自动处理。
+subagent **不宜**把完整 18 字段底稿塞进回传消息中——主 agent 不需要看到详细底稿，合并脚本会自动处理。
 
 ### 步骤 8：主 agent 合并 P0 结果
 
@@ -318,7 +318,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 
 ## 输出
 将结果写入文件：data/skill_runs/{date}/fixed_tracked/subagent_result/{stock_name}_{symbol}_{date}_decision.json
-只写单个 stock entry 对象（19 字段），deep_analysis_date 填 "{date}"。
+只写单个 stock entry 对象（18 字段），deep_analysis_date 填 "{date}"。
 
 写完后回传一句话确认：
 {symbol} {stock_name} 分析完成 → {文件名} | action={action_type} | 置信度={confidence_score}

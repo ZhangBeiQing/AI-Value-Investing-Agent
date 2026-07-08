@@ -63,12 +63,15 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("300476.SZ", "胜宏科技", "GB300 HDI板独家份额50%"),
     StockEntry("688213.SH", "思特威-W", "sensor传感器"),
     StockEntry("002415.SZ", "海康威视", "安防监控"),
-    StockEntry("002466.SZ", "天齐锂业", "锂矿资源"),
     StockEntry("300014.SZ", "亿纬锂能", "锂电池"),
     StockEntry("605117.SH", "德业股份", "光伏逆变器"),
     StockEntry("02513.HK", "智谱", "人工智能大模型"),
     StockEntry("07709.HK", "南方东英海力士2倍做多", "SK海力士2倍杠杆产品"),
+    StockEntry("002841.SZ", "视源股份", "智能交互显示(希沃/MAXHUB)"),
+    StockEntry("603296.SH", "华勤技术", "智能硬件ODM/AI服务器"),
+    StockEntry("000977.SZ", "浪潮信息", "AI服务器龙头"),
 ]
+
 
 FORCED_SHORT_BOOK_STOCKS: List[ForcedShortBookEntry] = [
     ForcedShortBookEntry("02513.HK", "智谱", "人工强制纳入短线候选"),
