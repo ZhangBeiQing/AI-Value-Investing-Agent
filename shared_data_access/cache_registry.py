@@ -1299,6 +1299,205 @@ def _fetch_cninfo_hk_announcements(
     return frame
 
 
+def _extract_org_id_from_cached_disclosures(csv_path: Path) -> str | None:
+    """从已缓存的 cninfo_list.csv 中提取 orgId。"""
+    if not csv_path.exists():
+        return None
+    try:
+        import re
+        with open(csv_path, encoding="utf-8") as f:
+            f.readline()  # skip header
+            for _ in range(10):
+                line = f.readline()
+                if not line:
+                    break
+                match = re.search(r"orgId=(\d+)", line)
+                if match:
+                    return match.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_cninfo_disclosures_via_cached_org_id(
+    symbolInfo,
+    start_date: str,
+    end_date: str,
+    cached_csv_path: Path,
+    logger: logging.Logger | None = None,
+):
+    """通过本地缓存的 orgId 直连 cninfo API 拉取公告列表。"""
+    org_id = _extract_org_id_from_cached_disclosures(cached_csv_path)
+    if not org_id:
+        logger.warning(f"{symbolInfo.symbol} 未能从缓存提取 orgId")
+        return None
+
+    import time as _time
+    url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.cninfo.com.cn",
+        "Referer": "https://www.cninfo.com.cn/",
+    }
+    se_date = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}~{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
+    stock_param = f"{symbolInfo.code},{org_id}"
+    page = 1
+    all_rows = []
+    total_pages = None
+
+    while True:
+        payload = {
+            "pageNum": page,
+            "pageSize": 30,
+            "column": "szse_latest",
+            "tabName": "fulltext",
+            "plate": "",
+            "stock": stock_param,
+            "searchkey": "",
+            "secid": "",
+            "category": "",
+            "trade": "",
+            "seDate": se_date,
+            "sortName": "",
+            "sortType": "",
+            "isHLtitle": "true",
+        }
+        try:
+            resp = requests.post(url, data=payload, headers=headers, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            logger.warning(f"cninfo 直连请求失败 (page={page}): {exc}")
+            break
+
+        announcements = data.get("announcements") or []
+        if not announcements:
+            break
+
+        for item in announcements:
+            title = item.get("announcementTitle", "")
+            ann_id = item.get("announcementId", "")
+            ann_time = item.get("announcementTime", 0)
+            if isinstance(ann_time, (int, float)) and ann_time > 1e10:
+                ann_time_str = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(ann_time / 1000))
+            else:
+                ann_time_str = str(ann_time)
+            adjunct_url = item.get("adjunctUrl", "")
+            detail_url = f"https://www.cninfo.com.cn/new/disclosure/detail?stockCode={symbolInfo.code}&announcementId={ann_id}&orgId={org_id}&announcementTime={ann_time_str}"
+            all_rows.append({
+                "代码": symbolInfo.code,
+                "简称": symbolInfo.stock_name,
+                "公告标题": title,
+                "公告时间": ann_time_str,
+                "announcementId": ann_id,
+                "orgId": org_id,
+                "公告链接": detail_url,
+            })
+
+        if total_pages is None:
+            total_pages = data.get("totalPages", 1)
+        page += 1
+        if total_pages is not None and page > total_pages:
+            break
+        _time.sleep(0.3)
+
+    if not all_rows:
+        return None
+    import pandas as pd
+    return pd.DataFrame(all_rows)
+
+
+def _fetch_cninfo_disclosures_via_fulltext_search(
+    symbolInfo,
+    start_date: str,
+    end_date: str,
+    logger: logging.Logger | None = None,
+):
+    """通过 cninfo 全文检索接口拉取公告列表（hisAnnouncement/query 回退方案）。"""
+    import time as _time
+    url = "https://www.cninfo.com.cn/new/fulltextSearch/full"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.cninfo.com.cn",
+        "Referer": "https://www.cninfo.com.cn/",
+    }
+    sdate = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
+    edate = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
+    all_rows = []
+    page = 1
+
+    while True:
+        payload = {
+            "searchkey": symbolInfo.stock_name,
+            "sdate": sdate,
+            "edate": edate,
+            "isfulltext": "false",
+            "sortName": "pubdate",
+            "sortType": "desc",
+            "pageNum": page,
+            "pageSize": 30,
+        }
+        try:
+            resp = requests.post(url, data=payload, headers=headers, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            if page == 1:
+                logger.warning(f"cninfo 全文检索请求失败: {exc}")
+            break
+
+        announcements = data.get("announcements") or []
+        if not announcements:
+            break
+
+        for item in announcements:
+            sec_code = item.get("secCode", "")
+            org_id = item.get("orgId", "")
+            title = item.get("announcementTitle", "")
+            ann_id = item.get("announcementId", "")
+            ann_time = item.get("announcementTime", 0)
+            if isinstance(ann_time, (int, float)) and ann_time > 1e10:
+                ann_time_str = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(ann_time / 1000))
+            else:
+                ann_time_str = str(ann_time)
+            org_id = item.get("orgId", "")
+            adjunct_url = item.get("adjunctUrl", "")
+            if adjunct_url and adjunct_url.endswith(".PDF"):
+                detail_url = f"http://www.cninfo.com.cn/new/disclosure/detail?stockCode={symbolInfo.code}&announcementId={ann_id}&orgId={org_id}&announcementTime={ann_time_str}"
+            else:
+                detail_url = ""
+            all_rows.append({
+                "代码": symbolInfo.code,
+                "简称": symbolInfo.stock_name,
+                "公告标题": title,
+                "公告时间": ann_time_str,
+                "announcementId": ann_id,
+                "orgId": org_id,
+                "公告链接": detail_url,
+            })
+
+        total_pages = data.get("totalpages", 1) or 1
+        page += 1
+        if page > total_pages:
+            break
+        _time.sleep(0.3)
+
+    if not all_rows:
+        return None
+    import pandas as pd
+    return pd.DataFrame(all_rows)
+
+
 def update_disclosures_cached(
     symbolInfo: SymbolInfo,
     *,
@@ -1339,8 +1538,22 @@ def update_disclosures_cached(
                 logger=logger,
             )
         except Exception as exc:
-            logger.error(f"获取{symbolInfo.stock_name}公告列表失败: {exc}")
-            return
+            logger.warning(
+                "akshare 公告接口失败 (%s)，尝试从本地缓存提取 orgId 直连: %s",
+                symbolInfo.symbol,
+                exc,
+            )
+            fetched = _fetch_cninfo_disclosures_via_cached_org_id(
+                symbolInfo, start_date, end_date, csv_path, logger
+            )
+            if fetched is None:
+                logger.info("orgId 直连失败，尝试 cninfo 全文检索接口")
+                fetched = _fetch_cninfo_disclosures_via_fulltext_search(
+                    symbolInfo, start_date, end_date, logger
+                )
+            if fetched is None:
+                logger.error(f"获取{symbolInfo.stock_name}公告列表失败（含直连+全文检索回退）: {exc}")
+                return
     elif symbolInfo.is_hk_market():
         logger.info(f"正在获取{symbolInfo.stock_name} {symbolInfo.symbol}港股公告列表...")
         fetched = _fetch_cninfo_hk_announcements(
