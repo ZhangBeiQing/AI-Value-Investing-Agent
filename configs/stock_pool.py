@@ -43,9 +43,6 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("002837.SZ", "英维克", "GB300冷板+CDU认证"),
     StockEntry("002851.SZ", "麦格米特", "A股唯一英伟达官宣电源"),
     StockEntry("300811.SZ", "铂科新材", "GPU电感全球独家"),
-]
-
-TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
     StockEntry("002714.SZ", "牧原股份", "生猪养殖"),
     StockEntry("603501.SH", "豪威集团", "半导体设计"),
@@ -57,10 +54,6 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("300750.SZ", "宁德时代", "新能源电池"),
     StockEntry("600150.SH", "中国船舶", "船舶制造"),
     StockEntry("518800.SH", "黄金基金ETF", "黄金"),
-    StockEntry("002463.SZ", "沪电股份", "AI主板北美市占率80%+"),
-    StockEntry("601138.SH", "工业富联", "英伟达40%DC订单代工商"),
-    StockEntry("600584.SH", "长电科技", "封测龙头"),
-    StockEntry("300476.SZ", "胜宏科技", "GB300 HDI板独家份额50%"),
     StockEntry("688213.SH", "思特威-W", "sensor传感器"),
     StockEntry("002415.SZ", "海康威视", "安防监控"),
     StockEntry("300014.SZ", "亿纬锂能", "锂电池"),
@@ -68,8 +61,15 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("02513.HK", "智谱", "人工智能大模型"),
     StockEntry("07709.HK", "南方东英海力士2倍做多", "SK海力士2倍杠杆产品"),
     StockEntry("002841.SZ", "视源股份", "智能交互显示(希沃/MAXHUB)"),
-    StockEntry("603296.SH", "华勤技术", "智能硬件ODM/AI服务器"),
     StockEntry("000977.SZ", "浪潮信息", "AI服务器龙头"),
+    StockEntry("002709.SZ", "天赐材料", "锂电材料"),
+    StockEntry("603283.SH", "赛腾股份", "消费电子自动化设备"),
+    StockEntry("301536.SZ", "星宸科技", "AI视觉芯片"),
+    StockEntry("00600.HK", "爱芯元智", "AI视觉感知芯片"),
+    StockEntry("603893.SH", "瑞芯微", "AIoT SoC芯片"),
+    StockEntry("300458.SZ", "全志科技", "智能应用处理器SoC"),
+    StockEntry("688099.SH", "晶晨股份", "多媒体智能终端SoC"),
+    StockEntry("300613.SZ", "富瀚微", "视频监控ISP芯片"),
 ]
 
 
