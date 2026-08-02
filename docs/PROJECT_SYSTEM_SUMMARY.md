@@ -1,4 +1,4 @@
-更新日期：2026-06-12
+更新日期：2026-07-14
 
 # AI-Value-Investing-Agent 项目系统白皮书
 
@@ -130,6 +130,7 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── pipeline/               # 01-04 产物生成（daily_pipeline.py + steps/）
 │   ├── prompting/              # system prompt 组装
 │   ├── research/               # 宏观/新闻/财报/个股研究的核心实现
+│   ├── industry_research/      # 半年结构扫描、月度领先指标监控、产业链深研
 │   ├── selection_system/       # 选股系统：universe / news / board_heat / factor_store / quant_prefilter / candidate_selection
 │   ├── snapshot/               # basic_snapshot
 │   └── trading/                # 交易执行 + 06-08 后处理（post_trade_pipeline.py / trade_summary.py / trade_executor.py）
@@ -140,6 +141,8 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── board_metrics.py        # 板块行情/历史
 │   ├── indicator_library.py    # 统一指标库
 │   ├── macro_objective_panel.py
+│   ├── industry_catalog.py     # 申万行业目录缓存
+│   ├── industry_financial_panel.py # 全A行业财务扩散验证
 │   ├── models.py / paths.py / exceptions.py / validation.py
 ├── core/                       # 通用基础设施
 │   ├── logging.py              # 统一日志入口
@@ -175,7 +178,7 @@ data/skill_runs/YYYY-MM-DD/
 ### 3.2 缓存注册表
 
 - 所有缓存类型登记在 `shared_data_access/cache_registry.py` 的 `CacheKind` 与 `BASE_REGISTRY`。
-- 当前已注册：`FINANCIALS / PRICE_SERIES / SHARE_INFO / DISCLOSURES / ANALYSIS / PE_ANALYSIS / BASIC_INFO / CHIP_DISTRIBUTION`。
+- 当前已注册缓存除逐股财报、行情、股本、公告、分析、筹码和一致预期外，还包括板块、宏观、全A行业财务面板与申万行业目录等全局数据集。
 - TTL、路径、必需文件、刷新元信息 (`.cache_registry_meta.json`) 等机制详见 `docs/cache/cache_registry_design.md`。
 
 ### 3.3 每日刷新策略归属（重要）
@@ -211,6 +214,8 @@ data/skill_runs/YYYY-MM-DD/
 ## 4. 选股系统现状（量化因子初筛主轴）
 
 当前主轴是「量化因子初筛 + 各账本独立深研」。LLM 直接从全宇宙选股的方案（`auto-selection-daily-pipeline` skill）保留为可选路径，日常默认不跑。
+
+独立的 `industry_research` 研究层不属于日常选股主轴。它先半年级扫描申万二级行业的三至五年结构空间，再按月更新已批准主题的需求、订单、供给、库存、价格、交期和资本开支等领先指标，并在财报披露窗口用全A行业财务扩散做季度验证。热点新闻、板块涨幅、资金流和股票动量不参与行业发现。统计宇宙、结构候选宇宙与人工批准的交易研究宇宙相互分离；每月最多深研一个经用户确认的产业主题。该层不修改 `01-08`、长期池或交易仓位。详见 `docs/selection_system/行业景气研究系统设计.md`。
 
 ### 4.1 当前在用的链路
 
@@ -299,6 +304,7 @@ data/skill_runs/YYYY-MM-DD/
 | --- | --- |
 | `daily-macro-summary` | 用户说「更新今天的宏观总结」 → `data/macro_economy/YYYYMMDD.md` |
 | `gradual-hot-news-summary` | 用户说「更新今日热点主题总结」 → `06_hot_news_state.json` |
+| `monthly-industry-research` | 用户说「开始本月行业研究」 → 月度行业雷达与单主题产业链深研 |
 | `auto-selection-daily-pipeline` | 用户说「开始今天自动选股」（实验性，日常通常不跑） |
 | `financial-report-summary` | 用户说「生成财报总结」 → 各股 `financial_reports/*.md` |
 | `auto-trading-fixed-tracked` | 用户说「开始今天固定股票池交易」 → `fixed_tracked/05_decision.json` |
@@ -325,6 +331,7 @@ data/skill_runs/YYYY-MM-DD/
 | `docs/share_data_access/README.md` | `SharedDataAccess.prepare_dataset()` 调用姿势与策略归属 |
 | `docs/manage_data/data_refresh_plan.md` | 一键刷数据流水线设计（`refresh_all_for_date.py` + `refresh_orchestrator.py`） |
 | `docs/selection_system/因子库与量化初筛系统设计.md` | 选股主轴：因子库 + 评分配置 + 量化初筛 + 回测 |
+| `docs/selection_system/行业景气研究系统设计.md` | 独立月度层：行业雷达 + 单主题深研 + 景气状态与利润映射 |
 | `docs/selection_system/板块热度摘要与查询设计.md` | `05_board_heat_digest` + `query_board_snapshot.py` |
 | `docs/selection_system/05_board_heat_state字段说明.md` | `05_board_heat_state.json` 字段字典 |
 | `docs/news/README.md` | 上市公司公告新闻系统设计 |

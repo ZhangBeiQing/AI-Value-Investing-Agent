@@ -1,0 +1,417 @@
+schema_version: 1
+
+radar:
+  indicator_stale_days: 45
+  minimum_improving_indicators: 2
+  minimum_independent_indicator_categories: 2
+  maximum_deteriorating_indicators: 1
+
+states:
+  - observation
+  - emerging
+  - fundamental_right
+  - expansion
+  - overheated
+  - downturn
+  - archived
+
+themes:
+  - theme_id: ai_compute_optical
+    name: AI算力与光通信
+    research_status: pilot
+    aliases:
+      - AI
+      - 人工智能
+      - 算力
+      - 数据中心
+      - 光通信
+      - 光模块
+      - 通信设备
+      - 半导体
+      - 电子元件
+      - CPO
+      - PCB
+      - 英伟达
+    chain_nodes:
+      - AI芯片与服务器
+      - 高速互联与光模块
+      - PCB与连接
+      - 存储
+      - 电源与液冷
+    source_sw_industries:
+      - 半导体
+      - 通信设备
+      - 元件
+    leading_indicators:
+      - indicator_id: hyperscaler_ai_capex
+        name: 全球云厂商AI资本开支
+        category: demand
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 全球云厂商业绩会与资本开支指引
+      - indicator_id: ai_server_shipments
+        name: AI服务器出货量
+        category: demand
+        frequency: monthly_or_quarterly
+        positive_direction: higher
+        source_hint: 行业研究机构与服务器龙头经营数据
+      - indicator_id: high_speed_optical_share
+        name: 800G及以上高速光模块出货占比
+        category: unit_value
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 光模块龙头业绩会与客户产品路线
+      - indicator_id: optical_component_lead_time
+        name: 核心光器件交期
+        category: supply
+        frequency: monthly
+        positive_direction: longer
+        source_hint: 供应商、客户与产业调研
+    indicator_blueprint:
+      - 全球云厂商资本开支与AI服务器出货
+      - 高速光模块产品代际与出货占比
+      - 核心器件价格、库存、交期与产能
+      - 产业链龙头订单、合同负债与资本开支
+
+  - theme_id: power_grid_equipment
+    name: 电网设备
+    research_status: pilot
+    aliases:
+      - 电网
+      - 电力设备
+      - 特高压
+      - 变压器
+      - 输变电
+      - 电气设备
+    chain_nodes:
+      - 电网投资与招标
+      - 一次设备
+      - 二次设备与自动化
+      - 变压器与核心材料
+      - 海外输配电
+    source_sw_industries:
+      - 电网设备
+    leading_indicators:
+      - indicator_id: grid_investment_plan
+        name: 电网年度投资计划及执行进度
+        category: demand
+        frequency: monthly_or_quarterly
+        positive_direction: higher
+        source_hint: 国家电网、南方电网官方材料
+      - indicator_id: grid_tender_amount
+        name: 输变电设备招标金额
+        category: order
+        frequency: monthly
+        positive_direction: higher
+        source_hint: 电网电子商务平台招标公告
+      - indicator_id: transformer_backlog
+        name: 变压器订单与在手订单
+        category: order
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 龙头公司公告和业绩会
+      - indicator_id: transformer_lead_time
+        name: 变压器交付周期
+        category: supply
+        frequency: monthly_or_quarterly
+        positive_direction: longer
+        source_hint: 龙头公司与产业调研
+    indicator_blueprint:
+      - 国家电网与南方电网投资计划和招标额
+      - 特高压核准、开工与设备交付进度
+      - 变压器订单、产能利用率与交付周期
+      - 铜、取向硅钢等原材料价格与产品价差
+
+  - theme_id: lithium_battery_chain
+    name: 电池产业链
+    research_status: pilot
+    primary_growth_branch: storage_battery
+    financial_validation_mode: disabled_without_theme_exposure_mapping
+    aliases:
+      - 锂电
+      - 锂电池
+      - 电池
+      - 新能源车
+      - 新能源汽车
+      - 锂矿
+      - 能源金属
+      - 正极
+      - 负极
+      - 电解液
+      - 隔膜
+      - 动力电池
+      - 储能电池
+    chain_nodes:
+      - 下游动力电池
+      - 下游储能电池
+      - 下游其他电池
+      - 电芯、PACK与BMS
+      - 正极材料
+      - 负极材料
+      - 隔膜
+      - 电解液
+      - 铜铝箔与结构件
+      - 电池制造设备
+      - 锂镍钴锰石墨等资源
+    demand_branches:
+      - branch_id: power_battery
+        name: 动力电池
+        role: base_demand
+        formula: 新能源汽车销量 × 单车带电量
+      - branch_id: storage_battery
+        name: 储能电池
+        role: primary_growth_driver
+        formula: 新增储能功率 × 平均储能时长
+      - branch_id: other_battery
+        name: 其他电池
+        role: optional_growth
+        formula: 消费、两轮车、工具、船舶、低空等终端销量 × 单位带电量
+    source_sw_industries:
+      - 电池
+      - 能源金属
+    leading_indicators:
+      - indicator_id: new_energy_vehicle_sales
+        name: 新能源汽车销量与渗透率
+        category: demand
+        frequency: monthly
+        positive_direction: higher
+        source_hint: 乘联会与中汽协
+      - indicator_id: power_battery_installations
+        name: 动力电池装机量
+        category: demand
+        frequency: monthly
+        positive_direction: higher
+        source_hint: 动力电池产业创新联盟
+      - indicator_id: storage_battery_shipments
+        name: 储能电池销量与出货量
+        category: demand
+        frequency: monthly
+        positive_direction: higher
+        source_hint: 动力电池产业创新联盟、GGII与头部公司公告
+      - indicator_id: storage_new_capacity
+        name: 新型储能新增装机
+        category: demand
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 国家能源局与CNESA
+      - indicator_id: storage_tender_gwh
+        name: 储能系统采招规模
+        category: order
+        frequency: monthly
+        positive_direction: higher
+        source_hint: CESA与央国企招标公告
+      - indicator_id: other_battery_demand
+        name: 消费、两轮车、工具及新应用电池需求
+        category: demand
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 行业协会与公司分部披露
+      - indicator_id: cell_capacity_utilization
+        name: 电芯产能利用率与排产
+        category: supply
+        frequency: monthly
+        positive_direction: higher
+        source_hint: 龙头公司年报、业绩会与行业协会
+      - indicator_id: cell_inventory_price
+        name: 电芯库存与单位价格
+        category: inventory
+        frequency: monthly
+        positive_direction: lower
+        source_hint: 行业协会、招标数据与公司分部披露
+      - indicator_id: material_spread
+        name: 正负极、隔膜与电解液加工价差
+        category: price
+        frequency: monthly
+        positive_direction: higher
+        source_hint: 行业报价、材料公司公告与业绩会
+      - indicator_id: lithium_inventory_price
+        name: 锂资源库存、价格与供给释放
+        category: price
+        frequency: weekly_or_monthly
+        positive_direction: stable
+        source_hint: 交易所库存、行业报价与矿企公告
+    indicator_blueprint:
+      - 动力电池：新能源汽车销量、单车带电量、装机与出口
+      - 储能电池：装机、时长、采招、销量、利用小时与系统价格
+      - 其他电池：消费、两轮车、工具、船舶和低空应用需求
+      - 电芯：动力与储能销量结构、排产、库存、价格和产能利用率
+      - 中游材料：单位GWh耗用量、产能、库存、加工价差与技术路线
+      - 上游资源：锂镍钴锰石墨供给、库存、价格、成本与扩产周期
+
+  - theme_id: shipping_chain
+    name: 航运产业链
+    research_status: pilot
+    aliases:
+      - 航运
+      - 海运
+      - 港口
+      - 集运
+      - 油运
+      - 干散货
+      - 船舶
+      - 交通运输
+    chain_nodes:
+      - 集装箱运输
+      - 油轮运输
+      - 干散货运输
+      - 港口
+      - 船舶制造与有效运力
+    source_sw_industries:
+      - 航运港口
+      - 航海装备Ⅱ
+    leading_indicators:
+      - indicator_id: shipping_freight_rates
+        name: 主要航线与船型运价
+        category: price
+        frequency: weekly
+        positive_direction: higher
+        source_hint: BDI、BCI、BPI及集运指数
+      - indicator_id: effective_shipping_capacity
+        name: 有效运力与绕航里程
+        category: supply
+        frequency: weekly_or_monthly
+        positive_direction: tighter
+        source_hint: 船舶跟踪与行业协会
+      - indicator_id: port_throughput
+        name: 港口吞吐量
+        category: demand
+        frequency: monthly
+        positive_direction: higher
+        source_hint: 交通运输部与港口数据
+      - indicator_id: vessel_orderbook_ratio
+        name: 在手船舶订单占现有运力比例
+        category: supply
+        frequency: quarterly
+        positive_direction: lower
+        source_hint: 航运数据库与船舶行业协会
+    indicator_blueprint:
+      - BDI、BCI、BPI及细分航线运价
+      - 港口吞吐、船舶周转与绕航里程
+      - 在手船舶订单、交付和拆解量
+      - 龙头公司运力、长协比例与现金成本
+
+  - theme_id: edge_ai_visual_soc
+    name: 端侧视觉AI SoC芯片
+    research_status: draft
+    aliases:
+      - 端侧AI
+      - 视觉AI
+      - SoC
+      - 边缘AI
+      - AI芯片
+      - 安防芯片
+      - 机器人芯片
+      - AI眼镜
+      - 星宸科技
+      - 瑞芯微
+      - 全志科技
+    chain_nodes:
+      - IP核与EDA工具
+      - 晶圆代工(先进制程)
+      - 封装测试
+      - 芯片设计Fabless(视觉AI SoC)
+      - 下游终端设备品牌
+    source_sw_industries:
+      - 半导体
+      - 数字芯片设计
+    leading_indicators:
+      - indicator_id: visual_ai_soc_shipments
+        name: 全球视觉AI SoC出货量
+        category: demand
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 智研咨询/弗若斯特沙利文季度出货报告
+      - indicator_id: edge_vs_cloud_growth_spread
+        name: 云端vs边缘AI芯片增速差
+        category: demand
+        frequency: quarterly
+        positive_direction: wider_spread_favoring_edge
+        source_hint: IDC季度端侧AI芯片市场报告
+      - indicator_id: leader_gross_margin
+        name: 龙头Fabless毛利率
+        category: price
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 星宸科技/瑞芯微季报与业绩会
+      - indicator_id: downstream_robot_glasses_shipments
+        name: 机器人/AI眼镜/具身智能出货量
+        category: demand
+        frequency: monthly_or_quarterly
+        positive_direction: higher
+        source_hint: IDC/行业协会/公司出货数据
+      - indicator_id: wafer_foundry_price_hike
+        name: 晶圆代工涨价幅度
+        category: supply
+        frequency: quarterly
+        positive_direction: lower(对Fabless有利)
+        source_hint: 台积电/中芯国际业绩会与产业调研
+      - indicator_id: ai_soc_asp_trend
+        name: 视觉AI SoC平均单价趋势
+        category: unit_value
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 龙头公司分部营收/出货量反推
+    indicator_blueprint:
+      - 全球视觉AI SoC出货量：按安防/机器人/车载/AI眼镜拆分
+      - 云端vs边缘AI芯片增速剪刀差(IDC季度报告)
+      - 龙头Fabless毛利率：量价齐升的关键微观证据
+      - 下游终端出货：机器人、AI眼镜、智能安防摄像头、具身智能
+      - 晶圆代工产能与价格：先进制程(12nm/7nm)供给约束
+      - AI SoC ASP：高算力占比×单价趋势
+
+  - theme_id: battery_energy_storage
+    name: 动力电池与储能产业链
+    research_status: observation
+    aliases:
+      - 动力电池
+      - 储能
+      - 电池
+      - 锂电池
+      - 锂电
+      - 新能源
+      - 储能变流器
+      - PCS
+      - 磷酸铁锂
+      - 三元
+    chain_nodes:
+      - 新能源汽车与储能需求
+      - 电池制造
+      - 正负极与电解液
+      - 隔膜与结构件
+      - 锂资源
+      - 储能系统与PCS
+    source_sw_industries:
+      - 电池
+      - 其他电源设备Ⅱ
+      - 能源金属
+    leading_indicators:
+      - indicator_id: bess_installations
+        name: 全球储能装机量
+        category: demand
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 国家能源局、CNESA、BNEF季度报告
+      - indicator_id: lithium_carbonate_price
+        name: 碳酸锂价格
+        category: price
+        frequency: weekly
+        positive_direction: stable
+        source_hint: 上海有色网SMM
+      - indicator_id: battery_cell_price
+        name: 电芯价格（元/Wh）
+        category: price
+        frequency: monthly
+        positive_direction: lower
+        source_hint: 行业研究与招标数据
+      - indicator_id: bess_policy_support
+        name: 储能容量电价与现货市场政策进展
+        category: demand
+        frequency: quarterly
+        positive_direction: higher
+        source_hint: 发改委、能源局政策文件
+    indicator_blueprint:
+      - 全球新能源汽车销量、渗透率与电池装机
+      - 全球储能装机季度追踪与电池出货
+      - 碳酸锂、电芯及主要材料价格与供需平衡
+      - 储能商业模式（容量电价、现货市场）政策进展
+      - 电池及储能企业排产、产能利用率与扩产节奏

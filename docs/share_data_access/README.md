@@ -1,6 +1,6 @@
 # SharedDataAccess 使用说明
 
-更新日期：2026-06-12
+更新日期：2026-07-14
 
 ## 1. 模块使命
 
@@ -53,6 +53,8 @@ prepare_dataset(
 | 一致预期 | `data/stock_info/<股票名_代码>/profit_forecast/profit_forecast.csv` | `update_profit_forecast_cached` |
 | 板块 | `data/global_cache/board_history_ths/`、`board_metrics_ths/` | `shared_data_access/board_metrics.py` |
 | 宏观 | `data/global_cache/macro_objective_panel/` | `shared_data_access/macro_objective_panel.py` |
+| 全A行业财务面板 | `data/global_cache/industry_financial_panel/` | `shared_data_access/industry_financial_panel.py` |
+| 申万行业目录 | `data/global_cache/industry_catalog_sw/` | `shared_data_access/industry_catalog.py` |
 
 完整 `CacheKind` 与 TTL 见 `docs/cache/cache_registry_design.md`。
 
