@@ -1,6 +1,6 @@
 # 缓存注册表设计
 
-更新日期：2026-06-12
+更新日期：2026-07-14
 
 本文档说明 `shared_data_access/cache_registry.py` 中的缓存登记与刷新机制，便于扩展数据源或排查缓存异常时快速定位。
 
@@ -35,6 +35,8 @@
 | `BOARD_HISTORY_THS` | `global_cache/board_history_ths/` | 1 天 | ✗ | `universe.csv` | 同花顺行业板块历史指数 + universe |
 | `BOARD_METRICS_THS` | `global_cache/board_metrics_ths/` | 1 天 | ✗ | `latest.json` | 同花顺行业板块日度量化指标快照 |
 | `MACRO_OBJECTIVE_PANEL` | `global_cache/macro_objective_panel/` | 1 天 | ✗ | `latest.json` | 宏观客观数据面板日度快照 |
+| `INDUSTRY_FINANCIAL_PANEL` | `global_cache/industry_financial_panel/` | 30 天 | ✗ | `latest.json` | 全A业绩横截面与行业财务扩散月度快照 |
+| `INDUSTRY_CATALOG_SW` | `global_cache/industry_catalog_sw/` | 180 天 | ✗ | `latest.json` | 申万一二三级行业目录与估值快照 |
 
 ## 3. 元信息与刷新记录
 
@@ -78,6 +80,8 @@ should_refresh(cache_dir, kind, force=False)
 | `update_profit_forecast_cached` | `CN_PROFIT_FORECAST` / `HK_PROFIT_FORECAST` | A 股 `stock_profit_forecast_ths`；港股 `stock_hk_profit_forecast_et` |
 | `update_board_metrics_cached` | `BOARD_HISTORY_THS` / `BOARD_METRICS_THS` | 由 `shared_data_access/board_metrics.py` 负责 |
 | `update_macro_objective_panel_cached` | `MACRO_OBJECTIVE_PANEL` | 由 `shared_data_access/macro_objective_panel.py` 负责 |
+| `update_industry_financial_panel_cached` | `INDUSTRY_FINANCIAL_PANEL` | 由 `shared_data_access/industry_financial_panel.py` 负责 |
+| `update_industry_catalog_cached` | `INDUSTRY_CATALOG_SW` | 由 `shared_data_access/industry_catalog.py` 负责 |
 
 ## 6. `ensure_symbol_data`
 

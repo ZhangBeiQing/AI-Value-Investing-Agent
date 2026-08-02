@@ -1,0 +1,4 @@
+interface:
+  display_name: "月度行业研究"
+  short_description: "运行月度行业雷达并对经确认的单个产业链开展结构化深度研究"
+  default_prompt: "使用 $monthly-industry-research 生成本月行业雷达并准备一个候选产业链的深度研究。"

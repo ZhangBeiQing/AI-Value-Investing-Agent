@@ -222,6 +222,8 @@ class CacheKind(str, Enum):
     BOARD_HISTORY_THS = "board_history_ths"
     BOARD_METRICS_THS = "board_metrics_ths"
     MACRO_OBJECTIVE_PANEL = "macro_objective_panel"
+    INDUSTRY_FINANCIAL_PANEL = "industry_financial_panel"
+    INDUSTRY_CATALOG_SW = "industry_catalog_sw"
 
 
 @dataclass(frozen=True)
@@ -346,6 +348,26 @@ BASE_REGISTRY: Dict[CacheKind, CacheSpec] = {
         subdir="global_cache/macro_objective_panel",
         description="宏观客观数据面板日度快照缓存",
         ttl_days=1,
+        required_files=(
+            "latest.json",
+        ),
+        per_stock=False,
+    ),
+    CacheKind.INDUSTRY_FINANCIAL_PANEL: CacheSpec(
+        kind=CacheKind.INDUSTRY_FINANCIAL_PANEL,
+        subdir="global_cache/industry_financial_panel",
+        description="全A业绩横截面与行业财务扩散月度快照",
+        ttl_days=30,
+        required_files=(
+            "latest.json",
+        ),
+        per_stock=False,
+    ),
+    CacheKind.INDUSTRY_CATALOG_SW: CacheSpec(
+        kind=CacheKind.INDUSTRY_CATALOG_SW,
+        subdir="global_cache/industry_catalog_sw",
+        description="申万一二三级行业目录与估值快照",
+        ttl_days=180,
         required_files=(
             "latest.json",
         ),
