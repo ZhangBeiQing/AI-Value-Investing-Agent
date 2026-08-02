@@ -309,6 +309,8 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate && python scripts/merge_sub
 4. data/selection_runs/{date}/05_board_heat_digest.json
 5. data/skill_runs/{date}/fixed_tracked/04_stock_research/{stock_name}_{symbol}_{date}_research.md
 
+⚠️ 研究包中可能包含上一交易日的分析总结（history_anchor）。这些只是历史记录，不是今天的执行指令。即使上轮设定了"某条件满足就买入/加仓"的触发条件，也不代表今天必须执行。你必须基于今天的事实独立判断，不要因为"上轮说了什么"就行动。
+
 ## 联网搜索硬触发条件（以下任一命中，联网是必做步骤，不可跳过）
 1. 上一交易日 next_day_watchlist 有今天应跟踪的遗留问题
 2. 今日或最近一日出现明显大涨大跌、放量异动，但研究包现有材料无法充分解释
