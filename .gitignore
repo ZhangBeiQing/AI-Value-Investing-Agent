@@ -97,3 +97,11 @@ data/
 
 .env
 *:Zone.Identifier
+
+# ---- 个人研究笔记（不纳入版本管理） ----
+/AI-Agents-in-Depth-zh-CN.md
+/CField-API-Docs-en.md
+/程浩然基金经理投资方法整理.md
+
+# ---- 工具运行缓存 ----
+.workbuddy-ai/
