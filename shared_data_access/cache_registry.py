@@ -1808,7 +1808,11 @@ def ensure_symbol_data(
             logger=logger,
         )
 
-    if include_disclosures and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market()):
+    if (
+        include_disclosures
+        and not is_etf
+        and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market())
+    ):
         update_disclosures_cached(
             symbolInfo,
             lookback_days=disclosure_lookback_days,
@@ -1817,7 +1821,7 @@ def ensure_symbol_data(
             force_refresh=force_refresh or force_refresh_disclosures,
         )
 
-    if include_chip_distribution and symbolInfo.is_cn_market():
+    if include_chip_distribution and not is_etf and symbolInfo.is_cn_market():
         update_chip_distribution_cached(
             symbolInfo,
             adjust=chip_adjust,

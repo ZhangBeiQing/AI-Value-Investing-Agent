@@ -196,7 +196,11 @@ class SharedDataAccess:
             share_info = self._load_share_info(symbolInfo, as_of_dt)
 
         disclosures = None
-        if include_disclosures and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market()):
+        if (
+            include_disclosures
+            and not is_etf
+            and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market())
+        ):
             disclosures = self._load_disclosure_bundle(
                 symbolInfo,
                 as_of_dt,
@@ -204,7 +208,7 @@ class SharedDataAccess:
             )
 
         chip_distribution = None
-        if include_chip_distribution and symbolInfo.is_cn_market():
+        if include_chip_distribution and not is_etf and symbolInfo.is_cn_market():
             chip_distribution = self._load_chip_distribution_bundle(symbolInfo, as_of_dt)
 
         return PreparedData(

@@ -13,7 +13,7 @@ from core.logging import init_component_logger
 from services.research.financial_report import get_financial_report_summary
 from services.research.news_summary import search_stock_news
 from services.research.stock_analysis import analyze_stock_dynamics_and_valuation
-from services.trading.trade_summary import get_historical_context
+from services.trading.trade_summary import get_stock_memory_context
 from utlity import ensure_stock_subdir, get_stock_data_dir, parse_symbol
 
 
@@ -82,47 +82,6 @@ def _format_news_item(item: dict) -> List[str]:
             lines.append(f"  - {key}: {_format_scalar(value)}")
 
     return lines
-
-
-def _format_history_entry(entry: Mapping[str, Any]) -> List[str]:
-    start_date = entry.get("start_date") or "未知"
-    end_date = entry.get("end_date") or "未知"
-    duration_days = entry.get("duration_days")
-    action_type = entry.get("action_type") or "未知"
-    header = f"- 时间区间: {start_date} -> {end_date}"
-    details = [f"  - action_type: {action_type}"]
-    if duration_days not in (None, ""):
-        details.append(f"  - duration_days: {duration_days}")
-
-    preferred_fields = [
-        "scan",
-        "analysis_type",
-        "history_anchor",
-        "allow_reanchor_today",
-        "forecast_reliability",
-        "valuation_mode",
-        "catalyst_and_momentum",
-        "trading_mode",
-        "key_facts",
-        "inferences",
-        "valuation_conclusion",
-        "risk_reward_setup",
-        "motion",
-        "court",
-        "recommended_action",
-        "action_num",
-        "price_target",
-        "stop_loss",
-        "key_risks",
-        "next_day_watchlist",
-        "confidence_score",
-    ]
-    for field in preferred_fields:
-        value = entry.get(field)
-        if value not in (None, "", [], {}):
-            details.append(f"  - {field}: {_format_scalar(value)}")
-
-    return [header, *details]
 
 
 def _artifact_lock(cache_path: Path) -> threading.Lock:
@@ -273,7 +232,15 @@ def build_research_markdown(
     price_payload = base_artifact.get("price_payload") or {}
     news_payload = base_artifact.get("news_payload") or {}
     financial_payload = base_artifact.get("financial_payload") or {}
-    historical_entries = get_historical_context(signature, symbol_info.symbol, 1) if signature else []
+    memory_context = (
+        get_stock_memory_context(signature, symbol_info.symbol)
+        if signature
+        else {
+            "position_change_events": [],
+            "latest_thesis_review": {},
+            "pending_checks": [],
+        }
+    )
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines: List[str] = []
@@ -322,17 +289,55 @@ def build_research_markdown(
         if metadata:
             lines.extend(["", "**财报元数据**", "```json", _json_block(metadata), "```"])
     lines.append("")
-    lines.append("## 4. 最近一次交易日历史交易总结")
+    lines.append("## 4. 持仓与投资逻辑记忆")
     lines.append("")
-    if historical_entries:
+    has_memory = any(memory_context.values())
+    if has_memory:
         lines.append(
-            "以下内容来自当前 signature 对应 `decision_summary.json` 中该股票最近一次交易日的合并总结，可供 subagent 直接继承历史锚点与上一轮庭审结论。"
+            "以下内容是从当前账本完整历史中生成的研究记忆视图。"
+            "完整历史仍保存在本地，但过期的 recommended_action、price_target、"
+            "计划性操作条件和旧版 verdict 不会进入本轮 Prompt。"
         )
         lines.append("")
-        for entry in historical_entries:
-            lines.extend(_format_history_entry(entry))
+        position_events = memory_context.get("position_change_events") or []
+        if position_events:
+            lines.append("### 4.1 已确认的仓位变化及其投资理由")
+            lines.append("")
+            lines.append(
+                "> action_num 在这里表示历史上已经确认的仓位变化，"
+                "不是今天应重复执行的数量。"
+            )
+            lines.append("")
+            lines.append("```json")
+            lines.append(_json_block(position_events))
+            lines.append("```")
+            lines.append("")
+
+        latest_review = memory_context.get("latest_thesis_review") or {}
+        if latest_review:
+            lines.append("### 4.2 最近一次投资逻辑复核")
+            lines.append("")
+            lines.append("```json")
+            lines.append(_json_block(latest_review))
+            lines.append("```")
+            lines.append("")
+
+        pending_checks = memory_context.get("pending_checks") or []
+        if pending_checks:
+            lines.append("### 4.3 上轮遗留待核验事项")
+            lines.append("")
+            lines.append(
+                "> 以下内容只用于确定今天要核验哪些事实，"
+                "不是买卖、价格或仓位指令。"
+            )
+            lines.append("")
+            lines.append("```json")
+            lines.append(_json_block(pending_checks))
+            lines.append("```")
     else:
-        lines.append(f"> 未找到该股票在当前账本（{book_type}）下最近一次交易日的历史交易总结。")
+        lines.append(
+            f"> 未找到该股票在当前账本（{book_type}）下可用的持仓或投资逻辑记忆。"
+        )
     lines.append("")
     return "\n".join(lines)
 

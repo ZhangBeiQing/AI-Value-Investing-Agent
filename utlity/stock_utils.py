@@ -16,7 +16,11 @@ from typing import Any, Callable, Dict, Optional, Set, Tuple, TypeVar
 import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
 import akshare as ak  # type: ignore
-from configs.stock_pool import TRACKED_A_STOCKS, StockEntry
+from configs.stock_pool import (
+    FORCED_SHORT_BOOK_STOCKS,
+    TRACKED_A_STOCKS,
+    StockEntry,
+)
 import numpy as np
 from requests import exceptions as requests_exceptions
 
@@ -93,6 +97,15 @@ MARKET_CALENDAR_NAMES: Dict[str, Tuple[str, ...]] = {
 _SYMBOL_METADATA_MAP: Dict[str, StockEntry] = {
     entry.symbol.upper(): entry for entry in TRACKED_A_STOCKS
 }
+for entry in FORCED_SHORT_BOOK_STOCKS:
+    _SYMBOL_METADATA_MAP.setdefault(
+        entry.symbol.upper(),
+        StockEntry(
+            symbol=entry.symbol,
+            name=entry.name,
+            description=entry.reason,
+        ),
+    )
 
 
 class SymbolFormatError(ValueError):

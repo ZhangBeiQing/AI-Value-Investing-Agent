@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fixed-tracked-stock-decision.schema.json",
+  "title": "fixed_tracked 单股最终决策",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbol",
+    "stock_name",
+    "scan",
+    "delta_summary",
+    "key_facts",
+    "inferences",
+    "court",
+    "price_impression",
+    "recommended_action",
+    "action_type",
+    "action_num",
+    "key_risks",
+    "next_day_watchlist",
+    "confidence_score"
+  ],
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stock_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scan": {
+      "type": "string"
+    },
+    "delta_summary": {
+      "type": "string"
+    },
+    "key_facts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "inferences": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "court": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pro",
+        "con",
+        "verdict"
+      ],
+      "properties": {
+        "pro": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "con": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verdict": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "price_impression": {
+      "type": "string",
+      "enum": [
+        "明显低估",
+        "偏低估",
+        "合理",
+        "略贵",
+        "明显高估",
+        "泡沫"
+      ]
+    },
+    "recommended_action": {
+      "type": "string"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "BUY",
+        "SELL",
+        "HOLD",
+        "FLAT"
+      ]
+    },
+    "action_num": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "key_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_day_watchlist": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confidence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action_type": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          }
+        },
+        "required": [
+          "action_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "action_num": {
+            "minimum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action_type": {
+            "enum": [
+              "HOLD",
+              "FLAT"
+            ]
+          }
+        },
+        "required": [
+          "action_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "action_num": {
+            "const": 0
+          }
+        }
+      }
+    }
+  ]
+}

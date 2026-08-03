@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""合并 subagent 单股 decision 文件到 05_decision.json。
+"""合并单股 decision 文件到 05_decision.json。
 
 每个 subagent 分析完一只股票后，将结果写入：
   data/skill_runs/{date}/{book_type}/subagent_result/{stock_name}_{symbol}_{date}_decision.json
 
 本脚本负责：
 1. 读取已有的 05_decision.json（继承基线）
-2. 遍历 subagent_result/ 下所有单股 decision 文件
+2. 遍历旧 subagent_result 或新 debate final verdict
 3. 按 symbol 匹配后整条替换 stock_decisions 中的对应 entry（新 symbol 则追加）
 4. 写入合并后的 05_decision.json
 5. 输出合并摘要
 
 用法：
   python scripts/merge_subagent_decisions.py --date 2026-04-28 --book-type fixed_tracked
+  python scripts/merge_subagent_decisions.py --date 2026-04-28 --book-type fixed_tracked --source debate
   python scripts/merge_subagent_decisions.py --date 2026-04-28 --book-type short_book
   python scripts/merge_subagent_decisions.py --date 2026-04-28 --book-type long_book
 """
@@ -26,6 +27,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SKILL_RUNS = PROJECT_ROOT / "data" / "skill_runs"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from services.trading.decision_contract import validate_stock_decision_entry
+from services.trading.debate_pipeline import validate_debate_artifacts
 
 BOOK_TYPES = ("fixed_tracked", "short_book", "long_book")
 
@@ -38,6 +44,17 @@ def find_decision_files(subagent_dir: Path, date: str) -> list[Path]:
     # 过滤：文件名必须以 _YYYY-MM-DD_decision.json 结尾
     suffix = f"_{date}_decision.json"
     return [f for f in files if f.name.endswith(suffix)]
+
+
+def find_debate_verdict_files(debate_dir: Path) -> list[Path]:
+    """扫描每个 symbol 的唯一 final verdict。"""
+    if not debate_dir.exists():
+        return []
+    return sorted(
+        path
+        for path in debate_dir.glob("*/final/stock_verdict.json")
+        if path.is_file()
+    )
 
 
 def load_baseline(baseline_path: Path) -> dict:
@@ -54,8 +71,13 @@ def load_baseline(baseline_path: Path) -> dict:
     }
 
 
-def merge_decisions(baseline: dict, subagent_files: list[Path]) -> dict:
-    """将 subagent 单股 decision 合并到 baseline 的 stock_decisions 中。"""
+def merge_decisions(
+    baseline: dict,
+    subagent_files: list[Path],
+    *,
+    validate_debate: bool = False,
+) -> tuple[dict, list[str], list[str], list[str]]:
+    """将单股 decision 合并到 baseline 的 stock_decisions 中。"""
     decisions = baseline.get("stock_decisions", [])
     # 建立 symbol -> index 映射
     symbol_index: dict[str, int] = {}
@@ -80,6 +102,17 @@ def merge_decisions(baseline: dict, subagent_files: list[Path]) -> dict:
         if not symbol:
             errors.append(f"{file_path.name}: 缺少 symbol 字段，跳过")
             continue
+        if validate_debate:
+            verdict_errors = validate_stock_decision_entry(
+                entry,
+                expected_symbol=file_path.parents[1].name,
+            )
+            if verdict_errors:
+                errors.extend(
+                    f"{file_path}: {error}"
+                    for error in verdict_errors
+                )
+                continue
 
         if symbol in symbol_index:
             idx = symbol_index[symbol]
@@ -134,11 +167,19 @@ def main() -> int:
         default=str(DEFAULT_SKILL_RUNS),
         help=f"skill_runs 根目录，默认 {DEFAULT_SKILL_RUNS}",
     )
+    parser.add_argument(
+        "--source",
+        default="subagent_result",
+        choices=("subagent_result", "debate"),
+        help="单股结果来源；默认保留旧 subagent_result，辩论流程显式使用 debate",
+    )
     args = parser.parse_args()
 
     book_dir = Path(args.base_dir) / args.date / args.book_type
     decision_path = book_dir / "05_decision.json"
-    subagent_dir = book_dir / "subagent_result"
+    if args.source == "debate" and args.book_type != "fixed_tracked":
+        print("错误: debate 来源当前只支持 fixed_tracked")
+        return 1
 
     if not book_dir.exists():
         print(f"错误: 目录不存在 — {book_dir}")
@@ -148,16 +189,46 @@ def main() -> int:
     baseline = load_baseline(decision_path)
     orig_count = len(baseline.get("stock_decisions", []))
 
-    # 扫描 subagent 文件
-    subagent_files = find_decision_files(subagent_dir, args.date)
+    if args.source == "debate":
+        source_dir = book_dir / "debate"
+        subagent_files = find_debate_verdict_files(source_dir)
+    else:
+        source_dir = book_dir / "subagent_result"
+        subagent_files = find_decision_files(source_dir, args.date)
 
     if not subagent_files:
-        print(f"subagent_result/ 下无匹配日期的 decision 文件，无需合并")
-        print(f"  (搜索目录: {subagent_dir})")
+        print(f"{args.source} 下无单股 decision 文件，无需合并")
+        print(f"  (搜索目录: {source_dir})")
         return 0
 
+    if args.source == "debate":
+        artifact_errors: list[str] = []
+        for verdict_path in subagent_files:
+            symbol = verdict_path.parents[1].name
+            artifact_errors.extend(
+                validate_debate_artifacts(
+                    book_dir,
+                    symbol,
+                    require_verdict=True,
+                )
+            )
+        if artifact_errors:
+            print("辩论链路校验失败，未写入 05_decision.json:")
+            for err in artifact_errors:
+                print(f"  - {err}")
+            return 1
+
     # 合并
-    merged, replaced, appended, errors = merge_decisions(baseline, subagent_files)
+    merged, replaced, appended, errors = merge_decisions(
+        baseline,
+        subagent_files,
+        validate_debate=args.source == "debate",
+    )
+    if args.source == "debate" and errors:
+        print("辩论 verdict 校验失败，未写入 05_decision.json:")
+        for err in errors:
+            print(f"  - {err}")
+        return 1
 
     # 确保 subagent 写入的 entry 没有遗漏 stock_name（从文件名推断）
     for entry in merged.get("stock_decisions", []):
@@ -165,7 +236,9 @@ def main() -> int:
             symbol = entry.get("symbol", "UNKNOWN")
             entry["stock_name"] = symbol
 
-    # 写入
+    merged["summary_date"] = args.date
+
+    # 写入；该命令只应在人工确认后调用。
     with open(decision_path, "w", encoding="utf-8") as f:
         json.dump(merged, f, ensure_ascii=False, indent=2)
 
@@ -175,7 +248,8 @@ def main() -> int:
     # 打印摘要
     new_count = len(merged.get("stock_decisions", []))
     print(f"合并完成 → {decision_path}")
-    print(f"  subagent 文件数: {len(subagent_files)}")
+    print(f"  来源: {args.source}")
+    print(f"  单股文件数: {len(subagent_files)}")
     print(f"  替换 entry: {len(replaced)} 只 ({', '.join(replaced) if replaced else '无'})")
     print(f"  新增 entry: {len(appended)} 只 ({', '.join(appended) if appended else '无'})")
     print(f"  stock_decisions: {orig_count} → {new_count}")

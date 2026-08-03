@@ -443,6 +443,94 @@ def get_historical_context(signature: str, stock_code: str, n: int):
     return stock_history[:n]
 
 
+def _is_legacy_stock_decision(entry: dict) -> bool:
+    """识别会把旧执行计划混入长期记忆的历史 decision。"""
+    deprecated_fields = {
+        "deep_analysis_date",
+        "history_anchor",
+        "search_brief",
+        "motion",
+        "price_target",
+    }
+    return bool(deprecated_fields.intersection(entry))
+
+
+def _project_decision_memory(entry: dict) -> dict:
+    """把完整历史记录投影为可供下一轮研究读取的长期投资记忆。"""
+    projected = {
+        "operation_date": entry.get("operation_date"),
+        "action_type": entry.get("action_type"),
+        "action_num": entry.get("action_num"),
+        "delta_summary": entry.get("delta_summary"),
+        "key_facts": entry.get("key_facts"),
+        "inferences": entry.get("inferences"),
+        "key_risks": entry.get("key_risks"),
+    }
+
+    court = entry.get("court")
+    if isinstance(court, dict):
+        projected_court = {
+            "pro": court.get("pro"),
+            "con": court.get("con"),
+        }
+        # 旧版 verdict 经常混入未来价格、分批和加仓指令。新契约已把
+        # verdict 限定为长期判断，因此只有新契约记录才向后续 Agent 暴露。
+        if not _is_legacy_stock_decision(entry):
+            projected_court["verdict"] = court.get("verdict")
+        projected["court"] = projected_court
+
+    return {
+        key: value
+        for key, value in projected.items()
+        if value not in (None, "", [], {})
+    }
+
+
+def get_stock_memory_context(signature: str, stock_code: str) -> dict:
+    """读取完整交易历史，并生成不含过期执行计划的研究记忆视图。
+
+    原始 `stock_decisions.json` 不做删改。返回值只用于生成下一轮
+    `04_stock_research`，不会暴露历史 recommended_action、price_target
+    或计划性 action_num 文本。
+    """
+    operations = read_json_file(_stock_operations_file(signature))
+    stock_operations = [
+        entry
+        for entry in operations
+        if isinstance(entry, dict) and _entry_symbol(entry) == stock_code
+    ]
+    stock_operations.sort(
+        key=lambda entry: str(entry.get("operation_date") or "")
+    )
+
+    position_change_events = [
+        _project_decision_memory(entry)
+        for entry in stock_operations
+        if entry.get("action_type") in {"BUY", "SELL"}
+    ]
+
+    latest_thesis_review = {}
+    latest_entry = stock_operations[-1] if stock_operations else None
+    if latest_entry and latest_entry.get("action_type") not in {"BUY", "SELL"}:
+        latest_thesis_review = _project_decision_memory(latest_entry)
+
+    pending_checks = []
+    if latest_entry:
+        raw_checks = latest_entry.get("next_day_watchlist")
+        if isinstance(raw_checks, list):
+            pending_checks = [
+                item
+                for item in raw_checks
+                if isinstance(item, str) and item.strip()
+            ]
+
+    return {
+        "position_change_events": position_change_events,
+        "latest_thesis_review": latest_thesis_review,
+        "pending_checks": pending_checks,
+    }
+
+
 def get_portfolio_historical_context(signature: str, stock_codes: list, n: int = 3):
     """
     获取股票池中每只股票最近N次的合并操作历史。

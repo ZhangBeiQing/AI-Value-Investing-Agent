@@ -5,7 +5,7 @@ load_dotenv()
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -20,8 +20,6 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 from tools.price_tools import (
     compute_total_value,
-    get_open_prices,
-    get_yesterday_open_and_close_price,
     compute_position_costs_and_profit,
     get_latest_position,
 )
@@ -328,15 +326,27 @@ def build_prompt(
     final_mapping = {**resolved_context, **sections}
     return template.format(**final_mapping)
 
-def _format_price_dict(raw: Dict[str, float]) -> Dict[str, float]:
-    formatted: Dict[str, float] = {}
-    for key, value in raw.items():
-        symbol = key
-        if isinstance(key, str) and key.endswith("_price"):
-            symbol = key[:-6]
-        name = NAME_BY_SYMBOL.get(symbol, symbol)
-        formatted[f"{name}_{symbol}_price"] = value
-    return formatted
+
+def build_markdown_prompt(
+    prompt_path: str | Path,
+    *,
+    stock_pool_block: str,
+    context: Dict[str, str],
+) -> str:
+    """Render a Markdown prompt source with the same safe placeholders as JSON flows."""
+    path = Path(prompt_path).resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"未找到 Prompt 文件: {path}")
+    template = path.read_text(encoding="utf-8")
+    resolved_context = dict(context)
+    resolved_context.setdefault("stock_pool_block", stock_pool_block)
+    pattern = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+    return pattern.sub(
+        lambda match: str(
+            resolved_context.get(match.group(1), match.group(0))
+        ),
+        template,
+    )
 
 
 def _format_metric_dict(raw: Dict[str, float], suffix: str) -> Dict[str, float]:
@@ -347,38 +357,18 @@ def _format_metric_dict(raw: Dict[str, float], suffix: str) -> Dict[str, float]:
     return formatted
 
 
-def get_agent_system_prompt(
+def build_agent_prompt_context(
     today_date: str,
     signature: str,
     *,
     stock_codes: Optional[List[str]] = None,
-    stock_pool_block_override: Optional[str] = None,
-) -> str:
-    LOGGER.info("生成 agent prompt: signature=%s, today_date=%s", signature, today_date)
+) -> Dict[str, str]:
+    """Build dynamic portfolio context once for one generated input bundle."""
     target_symbols = stock_codes or list(all_stock_pool_symbols)
-    target_stock_pool_block = stock_pool_block_override or _build_stock_pool_block(target_symbols)
-    
-    
-    # 只有当模板仍包含 {historical_summary} 占位符时，才计算历史交易总结。
-    # skill_flow.json 已移除该占位符时，这段计算属于无用开销。
-    config = load_prompt_config()
-    needs_historical_summary = any(
-        "{historical_summary}" in line for line in (config.template_lines or [])
-    )
-    
-    # Calculate yesterday's date for search restriction
-    today_dt = datetime.strptime(today_date, "%Y-%m-%d")
-    yesterday_dt = today_dt - timedelta(days=1)
-    yesterday_date = yesterday_dt.strftime("%Y-%m-%d")
-    
-    # Get yesterday's buy and sell prices
-    yesterday_buy_prices, yesterday_sell_prices = get_yesterday_open_and_close_price(today_date, target_symbols)
-    today_buy_price = get_open_prices(today_date, target_symbols)
+    datetime.strptime(today_date, "%Y-%m-%d")
     today_init_position, _ = get_latest_position(today_date, signature)
     position_costs, position_profit = compute_position_costs_and_profit(today_date, signature)
 
-    formatted_yesterday_close = _format_price_dict(yesterday_sell_prices)
-    formatted_today_buy = _format_price_dict(today_buy_price)
     formatted_position_profit = _format_metric_dict(position_profit, "profit")
     formatted_position_costs = _format_metric_dict(position_costs, "avg_cost")
 
@@ -423,13 +413,12 @@ def get_agent_system_prompt(
             fallback_cash = float(fallback_cash)
         except (TypeError, ValueError):
             fallback_cash = 500000.0
-        portfolio_value_text = f"{fallback_cash:,.2f} 元（默认初始资产），"
+        portfolio_value_amount = f"{fallback_cash:,.2f} 元（默认初始资产）"
     else:
-        portfolio_value_text = f"{current_total_value:,.2f} 元，"
+        portfolio_value_amount = f"{current_total_value:,.2f} 元"
 
     context = {
         "date": today_date,
-        "date_1": yesterday_date,
         "positions": _stringify_payload(today_init_position or {}),
         # "today_buy_price": _stringify_payload(formatted_today_buy),
         "position_costs": _stringify_payload(formatted_position_costs),
@@ -437,14 +426,49 @@ def get_agent_system_prompt(
         "position_return_pct": _stringify_payload(formatted_position_return_pct),
         "STOP_SIGNAL": STOP_SIGNAL,
         "historical_summary": historical_summary_value,
-        "portfolio_value": portfolio_value_text,
+        # portfolio_value 保留旧 JSON prompt 的标点习惯；Markdown policy 使用无尾逗号版本。
+        "portfolio_value": f"{portfolio_value_amount}，",
+        "portfolio_value_amount": portfolio_value_amount,
     }
+    return context
 
-    config = load_prompt_config()
-    return build_prompt(
-        config,
-        stock_pool_block=target_stock_pool_block,
-        context=context,
+
+def get_agent_system_prompt(
+    today_date: str,
+    signature: str,
+    *,
+    stock_codes: Optional[List[str]] = None,
+    stock_pool_block_override: Optional[str] = None,
+    prompt_config: str | Path | None = None,
+    prompt_context: Optional[Dict[str, str]] = None,
+) -> str:
+    LOGGER.info("生成 agent prompt: signature=%s, today_date=%s", signature, today_date)
+    target_symbols = stock_codes or list(all_stock_pool_symbols)
+    target_stock_pool_block = stock_pool_block_override or _build_stock_pool_block(target_symbols)
+    context = prompt_context or build_agent_prompt_context(
+        today_date,
+        signature,
+        stock_codes=target_symbols,
+    )
+
+    resolved_prompt_path = _resolve_config_path(
+        str(prompt_config) if prompt_config is not None else None
+    )
+    if resolved_prompt_path.suffix.lower() == ".md":
+        return build_markdown_prompt(
+            resolved_prompt_path,
+            stock_pool_block=target_stock_pool_block,
+            context=context,
+        )
+    if resolved_prompt_path.suffix.lower() == ".json":
+        config = load_prompt_config(str(resolved_prompt_path))
+        return build_prompt(
+            config,
+            stock_pool_block=target_stock_pool_block,
+            context=context,
+        )
+    raise ValueError(
+        f"不支持的 Prompt 文件类型: {resolved_prompt_path.suffix} ({resolved_prompt_path})"
     )
 
 

@@ -1,6 +1,8 @@
 # Subagent 决策偏差根因分析与 Pipeline 改进方案
 
 > 从 2026-06-22 思特威（688213.SH）BUY 误判案例中提取的系统性改进建议
+>
+> 历史说明：本文记录旧版“单 subagent + skill_flow.json”设计。fixed_tracked 当前修改入口是 `docs/fixed_tracked_debate_prompt_design.md`，本文不再代表当前 Prompt 和辩论架构。
 
 ---
 

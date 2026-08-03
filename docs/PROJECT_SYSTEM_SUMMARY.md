@@ -57,11 +57,11 @@ python scripts/refresh_all_for_date.py --date 2026-06-11
 5. python scripts/run_daily_pipeline.py --date 2026-06-11 --max-workers 6 --all-books
 ```
 
-由 `services/pipeline/daily_pipeline.py` 编排，三本账本（**fixed_tracked / short_book / long_book**）并行生成各自的 01-04 产物：
+由 `services/pipeline/daily_pipeline.py` 编排。当前 `--all-books` 生成 **fixed_tracked + short_book**；长期候选并入 fixed_tracked，不再单独生成 long_book：
 
 - **fixed_tracked** 取自 `configs/stock_pool.py` 的 `TRACKED_A_STOCKS`
 - **short_book** 优先取 `08_short_book_candidates.json`；若选股 skill 未跑，则回退到 `12_quant_prefilter_short.csv`
-- **long_book** 同理，优先 `09_long_book_candidates.json`，回退 `12_quant_prefilter_long.csv`
+- **长期候选**优先取 `09_long_book_candidates.json`，缺失时回退 `12_quant_prefilter_long.csv`，随后并入 fixed_tracked
 
 输出目录：
 
@@ -71,12 +71,13 @@ data/skill_runs/YYYY-MM-DD/
 ├── fixed_tracked/
 │   ├── 01_global_context.md              # 宏观/大盘/渐进式新闻总结
 │   ├── 02_basic_snapshot_payload.json    # basic_stock_info 快照（用于定价基准）
-│   ├── 03_agent_input.md                 # 最终 user_query，包含规则与输出格式
+│   ├── 03_agent_input.md                 # 共享投资策略 + fixed 主 Agent组合研判与 P0 输入
+│   ├── 03_stock_analysis_input.md        # 共享投资策略 + fixed 个股辩论角色研究方法
 │   ├── 04_stock_research/                # 每只股票的研究包 *.md
 │   ├── 05_decision.json                  # 由 skill agent 在对话中生成
-│   └── subagent_result/                  # 各 subagent 单股决策落盘
-├── short_book/                           # 结构同上
-└── long_book/                            # 结构同上
+│   ├── debate/                           # Bull/Bear/Jury/final 单股辩论产物
+│   └── subagent_result/                  # 旧版单 subagent 兼容产物
+└── short_book/                           # 继续使用原 01-04 与 subagent_result 流程
 ```
 
 详见 `.codex/rules/skill-pipeline.md`。
@@ -86,20 +87,18 @@ data/skill_runs/YYYY-MM-DD/
 ```text
 6. /auto-trading-fixed-tracked     → fixed_tracked/05_decision.json
 7. /auto-trading-short-book        → short_book/05_decision.json
-8. /auto-trading-long-book         → long_book/05_decision.json
 ```
 
-- 主 agent 不会自己读所有股票研究包，而是基于今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0 队列，对 P0 派发并行 subagent（每个 subagent 只负责 1 只股票），最终通过 `scripts/merge_subagent_decisions.py` 合并到 `05_decision.json`。
-- 三本账本相互独立串行执行；short_book 上限 7 只、最大持仓 20 个交易日；long_book 允许池子日变但已持仓不剔除。
-- fixed_tracked 与 long_book 的买入规则采用“严格准入、分批建仓、有效初仓、证伪退出”：基本面、估值和逻辑先过关；买点不要求完美，时点不确定性通过分批处理；初仓和目标仓位必须按真实总资产计算并具有实际意义；确认后加仓，逻辑证伪后退出。short_book 继续沿用短线催化与量价确认规则。
-- 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` / `auto-trading-short-book/SKILL.md` / `auto-trading-long-book/SKILL.md`。
+- fixed_tracked 主 agent 不读取所有研究包，而是先根据今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0。用户确认后，每只 P0 使用 Bull、Bear、三名 Juror 和唯一 finalizer；辩论产物写入互不冲突的路径，第二次人工确认后通过 `scripts/merge_subagent_decisions.py --source debate` 生成 `05_decision.json`。
+- short_book 继续使用原单 subagent 流程、上限 7 只、最大持仓 20 个交易日；长期候选由 fixed_tracked 统一分析。
+- fixed_tracked 的买入规则采用“严格准入、分批建仓、有效初仓、证伪退出”：基本面、估值和逻辑先过关；买点不要求完美，时点不确定性通过分批处理；初仓和目标仓位必须按真实总资产计算并具有实际意义；确认后加仓，逻辑证伪后退出。short_book 继续沿用短线催化与量价确认规则。
+- 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` / `auto-trading-short-book/SKILL.md`。
 
 ### 1.6 人工确认后分别执行后处理
 
 ```bash
 9.  python scripts/run_post_trade.py --date 2026-06-11 --book-type fixed_tracked --signature book-fixed_tracked
 10. python scripts/run_post_trade.py --date 2026-06-11 --book-type short_book  --signature book-short_book
-11. python scripts/run_post_trade.py --date 2026-06-11 --book-type long_book   --signature book-long_book
 ```
 
 由 `services/trading/post_trade_pipeline.py` 编排，串联 `05` → `06-08` 后处理：
@@ -150,7 +149,7 @@ data/skill_runs/YYYY-MM-DD/
 │   └── runtime_state.py
 ├── configs/
 │   ├── stock_pool.py           # TRACKED_A_STOCKS（fixed_tracked 静态池）
-│   ├── prompt_flow/            # skill_flow.json / skill_flow_short_book.json / skill_flow_long_book.json
+│   ├── prompt_flow/            # fixed_tracked Markdown policy + short/legacy JSON flow
 │   └── selection_system/       # factor_scoring.yaml 等评分配置
 ├── data/                       # 运行产物与缓存
 ├── logs/                       # 组件日志

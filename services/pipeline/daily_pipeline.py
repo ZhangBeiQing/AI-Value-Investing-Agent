@@ -20,7 +20,13 @@ from services.selection_system.store import load_json_file
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SKILL_FLOW_CONFIG = PROJECT_ROOT / "configs" / "prompt_flow" / "skill_flow.json"
+SKILL_FLOW_CONFIG = (
+    PROJECT_ROOT
+    / "configs"
+    / "prompt_flow"
+    / "fixed_tracked"
+    / "main_policy.md"
+)
 SHORT_BOOK_FLOW_CONFIG = PROJECT_ROOT / "configs" / "prompt_flow" / "skill_flow_short_book.json"
 LONG_BOOK_FLOW_CONFIG = PROJECT_ROOT / "configs" / "prompt_flow" / "skill_flow_long_book.json"
 LOGGER = init_component_logger(

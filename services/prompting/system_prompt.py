@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-from typing import Optional, Sequence
+from typing import Dict, Optional, Sequence
 
-from prompts.agent_prompt import get_agent_system_prompt
+from prompts.agent_prompt import (
+    build_agent_prompt_context,
+    get_agent_system_prompt,
+)
+
+
+def get_skill_prompt_context(
+    run_date: str,
+    signature: str,
+    *,
+    stock_codes: Optional[Sequence[str]] = None,
+) -> Dict[str, str]:
+    return build_agent_prompt_context(
+        run_date,
+        signature,
+        stock_codes=list(stock_codes) if stock_codes else None,
+    )
 
 
 def get_skill_system_prompt(
@@ -17,14 +32,16 @@ def get_skill_system_prompt(
     *,
     stock_codes: Optional[Sequence[str]] = None,
     stock_pool_block_override: Optional[str] = None,
+    prompt_context: Optional[Dict[str, str]] = None,
 ) -> str:
-    os.environ["PROMPT_FLOW_CONFIG"] = str(Path(prompt_config).resolve())
     return get_agent_system_prompt(
         run_date,
         signature,
         stock_codes=list(stock_codes) if stock_codes else None,
         stock_pool_block_override=stock_pool_block_override,
+        prompt_config=Path(prompt_config).resolve(),
+        prompt_context=prompt_context,
     )
 
 
-__all__ = ["get_skill_system_prompt"]
+__all__ = ["get_skill_prompt_context", "get_skill_system_prompt"]
