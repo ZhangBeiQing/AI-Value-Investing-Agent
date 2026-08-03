@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument(
         "--prompt-config",
         default=str(SKILL_FLOW_CONFIG),
-        help="Prompt flow config path (default: skill_flow.json).",
+        help="Prompt source path (fixed_tracked 默认: main_policy.md).",
     )
     parser.add_argument(
         "--signature",

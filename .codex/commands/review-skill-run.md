@@ -48,6 +48,7 @@ description: Review one local skill run by checking outputs, logs, decision arti
 - `global_context = <run_dir>/01_global_context.md`
 - `snapshot = <run_dir>/02_basic_snapshot_payload.json`
 - `agent_input = <run_dir>/03_agent_input.md`
+- `stock_agent_input = <run_dir>/03_stock_analysis_input.md`（fixed_tracked）
 - `stock_research_dir = <run_dir>/04_stock_research/`
 - `decision = <run_dir>/05_decision.json`
 - `execution_log = <run_dir>/06_execution_log.json`
@@ -76,6 +77,12 @@ description: Review one local skill run by checking outputs, logs, decision arti
 - 文件存在
 - 非空
 - 明显包含对 `01`、`02`、`04` 的引用说明或使用说明
+
+#### `03_stock_analysis_input.md`（fixed_tracked）
+
+- 文件存在且非空
+- 不包含 P0 选择、用户暂停或创建 subagent 的指令
+- 包含个股共同研究、联网补证、history anchor 和动作语义
 
 #### `04_stock_research/`
 

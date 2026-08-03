@@ -1,6 +1,6 @@
 # 每日操盘总结系统设计
 
-更新日期：2026-06-12
+更新日期：2026-08-03
 
 ## 1. 背景与目标
 
@@ -54,7 +54,7 @@ data/agent_data/book-fixed_tracked/
 - `action_type`：`BUY` / `SELL` / `HOLD` / `FLAT`
 - `action_num`：操作数量（整数）
 - `action_price`：操作价格（可选）
-- 决策细节字段（与 `SUMMARY_DETAIL_FIELDS` 对齐）：
+- 决策细节字段。新 fixed_tracked 辩论契约使用 14 字段；`SUMMARY_DETAIL_FIELDS` 仍保留以下部分旧字段，用于历史兼容和完整审计：
   - `scan`
   - `analysis_type`
   - `history_anchor`
@@ -156,6 +156,10 @@ process_and_merge_operations(signature: str, new_operations: list | None = None)
 get_historical_context(signature: str, stock_code: str, n: int) -> list[dict]
 # 单只股票最近 N 条记录（按 end_date 降序）
 
+get_stock_memory_context(signature: str, stock_code: str) -> dict
+# fixed_tracked 个股研究记忆视图；保留仓位变化和投资理由，
+# 排除历史 recommended_action、price_target 和过期执行计划
+
 get_portfolio_historical_context(signature: str, stock_codes: list, n: int = 3) -> dict
 # 股票池中每只股票最近 N 条；输出按 end_date 正序（旧→新）便于阅读时间线
 
@@ -163,7 +167,7 @@ load_yesterday_daily_summary(signature: str) -> dict | None
 # 加载昨天的 portfolio_daily_summary 条目
 ```
 
-这些函数在 `run_daily_pipeline` 生成 `01_global_context.md` / `03_agent_input.md` 时被调用，把历史决策序列以 JSON 块形式注入 prompt。
+`build_stock_research` 使用 `get_stock_memory_context` 生成 `04_stock_research` 的“持仓与投资逻辑记忆”。完整历史仍保存在 `stock_decisions.json`；下一轮 Agent只看到安全投影视图，而不是上一轮的完整执行计划。其他历史函数继续服务组合上下文和旧流程。
 
 ## 5. AI 输出格式（输入 → 系统）
 
@@ -171,7 +175,7 @@ load_yesterday_daily_summary(signature: str) -> dict | None
 
 skill 端要求 entry 字段集见各账本 SKILL.md：
 
-- `.codex/skills/auto-trading-fixed-tracked/SKILL.md`（19 字段）
+- `configs/prompt_flow/fixed_tracked/stock_decision.schema.json`（fixed_tracked 当前 14 字段）
 - `.codex/skills/auto-trading-short-book/SKILL.md`
 - `.codex/skills/auto-trading-long-book/SKILL.md`
 

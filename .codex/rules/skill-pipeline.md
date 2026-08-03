@@ -29,10 +29,11 @@ paths:
   - `01_global_context.md`
   - `02_basic_snapshot_payload.json`
   - `03_agent_input.md`
+  - `03_stock_analysis_input.md`（fixed_tracked 个股辩论角色共同输入）
   - `04_stock_research/*.md`
 - `run_post_trade` 负责 `05-08` 的后处理串联。
 - 新增字段可以扩展，但不要随意重命名或删除既有关键文件、字段、目录结构，除非用户明确同意。
-- 如果调整 `skill_flow.json`、prompt 文案或产物结构，必须同步更新说明文档和调用链。
+- 如果调整 `skill_flow.json`、fixed_tracked Markdown policy、prompt 文案或产物结构，必须同步更新说明文档和调用链。
 
 ## 状态记录
 

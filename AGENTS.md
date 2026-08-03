@@ -33,7 +33,10 @@
 - `services/trading/`：交易执行与 `06-08` 汇总
 - `shared_data_access/`：行情、财报、股本、公告的统一缓存入口
 - `core/`：日志、运行态、通用基础设施
-- `configs/prompt_flow/skill_flow.json`：当前主 flow
+- `configs/prompt_flow/fixed_tracked/investment_policy.md`：fixed_tracked 全部 Agent 共用的核心投资策略
+- `configs/prompt_flow/fixed_tracked/main_policy.md`：fixed_tracked 主 Agent 当前 Prompt 源
+- `configs/prompt_flow/fixed_tracked/stock_analysis_policy.md`：fixed_tracked 个股辩论角色共同研究方法
+- `configs/prompt_flow/skill_flow*.json`：short_book 与旧版兼容 Prompt flow
 - `.codex/rules/`：当前主维护的规则目录，供 Codex 场景优先使用
 - `.codex/skills/`：当前主维护的项目技能文档
 - `.codex/commands/`：当前主维护的固定动作文档

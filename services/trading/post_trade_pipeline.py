@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple
 
 from core.runtime_state import get_config_value, write_config_value
 from core.logging import init_component_logger
+from services.trading.decision_contract import required_stock_decision_fields
 
 logger = init_component_logger("PostTradePipeline")
 from services.trading.price_reference import add_no_trade_record
@@ -23,6 +24,26 @@ from services.trading.trade_summary import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VALID_BOOK_TYPES = {"fixed_tracked", "short_book", "long_book"}
+LEGACY_COMMON_DECISION_FIELDS = [
+    "symbol",
+    "stock_name",
+    "scan",
+    "deep_analysis_date",
+    "history_anchor",
+    "delta_summary",
+    "price_impression",
+    "key_facts",
+    "inferences",
+    "motion",
+    "court",
+    "recommended_action",
+    "action_type",
+    "action_num",
+    "price_target",
+    "key_risks",
+    "next_day_watchlist",
+    "confidence_score",
+]
 
 
 def _normalize_book_type(book_type: str | None) -> str:
@@ -254,26 +275,13 @@ def validate_decision_json(
         errors.append("stock_decisions 必须是非空数组")
         return errors
 
-    common_required_fields = [
-        "symbol",
-        "stock_name",
-        "scan",
-        "deep_analysis_date",
-        "history_anchor",
-        "delta_summary",
-        "price_impression",
-        "key_facts",
-        "inferences",
-        "motion",
-        "court",
-        "recommended_action",
-        "action_type",
-        "action_num",
-        "price_target",
-        "key_risks",
-        "next_day_watchlist",
-        "confidence_score",
-    ]
+    # 只有 fixed_tracked 迁移到新的 14 字段契约。short_book / long_book
+    # 继续按旧字段校验，避免本次改动无意放宽其他账本。
+    common_required_fields = (
+        required_stock_decision_fields()
+        if (book_type or "").strip().lower() == "fixed_tracked"
+        else LEGACY_COMMON_DECISION_FIELDS.copy()
+    )
     valid_actions = {"BUY", "SELL", "HOLD", "FLAT"}
     for idx, op in enumerate(ops):
         if not isinstance(op, dict):
