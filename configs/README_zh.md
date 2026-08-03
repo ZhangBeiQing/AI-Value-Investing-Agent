@@ -14,7 +14,7 @@
 
 - `investment_policy.md` 是全部 fixed_tracked Agent 共用的核心投资策略单一来源
 - `investment_policy.md` + `main_policy.md` 生成主 Agent 的 `03_agent_input.md`
-- `investment_policy.md` + `stock_analysis_policy.md` 生成个股辩论角色的 `03_stock_analysis_input.md`
+- `investment_policy.md` + `configs/research/web_research_policy.md` + `stock_analysis_policy.md` 生成个股辩论角色的 `03_stock_analysis_input.md`
 - `stock_decision.schema.json` 定义单股最终 verdict
 - `stock_decision.example.json` 为 finalizer 提供一份通过 Schema 校验的完整输出样例
 

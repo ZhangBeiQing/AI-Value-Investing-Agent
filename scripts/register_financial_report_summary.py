@@ -14,8 +14,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from services.research.financial_report_skill import (
     _output_path,
+    financial_report_workdir,
     select_latest_two_reports,
     update_summary_index,
+    validate_deep_research_artifacts,
 )
 from utlity.stock_utils import parse_symbol
 
@@ -42,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--path",
         help="可选：手动指定已有总结 markdown 路径。若不提供，则默认使用当前最新财报公告日对应的 financial_reports/YYYYMMDD.md",
     )
+    parser.add_argument(
+        "--require-deep-research",
+        action="store_true",
+        help="注册前强制检查 draft/challenge/revision/closure 等季度深研过程产物。",
+    )
     return parser
 
 
@@ -57,6 +64,14 @@ def main() -> int:
         raise SystemExit(
             "目标财报分析文档不存在、为空、或疑似只是未来公告占位文件，已拒绝登记到 summary_index.json。"
         )
+    if args.require_deep_research:
+        quality_errors = validate_deep_research_artifacts(
+            manifest_path=financial_report_workdir(symbol_info.symbol) / "manifest.json",
+            final_report_path=summary_path,
+        )
+        if quality_errors:
+            detail = "\n".join(f"- {item}" for item in quality_errors)
+            raise SystemExit(f"季度深研质量门禁未通过，拒绝登记：\n{detail}")
 
     update_summary_index(
         symbol=symbol_info.symbol,

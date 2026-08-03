@@ -7,8 +7,8 @@ import argparse
 import json
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
-import shutil
 from typing import Any, List, Optional
 
 
@@ -19,13 +19,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from core.logging import init_component_logger
 from services.research.financial_report_skill import (
     build_stock_report_bundles,
-    financial_report_workdir,
     load_tracked_items,
+    prepare_financial_report_workdir,
     synthesize_manual_item,
-)
-from services.research.financial_report_summary_prompts import (
-    FUTURE_OUTLOOK_PROMPT_TEMPLATE,
-    REPORT_ANALYSIS_PROMPT_TEMPLATE,
 )
 
 LOGGER = init_component_logger(
@@ -83,127 +79,12 @@ def _ensure_markdown_path(md_path: Path | None, pdf_path: Path | None) -> Path |
     return None
 
 
-def _copy_to_workdir(src: Path, dest: Path) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src, dest)
-
-
-def _infer_report_period(source_path: Path) -> str:
-    stem = source_path.stem
-    if "一季度" in stem or "一季报" in stem or "Q1" in stem:
-        return "一季度"
-    if "半年度" in stem or "半年报" in stem or "中报" in stem or "Q2" in stem:
-        return "半年度"
-    if "三季度" in stem or "三季报" in stem or "Q3" in stem:
-        return "三季度"
-    if "年度" in stem or "年报" in stem or "Q4" in stem:
-        return "年度"
-    return "最新季度"
-
-
-def _write_workdir(bundle, latest_path: Path, previous_path: Path | None, industry_name: str) -> Path:
-    workdir = financial_report_workdir(bundle.symbol)
-    workdir.mkdir(parents=True, exist_ok=True)
-    latest_target = workdir / "01_latest_report.md"
-    previous_target = workdir / "02_previous_report.md"
-    report_prompt_target = workdir / "03_report_analysis_prompt.md"
-    outlook_prompt_target = workdir / "04_future_outlook_prompt.md"
-    agent_input_target = workdir / "05_agent_input.md"
-    manifest_target = workdir / "manifest.json"
-
-    _copy_to_workdir(latest_path, latest_target)
-    if previous_path:
-        _copy_to_workdir(previous_path, previous_target)
-    elif previous_target.exists():
-        previous_target.unlink()
-
-    report_period = _infer_report_period(latest_path)
-    report_prompt = REPORT_ANALYSIS_PROMPT_TEMPLATE.format(
-        company_name=bundle.stock_name,
-        report_period=report_period,
-    )
-    outlook_prompt = FUTURE_OUTLOOK_PROMPT_TEMPLATE.format(
-        company_name=bundle.stock_name,
-        industry_name=industry_name,
-    )
-    report_prompt_target.write_text(report_prompt, encoding="utf-8")
-    outlook_prompt_target.write_text(outlook_prompt, encoding="utf-8")
-
-    agent_input = "\n".join(
-        [
-            f"# {bundle.stock_name} ({bundle.symbol}) 财报分析输入",
-            "",
-            "## 任务目标",
-            "你是一名只负责当前这一只股票的财报研究 subagent。你的任务不是复述财报，而是基于最近两份关键财报原文，结合联网搜索得到的高可信外部信息，完成一份可直接用于投资研究的深度财报分析文档。",
-            "",
-            "## 强制阅读顺序",
-            "1. 必须先完整阅读 `01_latest_report.md`。",
-            "2. 若存在，再完整阅读 `02_previous_report.md`。",
-            "3. 再完整阅读 `03_report_analysis_prompt.md`。",
-            "4. 再完整阅读 `04_future_outlook_prompt.md`。",
-            "5. 最后阅读 `manifest.json`，确认输出路径、公告日期和当前输入元信息。",
-            "",
-            "说明：上述文件必须按顺序完整读完，不能只看局部片段、关键词命中或抽样段落后就开始下结论。",
-            "",
-            "## 研究方式",
-            "1. `03_report_analysis_prompt.md` 定义的是‘历史与当前财报验证任务’。你必须围绕它主动搜索市场一致预期、券商财报前预测、财报后快评、公司业绩演示材料、交易所补充公告等高可信信息。",
-            "2. `04_future_outlook_prompt.md` 定义的是‘未来 6-12 个月行业与经营前瞻任务’。你必须围绕它主动搜索行业景气、政策、成本、需求、竞争格局、公司催化剂、未来一致预期与风险。",
-            "3. **关键要求——同比与环比必须同时分析：** 你必须主动搜索并获取最新季度的**归母净利润同比增速**和**归母净利润环比增速**，两者缺一不可。很多 agent 会遗漏环比分析，但环比净利润变化是判断盈利拐点的最早信号——当同比仍为正但环比已连续下滑时，往往预示着基本面恶化已经开始。你的分析报告中必须明确列示同比和环比两个维度的净利润增速，并分别给出解读。",
-            "4. 不要把联网搜索限制为少数固定问题。你应该根据这两个 prompt 自己判断还缺什么信息，并继续搜索，直到能完整回答两个 prompt 的核心问题。",
-            "5. 优先使用权威来源：公司财报、公司演示材料、交易所公告、Bloomberg/Refinitiv/FactSet 摘要（若可得）、主流券商研报、权威行业资料。",
-            "6. 严禁引用未经证实的市场传言。若某项预期或数据无法高可信获取，必须明确写‘未找到高可信信息’，而不是猜测。",
-            "",
-            "## 输出要求",
-            f"1. 最终输出必须写入 `{bundle.output_path}`。",
-            "2. 输出必须是完整 Markdown 文档，不要输出 JSON，不要输出对话式说明，不要输出 fenced code block 包裹的 markdown。",
-            "3. 文档必须同时回答：",
-            "   - 当前这期财报相对市场预期是超预期、符合预期还是低于预期；",
-            "   - 经营质量如何，核心变化来自哪里；",
-            "   - 这期财报对原有投资逻辑是强化、削弱还是微调；",
-            "   - 未来 6-12 个月行业和公司经营最关键的催化剂与风险是什么。",
-            "4. 文档中必须尽量区分‘已核实事实’与‘基于事实的推断’。",
-            "5. 若一致预期不足，必须说明你使用了哪些替代来源，以及这些替代来源的局限性。",
-            "",
-            "## 建议篇幅",
-            "- 建议正文篇幅控制在 4000-7000 字。",
-            "- 普通季报以 4000-5500 字为宜；信息密度高的年报或争议较大的公司可到 6000-7000 字。",
-            "- 不建议少于 3000 字，否则通常不足以同时覆盖‘财报验证 + 未来前瞻’两部分；也不建议无节制膨胀到 9000 字以上，以免变成低信噪比堆砌。",
-            "",
-            "## 当前输入",
-            f"- 最新财报: {latest_target}",
-            f"- 上一期关键财报: {previous_target if previous_path else '无'}",
-            f"- 财报分析 prompt: {report_prompt_target}",
-            f"- 未来前瞻 prompt: {outlook_prompt_target}",
-            f"- 当前工作目录: {workdir}",
-            f"- summary_index: {bundle.summary_index_path}",
-        ]
-    )
-    agent_input_target.write_text(agent_input, encoding="utf-8")
-
-    manifest = {
-        "symbol": bundle.symbol,
-        "stock_name": bundle.stock_name,
-        "final_mandate": bundle.final_mandate,
-        "latest_announcement_id": bundle.latest_report.announcement_id,
-        "latest_report_date": bundle.latest_report.date,
-        "latest_report_path": str(latest_target),
-        "previous_announcement_id": bundle.previous_report.announcement_id if bundle.previous_report else None,
-        "previous_report_date": bundle.previous_report.date if bundle.previous_report else None,
-        "previous_report_path": str(previous_target) if previous_path else None,
-        "report_analysis_prompt_path": str(report_prompt_target),
-        "future_outlook_prompt_path": str(outlook_prompt_target),
-        "agent_input_path": str(agent_input_target),
-        "output_path": str(bundle.output_path),
-        "summary_index_path": str(bundle.summary_index_path),
-        "industry_name": industry_name,
-    }
-    manifest_target.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    return workdir
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="为财报总结 skill 准备固定股票池或深研队列股票的财报输入。")
-    parser.add_argument("--date", help="selection_runs 日期，默认自动取最近一个有 11_deep_research_queue.json 的日期。")
+    parser.add_argument(
+        "--date",
+        help="本次分析日（YYYY-MM-DD），同时用于 selection_runs 队列和财报可见性截止；默认今天。",
+    )
     parser.add_argument(
         "--mandate",
         default="all",
@@ -226,7 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--symbols",
-        help="额外要处理的股票代码，逗号分隔；可用于 queue 与 TRACKED_A_STOCKS 之外的股票。",
+        help="只处理这些股票代码，逗号分隔；一旦提供，将不再自动加入 tracked、queue 或 quant prefilter 股票。",
     )
     parser.add_argument(
         "--include-tracked",
@@ -244,6 +125,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="额外把 12_quant_prefilter_short.csv 中的股票也加入处理列表。",
     )
+    parser.add_argument(
+        "--skip-market-context",
+        action="store_true",
+        help="仅调试准备层时跳过当前价格与增强估值生成；正式财报研究不建议使用。",
+    )
+    parser.add_argument(
+        "--force-reprepare",
+        action="store_true",
+        help="即使最新财报已登记，也只重建 workdir 供调试/评审；不覆盖最终财报，不修改 summary_index。",
+    )
     return parser
 
 
@@ -251,6 +142,32 @@ def _parse_symbol_list(raw: Optional[str]) -> List[str]:
     if not raw:
         return []
     return [token.strip() for token in raw.split(",") if token.strip()]
+
+
+def _apply_explicit_symbol_scope(args: argparse.Namespace) -> List[str]:
+    """Make --symbols an exclusive stock scope for this invocation."""
+    explicit_symbols = _parse_symbol_list(args.symbols)
+    if not explicit_symbols:
+        return []
+
+    ignored_sources = []
+    if args.include_tracked:
+        ignored_sources.append("tracked")
+    if args.include_queue:
+        ignored_sources.append("queue")
+    if args.include_quant_prefilter:
+        ignored_sources.append("quant_prefilter")
+    if ignored_sources:
+        LOGGER.info(
+            "--symbols 已指定，仅处理显式股票；忽略扩池来源: %s",
+            ", ".join(ignored_sources),
+        )
+
+    args.include_tracked = False
+    args.include_queue = False
+    args.include_quant_prefilter = False
+    args.symbols = ",".join(explicit_symbols)
+    return explicit_symbols
 
 
 def _load_quant_prefilter_symbols(run_date: str) -> List[str]:
@@ -299,7 +216,10 @@ def _collect_extra_items(args: argparse.Namespace) -> List[dict]:
 
 def main() -> int:
     args = build_parser().parse_args()
-    extra_symbols = _parse_symbol_list(args.symbols)
+    analysis_date = args.date or datetime.now().date().isoformat()
+    extra_symbols = _apply_explicit_symbol_scope(args)
+    if not extra_symbols:
+        extra_symbols = _parse_symbol_list(args.symbols)
     if args.include_quant_prefilter and args.date:
         prefilter_symbols = _load_quant_prefilter_symbols(args.date)
         for s in prefilter_symbols:
@@ -337,7 +257,12 @@ def main() -> int:
     ready = []
     skipped = []
     for bundle in bundles:
-        if bundle.skipped:
+        forced_reprepare = bool(
+            args.force_reprepare
+            and bundle.skipped
+            and bundle.skip_reason == "already_summarized_latest_report"
+        )
+        if bundle.skipped and not forced_reprepare:
             skipped.append(
                 {
                     "symbol": bundle.symbol,
@@ -361,7 +286,13 @@ def main() -> int:
                 }
             )
             continue
-        workdir = _write_workdir(bundle, latest_path, previous_path, bundle.industry_name)
+        workdir = prepare_financial_report_workdir(
+            bundle,
+            latest_path=latest_path,
+            previous_path=previous_path,
+            analysis_date=analysis_date,
+            generate_current_market=not args.skip_market_context,
+        )
         ready.append(
             {
                 "symbol": bundle.symbol,
@@ -369,6 +300,8 @@ def main() -> int:
                 "final_mandate": bundle.final_mandate,
                 "latest_announcement_id": bundle.latest_report.announcement_id,
                 "latest_report_date": bundle.latest_report.date,
+                "analysis_date": analysis_date,
+                "forced_reprepare": forced_reprepare,
                 "latest_report_path": str(workdir / "01_latest_report.md"),
                 "previous_report_path": str(workdir / "02_previous_report.md") if previous_path else None,
                 "output_path": str(bundle.output_path),

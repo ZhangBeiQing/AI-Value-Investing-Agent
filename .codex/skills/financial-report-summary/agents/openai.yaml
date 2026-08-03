@@ -1,0 +1,4 @@
+interface:
+  display_name: "季度基本面深研"
+  short_description: "以预期重建、产业链研究、初稿质询和修订闭环生成季度基本面报告"
+  default_prompt: "使用 $financial-report-summary 对最新财报运行季度基本面深度研究并生成兼容的最终报告。"

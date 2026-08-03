@@ -55,7 +55,7 @@ data/skill_runs/_analysis_index.json
 ## 3. 规则唯一来源
 
 - 主 Agent的组合与 P0 方法：当天 `03_agent_input.md`。
-- 个股共同投资规则：当天 `03_stock_analysis_input.md`。
+- 个股共同投资、联网搜索和证据准入规则：当天 `03_stock_analysis_input.md`。
 - Bull opening：[references/debate-bull.md](references/debate-bull.md)。
 - Bear opening：[references/debate-bear.md](references/debate-bear.md)。
 - 双方 rebuttal：[references/debate-rebuttal.md](references/debate-rebuttal.md)。

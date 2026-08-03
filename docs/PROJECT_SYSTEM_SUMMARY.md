@@ -1,4 +1,4 @@
-更新日期：2026-07-14
+更新日期：2026-08-03
 
 # AI-Value-Investing-Agent 项目系统白皮书
 
@@ -47,8 +47,9 @@ python scripts/refresh_all_for_date.py --date 2026-06-11
 4. /financial-report-summary       → 各股 data/stock_info/{name}_{symbol}/financial_reports/*.md
 ```
 
-- `prepare_financial_report_skill.py` 会同步公告 PDF、整理待生成清单（`fixed_tracked` 全量 + 量化初筛短期股增量）。
-- `/financial-report-summary` 主 agent 派发 subagent，每只股票一个，subagent 自主完成「读公告 → 搜索 → 诊断 → 验证 → 撰写」全流程，写入 `financial_reports/`。
+- `prepare_financial_report_skill.py` 会同步公告 PDF、整理待生成清单，并为每股生成相互隔离的财报前市场上下文与分析日价格/增强估值上下文；它复用底层股票研究服务，不调用整个 `run_daily_pipeline.py`。
+- `/financial-report-summary` 按细分产业链协调 Industry Researcher，并为每股协调 Expectation Scout、Financial Author 和 Research Challenger；Author 修订后写入 `financial_reports/`，主 agent 通过质量门禁再注册 `summary_index.json`。
+- 财报前预期严格按公告时点截断；年度同花顺预测不能冒充季度一致预期。外部搜索强制百炼优先，重大数字回到原始来源核验。
 - 详见 `.codex/skills/financial-report-summary/SKILL.md`。
 
 ### 1.4 三账本 01-04 产物

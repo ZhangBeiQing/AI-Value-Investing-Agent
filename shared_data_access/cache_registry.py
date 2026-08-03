@@ -592,6 +592,25 @@ def _read_cached_dataframe(csv_path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _write_profit_forecast_snapshot(
+    cache_dir: Path,
+    frame: pd.DataFrame,
+    *,
+    snapshot_date: date | None = None,
+) -> Path | None:
+    """Persist an immutable daily copy while retaining profit_forecast.csv."""
+
+    if frame is None or frame.empty:
+        return None
+    resolved_date = snapshot_date or datetime.now().date()
+    snapshot_path = cache_dir / "snapshots" / f"{resolved_date.strftime('%Y%m%d')}.csv"
+    if snapshot_path.exists():
+        return snapshot_path
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(snapshot_path, index=False, encoding="utf-8")
+    return snapshot_path
+
+
 def update_cn_profit_forecast_cached(
     symbolInfo: SymbolInfo,
     base_data_dir: str | Path = "data",
@@ -617,7 +636,9 @@ def update_cn_profit_forecast_cached(
     csv_path = cache_dir / "profit_forecast.csv"
 
     if not should_refresh(cache_dir, CacheKind.CN_PROFIT_FORECAST, force_refresh):
-        return _read_cached_dataframe(csv_path)
+        cached = _read_cached_dataframe(csv_path)
+        _write_profit_forecast_snapshot(cache_dir, cached)
+        return cached
 
     try:
         logger.info("正在获取%s %s A股机构一致预期...", symbolInfo.stock_name, symbolInfo.symbol)
@@ -632,6 +653,7 @@ def update_cn_profit_forecast_cached(
             return _read_cached_dataframe(csv_path)
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(csv_path, index=False, encoding="utf-8")
+        _write_profit_forecast_snapshot(cache_dir, df)
         record_cache_refresh(cache_dir)
         logger.info("已缓存%s %s A股机构一致预期到 %s", symbolInfo.stock_name, symbolInfo.symbol, csv_path)
         return df
@@ -663,7 +685,9 @@ def update_hk_profit_forecast_cached(
     csv_path = cache_dir / "profit_forecast.csv"
 
     if not should_refresh(cache_dir, CacheKind.HK_PROFIT_FORECAST, force_refresh):
-        return _read_cached_dataframe(csv_path)
+        cached = _read_cached_dataframe(csv_path)
+        _write_profit_forecast_snapshot(cache_dir, cached)
+        return cached
 
     try:
         logger.info("正在获取%s %s 港股盈利预测...", symbolInfo.stock_name, symbolInfo.symbol)
@@ -678,6 +702,7 @@ def update_hk_profit_forecast_cached(
             return _read_cached_dataframe(csv_path)
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(csv_path, index=False, encoding="utf-8")
+        _write_profit_forecast_snapshot(cache_dir, df)
         record_cache_refresh(cache_dir)
         logger.info("已缓存%s %s 港股盈利预测到 %s", symbolInfo.stock_name, symbolInfo.symbol, csv_path)
         return df

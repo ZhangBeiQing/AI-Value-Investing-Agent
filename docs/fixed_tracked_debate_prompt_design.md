@@ -104,7 +104,8 @@ Bull、Bear、Juror 等个股角色不应读取 P0 调度和用户交互规则�
 | 状态机、暂停点、创建 Agent、文件所有权、失败处理 | fixed Skill | 主 Agent |
 | 核心角色定位、投资哲学、风险偏好、仓位与交易纪律 | `investment_policy.md`，同时编译进两份 03 | 主 Agent、Bull、Bear、Juror、finalizer |
 | 宏观与 P0 筛选方法 | `main_policy.md` 编译后的 `03_agent_input.md` | 主 Agent |
-| 通用个股研究、联网、历史记忆投影、动作语义 | `stock_analysis_policy.md`，与共享策略共同编译进 `03_stock_analysis_input.md` | Bull、Bear、Juror、finalizer |
+| 通用联网搜索、来源分级和证据准入 | `configs/research/web_research_policy.md`，编译进 `03_stock_analysis_input.md` | Bull、Bear、Juror、finalizer |
+| 通用个股研究、联网硬触发条件、历史记忆投影、动作语义 | `stock_analysis_policy.md`，与共享策略共同编译进 `03_stock_analysis_input.md` | Bull、Bear、Juror、finalizer |
 | Bull/Bear/Rebuttal/Juror/finalizer 的角色差异 | Skill `references/` 对应文件 | 对应角色 |
 | 单股最终 JSON 结构和样例 | `stock_decision.schema.json` + `stock_decision.example.json` | finalizer、校验器 |
 | 当天事实 | `01`、`02`、`04`、热点和板块文件 | 按角色读取 |
@@ -135,6 +136,7 @@ Bull、Bear、Juror 等个股角色不应读取 P0 调度和用户交互规则�
 - `configs/prompt_flow/fixed_tracked/investment_policy.md`
 - `configs/prompt_flow/fixed_tracked/main_policy.md`
 - `configs/prompt_flow/fixed_tracked/stock_analysis_policy.md`
+- `configs/research/web_research_policy.md`
 - `.codex/skills/auto-trading-fixed-tracked/SKILL.md`
 - `.codex/skills/auto-trading-fixed-tracked/references/*.md`
 - `configs/prompt_flow/fixed_tracked/stock_decision.schema.json`
@@ -177,13 +179,13 @@ Bull、Bear、Juror 等个股角色不应读取 P0 调度和用户交互规则�
 
 ### 6.3 `stock_analysis_policy.md`
 
-与 `investment_policy.md` 共同生成个股输入；本文件只定义所有个股角色共同遵守的研究方法：
+与 `investment_policy.md`、`web_research_policy.md` 共同生成个股输入；本文件只定义所有个股角色共同遵守的研究方法：
 
 - 事实与推断分离；
 - 完整历史永久保存，但研究包只读取不含过期执行计划的投资记忆投影；
 - 财报披露窗口和时效约束；
 - 本地材料优先、必要时联网补证；
-- 联网硬触发条件；
+- fixed_tracked 联网硬触发条件和上一轮待核验事项闭环；
 - 价值、盈利可靠度、周期性、估值和量价的综合判断；
 - `BUY`、`SELL`、`HOLD`、`FLAT` 的共同语义；
 - `HOLD/FLAT` 不应携带未来价格买入指令；
@@ -197,6 +199,10 @@ Bull、Bear、Juror 等个股角色不应读取 P0 调度和用户交互规则�
 - 任何角色的立场；
 - 辩论目录；
 - 完整单股 JSON 示例。
+
+### 6.3.1 `web_research_policy.md`
+
+这是财报研究、产业研究和 fixed_tracked 共用的联网搜索与证据准入单一来源。它定义百炼只负责语义召回、来源等级、百家号等低等级来源的硬性禁用、同源转载识别和原始来源追溯。低等级来源只能提供线索或市场情绪，不能进入事实、预测、估值假设或交易结论。
 
 ### 6.4 Role References
 

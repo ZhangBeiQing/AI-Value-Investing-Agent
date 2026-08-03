@@ -12,6 +12,7 @@ description: 用于半年级结构空间筛查、月度产业领先指标监控�
 - 不使用热点新闻、板块涨幅、资金流或股票动量发现产业机会。
 - 不自动修改长期池，不生成交易指令。
 - 财报只验证景气扩散，不负责发现“爆发式增长行业”。
+- 产业链方法统一读取 `configs/research/industry_chain_research_policy.md`，不得在本 skill 维护第二套程浩然规则。
 
 ## 日期语义
 
@@ -31,14 +32,14 @@ python scripts/manage_industry_research.py build-structural-scan --date YYYY-MM-
 
 完整读取 `scan_input.json` 与 `scan_input.md`。先对全部申万二级行业做低成本预检，回答终端需求单位、当前市场规模、三至五年终局空间、渗透率与增长驱动。不要因为财务高增长、新闻热度或股价上涨直接入选。
 
-只对预检最可能的约20个方向联网补证，按以下分类填写 `structural_opportunity_pool_template.json`：
+对预检后仍可能满足结构增长的方向联网补证，按以下分类填写 `structural_opportunity_pool_template.json`：
 
 - `structural_growth`：三至五年基准收入空间约2倍或以上，且增长来源可持续。
 - `cyclical`：主要由价格、库存或短期供给冲击驱动。
 - `mature`：终局空间受限或渗透率已高。
 - `uncertain`：空间可能很大，但商业化时间或付费能力无法验证。
 
-将候选写入同目录的 `structural_opportunity_pool.json`，保持 `status=draft`、`human_approved=false`，向用户展示10-20个结构候选并暂停。用户确认后才将池标为 `approved` 并将被确认主题设为 `human_approved=true`。
+将候选写入同目录的 `structural_opportunity_pool.json`，保持 `status=draft`、`human_approved=false`，向用户展示有证据支持的结构候选并暂停。用户确认后才将池标为 `approved` 并将被确认主题设为 `human_approved=true`。
 
 ## 阶段二：月度领先指标监控
 
@@ -99,21 +100,27 @@ python scripts/manage_industry_research.py prepare-theme-research \
   --theme-id THEME_ID
 ```
 
-完整读取该工作目录中的 `00-03` 文件，并在深搜前阅读 [输出与证据契约](references/output-contract.md)。
+完整读取该工作目录中的 `00-03` 文件，并在深搜前阅读：
+
+- `configs/research/industry_chain_research_policy.md`
+- `configs/research/web_research_policy.md`
+- [输出与证据契约](references/output-contract.md)
 
 ## 阶段五：深度研究
 
-严格按工作目录 `01_deep_research_prompt.md` 的顺序执行：
+严格按共享产业链规则和工作目录 `01_deep_research_prompt.md` 执行：
 
 1. 验证雷达信号。
-2. 建立终端需求与TAM公式。
+2. 明确 `terminal_theme → subchain → value_chain_node → company_exposure`，再建立终端需求与 TAM 公式。
 3. 研究需求、供给、库存、价格、交期、资本开支和扩产周期。
 4. 绘制产业链利润映射。
-5. 研究最受益节点的前三名公司。
+5. 研究所有对结论重大的候选公司，不预设目标公司是龙头，也不规定公司数量。
 6. 构建悲观、基准、乐观市值情景。
 7. 给出状态迁移与证伪条件。
 
 优先使用政府、交易所、行业协会、公司公告、业绩会、客户和供应商原始材料。关键结论需要一个权威原始来源，或两个相互独立的可靠来源。凡是可能变化的产业事实必须联网补证。
+
+所有外部搜索首先使用百炼 `bailian_web_search` 能力；它不存在或传输失败时应失败关闭，不得静默切换其他搜索引擎。百炼只负责语义召回，重大数字仍需打开原始网页或 PDF 核对。
 
 默认由当前主agent完成单主题研究，不派发并行subagent，保持单人月度流程可控。
 

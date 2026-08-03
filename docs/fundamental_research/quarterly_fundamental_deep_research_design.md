@@ -1,6 +1,6 @@
 # 季度财报与全面基本面深度研究系统详细设计
 
-状态：待用户评审，尚未实施
+状态：已实施（v1；保留后续 LangGraph/自动批次分组增强空间）
 更新日期：2026-08-03
 适用范围：`financial-report-summary`、财报研究 workdir、公司触发型产业链研究、财报前预期差研究
 
@@ -442,6 +442,7 @@ financial_report_workdir/
 - `manifest.json` 暂时保留兼容，但 Agent 不应依赖其中的 `industry_name` 下结论；
 - `prior_fundamental_memory.md` 只保存上期基本面假设、管理层指引兑现和未解决问题，不包含旧交易动作；
 - `existing_industry_research.md` 是旧卡片的高密度摘要，不是本季度结论。
+- `05_agent_input.md` 声明当前公司的 `disclosures/md/` 和 `disclosures/pdfs/` 只读历史原文目录；只有明确历史缺口时才按 Markdown 优先、单份 PDF 兜底的顺序回溯，不批量读取多年报告，也不自动调用 MinerU。
 
 ## 9. 财报前与当前市场上下文
 
@@ -727,6 +728,8 @@ Financial Author 读取：
 - `research_outputs/expectation_snapshot.md`
 - `research_outputs/industry_chain_research.md`
 - 相关固定研究政策。
+
+若上述输入不足以补足最近两年季度趋势、解释口径变化或追溯重大异常，Author 可按 `05_agent_input.md` 声明的只读路径定向查找历史原文。先在 `disclosures/md/` 用文件名、报告期和关键词定位；目标报告没有 Markdown 时才读取 `disclosures/pdfs/` 中对应的单份 PDF。不存在固定 N 年全量读取要求。
 
 ### 12.2 两遍阅读，降低历史锚定
 
