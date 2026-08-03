@@ -1,287 +1,149 @@
 ---
 name: financial-report-summary
-description: >
-  用于对固定跟踪股池、长期股池、短期股池队列中的股票逐股生成深度财报分析文档。
-  主 agent 运行准备脚本、派发 subagent（每只股票一个），subagent 自主完成阅读→搜索→诊断→验证→撰写的完整研究循环。
-  用户说"生成财报总结"时使用。
+description: 对固定跟踪池、长期候选与短期候选股票生成季度全面基本面深度研究。用户说“生成财报总结”“分析最新财报”“做季度基本面研究”或要求批量研究财报时使用。主 Agent 先准备财报前/当前市场上下文，再按细分产业链协调 Industry Researcher，并为每股启动 Expectation Scout、Financial Author、Research Challenger；Author 修订后写入兼容的 financial_reports/YYYYMMDD.md，最后由主 Agent 注册 summary_index.json。
 ---
 
-# Financial Report Summary
+# Quarterly Fundamental Research
 
----
+## 边界
 
-# Part A：主 agent 工作流
+- 最终报告是基本面研究，不生成真实交易动作、仓位、目标价或止损。
+- 财务事实不投票；使用“提出问题 → 找证据 → 修订”的闭环。
+- 保持 `financial_reports/YYYYMMDD.md` 与 `summary_index.json` 现有契约。
+- 各角色只写自己的文件；最终报告只有 Financial Author 写，`summary_index.json` 只有主 Agent 通过注册脚本写。
 
-## A.1 确定需要准备财报基本面分析的股票
+开始前完整读取 [角色派发模板](references/role-prompts.md)。派发 subagent 时只传角色、股票/产业链、workdir、模板路径和唯一输出路径；不得转述或压缩固定规则。
 
-- 本skill所需分析的股票位于以下位置：
-  1、固定股池 `configs/stock_pool.py` 中的 `TRACKED_A_STOCKS`
-  2、data/selection_runs/{run_date}/12_quant_prefilter_long.csv
-  3、data/selection_runs/{run_date}/12_quant_prefilter_short.csv 
-  他们分别代表固定股池、每日最新长期股池和短期股池，本skill的目的就是确保这三者中的股票的财报基本面都被分析过
-
-## A.2 准备分析基本面所需要的材料
-
-运行以下脚本
+## 一、准备输入
 
 ```bash
-source /home/zhangbeiqing/venv/ai_stock/bin/activate && python python scripts/prepare_financial_report_skill.py --date {run_date} --sync-first --json --include-quant-prefilter
+source /home/zhangbeiqing/venv/ai_stock/bin/activate
+python scripts/prepare_financial_report_skill.py \
+  --date YYYY-MM-DD \
+  --sync-first \
+  --json \
+  --include-quant-prefilter
 ```
 
-脚本将输出`ready_items` 和 `skipped_items`，其中`ready_items`代表要分析的股票， `skipped_items`代表已经分析过不需要再分析的股票
+`--date` 是本次分析日。准备脚本会为每股生成或更新：
 
-## A.3 跳过规则
-
-若某股票的 `summary_index.json` 中 `latest_completed_report.announcement_id` 与当前最新 `announcement_id` 相同 → 本轮跳过。
-
-## A.4 派发 subagent（并行，每只股票一个）
-
-对每只 `ready` 股票，启动一个 subagent。并使用以下模板，要求 每个 subagent 自己阅读本 SKILL.md 的 Part B 章节来完成后续工作。
-
-### subagent prompt 模板
-
-```
-你负责完成 {stock_name} ({symbol}) 的深度财报分析。
-
-## 开始前必读
-在读取任何工作目录文件之前，先完整阅读 `.claude/skills/financial-report-summary/SKILL.md` 的 **Part B：Subagent 工作流** 章节。该章节包含完整的研究方法论、常见陷阱、搜索清单和输出结构要求。
-
-## 工作目录
-{workdir}
-
-## 输出要求
-最终报告写入 {output_path}，同时更新 {summary_index_path}。
-
-完成后回复我：写入的文件路径 + 3~5 句关键发现摘要。
+```text
+financial_report_workdir/
+├── 01_latest_report.md
+├── 02_previous_report.md
+├── 03_report_analysis_prompt.md
+├── 04_future_outlook_prompt.md
+├── 05_agent_input.md
+├── pre_announcement_market_context.md
+├── current_market_context.md
+├── valuation_framework.md
+├── prior_fundamental_memory.md
+├── existing_industry_research.md
+├── manifest.json
+└── research_outputs/
 ```
 
-主 agent 需要从 `manifest.json` 或 `ready_items` 中提取 `symbol`、`stock_name`、`workdir`、`output_path`、`summary_index_path` 等字段填入模板。
+`05_agent_input.md` 还会声明当前公司的只读历史披露目录：
 
-## A.5 收集结果
-
-所有 subagent 完成后，主 agent 汇总各股的完成状态和关键发现，报告给用户。
-
----
-
-# Part B：Subagent 工作流
-
-> ⚠️ 本章节是 subagent 的研究方法论核心。subagent 必须在开始工作前完整阅读本章节。
-
-## B.0 强制阅读顺序（skill 文件优先）
-
-在打开任何工作目录文件之前，subagent 必须先确认已读完本 SKILL.md 的 Part B。
-
-```
-0. .claude/skills/financial-report-summary/SKILL.md  (Part B — 本文件)
-1. workdir/05_agent_input.md
-2. workdir/01_latest_report.md
-3. workdir/02_previous_report.md（若存在）
-4. workdir/03_report_analysis_prompt.md
-5. workdir/04_future_outlook_prompt.md
-6. workdir/manifest.json
+```text
+data/stock_info/{stock_name}_{symbol}/disclosures/md/
+data/stock_info/{stock_name}_{symbol}/disclosures/pdfs/
 ```
 
-## B.1 阶段一：原始数据精读（地基）
+仅在固定基本面规则定义的明确历史缺口出现时按需读取：先 Markdown，缺失时再定位单份 PDF。不要批量读取多年报告，也不要因本轮研究自动调用 MinerU。
 
-### 步骤 1：读 `05_agent_input.md`
-确认任务范围、输出路径、announcement_id、当前输入文件列表。
+仅处理 `ready_items`。`skipped_items` 中已总结或缺财报的股票不启动角色。正式研究不得使用 `--skip-market-context`。
 
-### 步骤 2：读 `01_latest_report.md`和 `02_previous_report.md`
-你需要分析他们分别是年报/半年报还是季报，季报需要完整的阅读完，年报需要分层深度搜索提取关键信息
+## 二、验证百炼搜索
 
-重点关注：
-- 不同季度、年报公司的营收、净利润、毛利率、费用率、现金流等核心财务数据的同比、环比变动，并尽量从原始财报中提取出具体的变动原因，要区分是公司的经营业务变化还是类似汇率变动、原材料价格变动等外部因素引起的利润变化或者其它资产减值
-- 资产负债/利润/现金流各项目的**公司官方变动说明**（这是最权威的利润变化解释，所有后续分析必须以它为起点）
-- 公司的分部经营情况，比如公司具体有多少业务，每个业务的各季度的营收和营收占比、毛利率、增速变化等，如果有请，提取出哪些是拖后腿的业务，哪些是稳定的主营业务，
-哪些是快速增长的业务，并分析他们的逐季度的经营指标变化。如果有合并报表的重要子公司，请查看其是否披露了核心子公司的独立财务数据
-- 公司的在手合同、在手订单、应收账款、产能扩张计划等，梳理公司管理层对未来业务发展趋势的官方表述
-- 风险提示，公司官方在财报中通常会披露一些风险因素，看看有哪些是和你后续分析相关的，做好标记
+在派发任何需要联网的角色前，发现并验证 `bailian_web_search` 能力。实际 MCP 前缀可以不同。
 
+- 能力不存在或传输失败：停止研究，报告 `bailian_unavailable`。
+- 搜索成功但无结果：允许角色继续换查询词或记录数据缺口。
+- 不得静默切换其他搜索引擎；只有用户明确允许 fallback 才能使用替代搜索。
 
-### 步骤 3：读 `03_report_analysis_prompt.md` 和 `04_future_outlook_prompt.md`
-这两个文件定义了**核心研究任务**。每一个具体要求都必须被最终报告覆盖。它们是输出提纲，不是"参考意见"。
+## 三、产业链分组
 
-### 步骤 5：读 `manifest.json`
-确认输出路径、announcement_id、report_type、配对关系等元信息。
+读取所有 ready item 的 `05_agent_input.md`、财报业务描述和 `existing_industry_research.md`，按以下层级分组：
 
-## B.2 阶段二：第一轮广域搜索（建立认知框架）
-
-此时你对公司的财务数据已有第一手理解（从原始财报），但还需要外部信息来建立完整认知。按以下顺序搜索：
-
-### 搜索 1：业务与竞争认知
-`"{公司名} 业务构成 营收 毛利率 行业地位 2025"`
-→ 确认公司业务板块、市占率、行业排名
-
-### 搜索 2：最近重大事件
-`"{公司名} 2025 2026 重大事件 H股上市 融资 收购 分拆"`
-→ H 股上市？重大收购？子公司分拆？这些会直接影响当期财报数字
-
-### 搜索 3：本期财报的市场解读
-`"{公司名} {报告期} 一季报 业绩 点评 券商"`
-→ 看正式卖方如何解读，同时留意搜索结果中哪些是卖方研报、哪些是个人帖
-
-### 搜索 4：竞争格局
-`"{公司名} 竞争对手 市场份额 224G 高速铜缆"`
-→ 公司在产业链中的位置、主要竞争对手、份额对比
-
-## B.3 阶段三：知识缺口诊断（最重要的步骤）
-
-读完原始财报 + 第一轮搜索后，**停下来列出你不知道的东西**。
-
-必须逐项检查以下 12 个维度，标记哪些已掌握、哪些是空白：
-
-| # | 维度 | 如果没有，需要找什么 |
-|---|------|-------------------|
-| 1 | **业务全景** | 各业务板块营收/毛利率/增速/行业排名 |
-| 2 | **子公司拆解** | 核心子公司的独立财务数据（营收、净利、净利率） |
-| 3 | **客户结构** | 前五大客户是谁、集中度、单一客户依赖度 |
-| 4 | **竞争格局** | 全球/国内份额、竞争对手进展、替代技术 |
-| 5 | **上下游议价权** | 原材料采购模式、价格传导机制、调价时滞 |
-| 6 | **产能与 CAPEX** | 核心设备数量、扩产计划、在建工程进度 |
-| 7 | **股权与治理** | 实际控制人状态、大股东增减持、H 股/A 股结构 |
-| 8 | **重大资产质量** | 商誉（对应什么收购，有无减值）、应收账款账龄 |
-| 9 | **卖方一致预期** | 正式卖方的全年/季度盈利预测（非股吧帖） |
-| 10 | **估值水平** | 当前 PE/PEG、隐含增长假设、同行业可比公司 |
-| 11 | **技术路线风险** | 替代技术的真实进展、行业标准演变方向 |
-| 12 | **短期催化剂** | 订单、调价公告、新产品验证、产能释放时间表 |
-
-## B.4 阶段四：第二轮深度验证搜索（填补缺口）
-
-针对阶段三标记的每一个空白，发起精准搜索。
-
-### 信息来源分级标准
-
-| 级别 | 来源 | 如何对待 |
-|------|------|---------|
-| **S** | 公司公告原文、互动平台官方回复、招股书 | **直接引用，最高权威。** 与任何其他来源矛盾时，优先采信 S 级 |
-| **A** | 正式卖方研报（长江、中信、中金、华泰等） | 作为专业观点引用，注明来源。多家交叉验证 |
-| **B** | 持牌财经媒体（经济观察网、证券日报、每日经济新闻等） | 作为事实性报道引用 |
-| **C** | 雪球、股吧、东方财富财富号 | **仅作市场情绪参考，不作为事实或预期基准。** 尤其 C 级来源的"一致预期"数字——必须先追溯来源，无法确认是正式卖方预期的，不得使用 |
-
-### 关键搜索技巧
-
-- **公司互动平台回复**检索：`"{公司名} 投资者互动平台 {关键词}"` — 这些是公司官方口径，信息密度极高
-- **子公司数据**检索：`"{公司名} {子公司名} 营收 净利润 2025 半年报"` — 半年报和年报通常披露重要子公司的财务数据
-- **卖方预期**检索：`"{公司名} 盈利预测 2026 券商"` — 同花顺/东方财富的盈利预测汇总页是快速入口
-
-## B.5 阶段五：批判性分析与归因（避开五大陷阱）
-
-在开始写报告之前，必须完成以下自检：
-
-### 陷阱 1：用非权威来源当"一致预期"
-
-- ❌ "Q1 市场一致预期营收 27.5 亿，实际 20.3 亿，显著低于预期"
-  → 如果这个预期来自东方财富个人帖，结论就是建立在沙滩上
-- ✅ "6 家正式卖方对 2026 年全年的净利预测均值为 18.72 亿，未公布 Q1 分拆预期。C 级来源流传的 Q1 预期（25-27.5 亿）来源权威性不足，不宜作为判断基准"
-
-**铁律**：任何判定"超/符/低于预期"的结论，其预期数字必须来自 A 级及以上来源。C 级来源的预期只能作为"市场情绪参考"在文末提及。
-
-### 陷阱 2：把并列因素当平等因素（不做定量归因）
-
-- ❌ "净利润下降是因为三重压力：铜价上涨 + 费用增长 + 汇兑损失"
-  → 三个因素被平等地并列，读者不知道谁是主凶
-- ✅ 先做定量拆解：
-  - 汇兑损失增量 0.25 亿
-  - 归母净利润下降 0.19 亿
-  - **结论：汇兑损失单独解释了全部利润降幅。** 其余因素是附加背景，不是主因
-
-**铁律**：任何利润变动的归因分析，必须对每个声称的驱动因素做**定量拆解**。能算的就算，不能精确算的给出合理估算区间。
-
-### 陷阱 3：拿单季度数据做趋势判断（不做季节性验证）
-
-- ❌ "Q1 经营现金流仅 0.46 亿，覆盖净利润 19%，利润变现能力急剧恶化"
-- ✅ 列出 2025 年 Q1/Q2/Q3/Q4 各自的经营现金流（1.24/2.22/2.78/5.35 亿），全年覆盖 1.01x。Q1 现金流弱是制造业备货季常态
-
-**铁律**：任何从单季度数据导出的趋势判断，必须用至少过去 4 个季度的数据做季节性验证。
-
-### 陷阱 4：忽略公司财报原文的官方解释
-
-- ❌ 搜索到一篇文章说"财务费用激增主要是因为利息支出增加" → 直接引用
-- ✅ 回去读 Q1 季报原文："美元、港币等外币汇率持续下降，汇兑损失增加" → 这是公司官方口径，S 级信息，优先于任何 B/C 级分析
-
-**铁律**：公司的官方财报变动说明是 S 级信息。凡是和官方解释矛盾的外部分析，除非有充分证据链（如多个 A 级来源一致确认），以官方解释为准。
-
-### 陷阱 5：把 manifest.json 的标签当本质
-
-- ❌ 看到 `industry_name: "GB200铜缆独家"` → 套用"公司是独家供应商"叙事
-- ✅ 搜索验证：全球三家（3M、住友、沃尔）能做 224G，沃尔份额 ~25%，全球第二
-
-**铁律**：`manifest.json` 的 `industry_name` 是一个标签，不是分析结论。如果搜索发现标签有误导性，在报告中修正它。
-
-## B.6 阶段六：撰写最终报告
-
-### 必须包含的章节
-
-1. **核心结论摘要**（3-5 条，直接给出总体判断和最核心的归因）
-2. **公司业务全景**（业务板块/营收/毛利/行业地位表；子公司独立数据如有）
-3. **本期财报核心数据一览**（含同比、环比的多维表格）
-4. **利润变动归因分析**（定量拆解主因与次因，避开陷阱 2）
-5. **毛利率/费用/现金流分项分析**（区分结构性 vs 周期性，避开陷阱 3）
-6. **行业竞争格局**（全球/国内竞争地图、技术路线演变、护城河论证或质疑）
-7. **资产负债表关键项目**（商誉构成、应收质量、CAPEX 进度）
-8. **成本传导与定价机制**（如有原材料价格波动的分析需要）
-9. **公司治理与股权结构**（实际控制人、增减持、A/H 结构）
-10. **估值框架**（正式卖方一致预期、多情景 PE 测算）
-11. **风险全景图**（按时间距离排列，含概率和影响程度；明确最大看空和最大看多逻辑）
-12. **综合投资研判**（短期 1-3 个月 / 中期 3-6 个月 / 长期 12 个月+）
-
-### 输出路径
-
-```
-data/stock_info/{stock_name}_{symbol}/financial_reports/YYYYMMDD.md
+```text
+terminal_theme → subchain → value_chain_node → company_exposure
 ```
 
-`YYYYMMDD` = 最新财报公告日（`manifest.json` → `latest_report_date` 去连字符）。例如 `2026-04-24` → `20260424`。
+复用必须以 `subchain` 相同为前提。“AI 硬件”不是可复用细分链；PCB、光模块、液冷、存储、电源和服务器分别研究。无法可靠归组时按单公司独立研究。
 
-### 同步更新 `summary_index.json`
+同一细分产业链只启动一个 Industry Researcher。它可以在一份共享研究中覆盖该组所有公司，但必须分别研究公司业务暴露。共享文件先由该 Agent 单独写完，再作为只读输入给组内股票；其他角色不得回写。旧 card 只作线索，所有可变事实必须按本次披露窗口刷新。
 
-```json
-{
-  "symbol": "300750.SZ",
-  "stock_name": "宁德时代",
-  "latest_completed_report": {
-    "announcement_id": "1225107946",
-    "report_date": "2026-04-16",
-    "report_type": "Q1季报",
-    "paired_previous_announcement_id": "1225002213",
-    "paired_previous_report_date": "2026-03-10",
-    "output_path": "data/stock_info/宁德时代_300750.SZ/financial_reports/20260416.md",
-    "generated_at": "2026-04-19T12:08:40+08:00"
-  },
-  "history": [
-    {
-      "announcement_id": "1225107946",
-      "report_date": "2026-04-16",
-      "report_type": "Q1季报",
-      "paired_previous_announcement_id": "1225002213",
-      "paired_previous_report_date": "2026-03-10",
-      "output_path": "data/stock_info/宁德时代_300750.SZ/financial_reports/20260416.md",
-      "generated_at": "2026-04-19T12:08:40+08:00"
-    }
-  ]
-}
+## 四、分波次执行
+
+平台并发额度只决定每波同时启动多少 Agent，不改变逻辑角色：
+
+1. 每个细分产业链启动一个 Industry Researcher；
+2. 每股启动一个 Expectation Scout；
+3. 等产业链研究与预期快照完成后，每股启动一个 Financial Author 写 `draft_v1.md`；
+4. 每股启动一个 Research Challenger 写 `challenge_round_01.md`；
+5. 复用原 Financial Author 会话，读取质询并写 `draft_v2.md` 和最终报告；
+6. 主 Agent 通过质量门禁后逐股注册。
+
+不得为了省并发让同一个 Agent 同时担任 Author 和 Challenger。Author 初稿与修订必须复用同一会话，不额外启动 Finalizer。
+
+## 五、角色派发
+
+所有角色必须完整读取：
+
+- `05_agent_input.md` 中声明的本次路径与权限；
+- 自己在 `references/role-prompts.md` 中的精确角色模板；
+- 模板列出的 `configs/research/` 固定规则。
+
+主 Agent 给 subagent 的消息采用最小形式：
+
+```text
+你是 <ROLE>。处理 <股票或细分产业链>。
+完整读取 <role-prompts.md> 中的 <ROLE> 章节，以及 <05_agent_input.md>。
+严格遵守其中的可读/禁读边界，只写 <唯一输出路径>。
+固定规则以本地文件为准；本消息不补充或改写研究方法。
 ```
 
-- `latest_completed_report` 必须与 `history[0]` 指向同一条记录
-- `history` 最新在前，最多 20 条
-- 路径字段统一用 `output_path`
-- `report_type` 从财报内容判断：`Q1季报` / `半年报` / `Q3季报` / `年报`
-- `paired_previous_*` 从 `manifest.json` 获取
-- `generated_at` 使用 ISO 8601 +08:00 时区
+若主消息与本地规则冲突，以本地规则和 `05_agent_input.md` 的更严格限制为准。
 
-## B.7 完成后回复主 agent
+## 六、停止与质量门禁
 
-subagent 完成后，回复主 agent：
-1. 确认已写入的文件路径
-2. 3~5 句关键发现摘要
+Author 完成修订后，主 Agent 检查：
 
----
+- `draft_v1.md`、`challenge_round_01.md`、`draft_v2.md` 和最终报告均存在且非占位；
+- 财报前预期没有时间穿越；
+- 年度一致预期没有冒充季度一致预期；
+- 最新增强估值的财务基准期已说明；
+- 新财报口径 TTM/Forward 估值已重算，或明确说明无法计算；
+- 最近两年整体与重大业务趋势、同比、环比、季节性和归因已覆盖；
+- 产业链结论落到公司收入/利润暴露，没有预设龙头；
+- Challenger 的高严重度问题已由 Author 在修订稿中解决，或列入未解决事项并说明影响；
+- 最终报告不含占位符、伪造来源或交易指令。
 
-# Part C：禁止事项
+高严重度问题未闭环时，不注册。允许在最终报告中保留真正无法由公开信息回答的问题，但必须说明它如何影响结论。
 
-- **禁止使用 Python/代码脚本生成财报分析内容** — 财报分析必须通过阅读→搜索→推理完成
-- **禁止把 C 级来源（股吧/雪球个人帖）的预期数字当"一致预期"来判定超/符/低于预期**
-- **禁止在未做定量归因的情况下并列讨论利润变动因素**（必须区分主因与次因）
-- **禁止拿单季度数据做趋势判断而不做季节性验证**
-- **禁止忽略财报原文中的公司官方变动说明**
-- **禁止不加验证地沿用 manifest.json 的 industry_name 标签**
+## 七、注册最终报告
+
+最终报告存在并通过门禁后，由主 Agent 逐股执行：
+
+```bash
+python scripts/register_financial_report_summary.py \
+  --symbol SYMBOL \
+  --path data/stock_info/{stock_name}_{symbol}/financial_reports/YYYYMMDD.md \
+  --require-deep-research
+```
+
+Financial Author 不得自行写 `summary_index.json`。注册失败时保留研究文件并报告失败，不伪造完成状态。
+
+## 八、批量汇报
+
+向用户汇报：
+
+- 成功、跳过和失败股票；
+- 每股最终报告路径；
+- 细分产业链复用关系；
+- 未解决的高严重度问题；
+- 百炼搜索状态；
+- `summary_index.json` 是否注册成功。
+
+不在汇报中代替报告生成买卖建议。

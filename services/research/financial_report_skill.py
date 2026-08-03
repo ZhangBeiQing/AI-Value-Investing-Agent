@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, unquote, urlparse
 
 from configs.stock_pool import TRACKED_A_STOCKS
+from core.logging import get_logger
 from news.disclosures_builder import AnnouncementMeta, load_index
+from services.research.financial_report_summary_prompts import (
+    FUTURE_OUTLOOK_PROMPT_TEMPLATE,
+    REPORT_ANALYSIS_PROMPT_TEMPLATE,
+)
 from utlity.stock_utils import parse_symbol
 
 
@@ -18,6 +25,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = PROJECT_ROOT / "data"
 STOCK_INFO_ROOT = DATA_ROOT / "stock_info"
 SELECTION_RUNS_ROOT = DATA_ROOT / "selection_runs"
+RESEARCH_CONFIG_ROOT = PROJECT_ROOT / "configs" / "research"
+LOGGER = get_logger("FinancialReportSkill")
 
 REPORT_PERIOD_PATTERNS = [
     (re.compile(r"三季度|三季报|Q3|截至\d{4}年\d{1,2}月\d{1,2}日止九个月|截至\d{4}年\d{1,2}月\d{1,2}日止三个月及九个月", re.IGNORECASE), "q3", 3),
@@ -97,6 +106,7 @@ class FinancialReportMeta:
     priority: int
     pdf_path: Optional[Path]
     md_path: Optional[Path]
+    announcement_datetime: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +125,320 @@ class StockReportBundle:
 
 def financial_report_workdir(symbol: str) -> Path:
     return _stock_root(symbol) / "financial_report_workdir"
+
+
+def _infer_report_period(source_path: Path) -> str:
+    stem = source_path.stem
+    if "一季度" in stem or "一季报" in stem or "Q1" in stem:
+        return "一季度"
+    if "半年度" in stem or "半年报" in stem or "中报" in stem or "Q2" in stem:
+        return "半年度"
+    if "三季度" in stem or "三季报" in stem or "Q3" in stem:
+        return "三季度"
+    if "年度" in stem or "年报" in stem or "Q4" in stem:
+        return "年度"
+    return "最新季度"
+
+
+def _copy_to_workdir(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+
+
+def _clear_stale_research_outputs(
+    research_outputs_dir: Path,
+    *,
+    existing_manifest: Dict[str, Any],
+    current_announcement_id: str,
+    current_analysis_date: str,
+) -> None:
+    """Remove only known generated artifacts when the workdir advances report."""
+
+    if (
+        existing_manifest.get("latest_announcement_id") == current_announcement_id
+        and existing_manifest.get("analysis_date") == current_analysis_date
+    ):
+        return
+    for filename in (
+        "industry_scope.json",
+        "industry_chain_research.md",
+        "expectation_snapshot.md",
+        "draft_v1.md",
+        "challenge_round_01.md",
+        "draft_v2.md",
+        "closure_review.md",
+    ):
+        target = research_outputs_dir / filename
+        if target.is_file():
+            target.unlink()
+
+
+def prepare_financial_report_workdir(
+    bundle: StockReportBundle,
+    *,
+    latest_path: Path,
+    previous_path: Optional[Path],
+    analysis_date: str,
+    generate_current_market: bool = True,
+) -> Path:
+    """Prepare deterministic inputs for the multi-agent research workflow."""
+
+    from services.research.financial_report_context import build_financial_report_context
+
+    workdir = financial_report_workdir(bundle.symbol)
+    workdir.mkdir(parents=True, exist_ok=True)
+    research_outputs_dir = workdir / "research_outputs"
+    research_outputs_dir.mkdir(parents=True, exist_ok=True)
+    manifest_target = workdir / "manifest.json"
+    existing_manifest: Dict[str, Any] = {}
+    if manifest_target.exists():
+        try:
+            existing_manifest = json.loads(manifest_target.read_text(encoding="utf-8"))
+        except Exception:
+            existing_manifest = {}
+    _clear_stale_research_outputs(
+        research_outputs_dir,
+        existing_manifest=existing_manifest,
+        current_announcement_id=bundle.latest_report.announcement_id,
+        current_analysis_date=analysis_date,
+    )
+
+    latest_target = workdir / "01_latest_report.md"
+    previous_target = workdir / "02_previous_report.md"
+    report_prompt_target = workdir / "03_report_analysis_prompt.md"
+    outlook_prompt_target = workdir / "04_future_outlook_prompt.md"
+    agent_input_target = workdir / "05_agent_input.md"
+    valuation_framework_target = workdir / "valuation_framework.md"
+    disclosures_md_dir = workdir.parent / "disclosures" / "md"
+    disclosures_pdf_dir = workdir.parent / "disclosures" / "pdfs"
+
+    _copy_to_workdir(latest_path, latest_target)
+    if previous_path:
+        _copy_to_workdir(previous_path, previous_target)
+    elif previous_target.exists():
+        previous_target.unlink()
+
+    report_period = _infer_report_period(latest_path)
+    report_prompt_target.write_text(
+        REPORT_ANALYSIS_PROMPT_TEMPLATE.format(
+            company_name=bundle.stock_name,
+            report_period=report_period,
+        ),
+        encoding="utf-8",
+    )
+    outlook_prompt_target.write_text(
+        FUTURE_OUTLOOK_PROMPT_TEMPLATE.format(
+            company_name=bundle.stock_name,
+            industry_name=bundle.industry_name,
+        ),
+        encoding="utf-8",
+    )
+
+    valuation_framework_source = RESEARCH_CONFIG_ROOT / "company_valuation_framework.md"
+    if not valuation_framework_source.exists():
+        raise FileNotFoundError(f"缺少公司估值统一规则: {valuation_framework_source}")
+    _copy_to_workdir(valuation_framework_source, valuation_framework_target)
+
+    context = build_financial_report_context(
+        symbol=bundle.symbol,
+        stock_name=bundle.stock_name,
+        industry_name=bundle.industry_name,
+        analysis_date=analysis_date,
+        announcement_date=bundle.latest_report.date,
+        announcement_datetime=bundle.latest_report.announcement_datetime,
+        current_announcement_id=bundle.latest_report.announcement_id,
+        workdir=workdir,
+        stock_root=workdir.parent,
+        summary_index_path=bundle.summary_index_path,
+        generate_current_market=generate_current_market,
+    )
+
+    policy_paths = {
+        "financial_fundamental": RESEARCH_CONFIG_ROOT / "financial_fundamental_research_policy.md",
+        "expectation_gap": RESEARCH_CONFIG_ROOT / "expectation_gap_research_policy.md",
+        "industry_chain": RESEARCH_CONFIG_ROOT / "industry_chain_research_policy.md",
+        "web_research": RESEARCH_CONFIG_ROOT / "web_research_policy.md",
+        "output_schema": RESEARCH_CONFIG_ROOT / "financial_report_output_schema.md",
+        "valuation_framework": valuation_framework_target,
+    }
+    missing_policies = [str(path) for path in policy_paths.values() if not path.exists()]
+    if missing_policies:
+        raise FileNotFoundError(f"缺少财报研究规则文件: {missing_policies}")
+
+    outputs = {
+        "industry_chain_research": research_outputs_dir / "industry_chain_research.md",
+        "expectation_snapshot": research_outputs_dir / "expectation_snapshot.md",
+        "draft_v1": research_outputs_dir / "draft_v1.md",
+        "challenge_round_01": research_outputs_dir / "challenge_round_01.md",
+        "draft_v2": research_outputs_dir / "draft_v2.md",
+        "closure_review": research_outputs_dir / "closure_review.md",
+        "final_report": bundle.output_path,
+    }
+    agent_input_lines = [
+        f"# {bundle.stock_name} ({bundle.symbol}) 季度基本面研究运行输入",
+        "",
+        "本文件只保存本次运行的路径、时间边界和写入权限。固定研究方法必须由各角色直接完整读取下列规则文件，主 Agent 不得转述或改写。",
+        "",
+        "## 本次运行",
+        "",
+        f"- 股票：{bundle.stock_name} ({bundle.symbol})",
+        f"- 候选行业标签：{bundle.industry_name}（仅作线索，不代表已验证的细分产业链或龙头身份）",
+        f"- 分析日期：{analysis_date}",
+        f"- 最新财报公告日期：{bundle.latest_report.date}",
+        f"- 公告时间：{bundle.latest_report.announcement_datetime or '未取得'}",
+        f"- 财报前市场日：{context.pre_announcement_market_date}",
+        f"- workdir：`{workdir}`",
+        "",
+        "## 固定规则",
+        "",
+        *[f"- {name}：`{path}`" for name, path in policy_paths.items()],
+        "",
+        "## 本地输入",
+        "",
+        f"- 最新财报原文：`{latest_target}`",
+        f"- 上一期关键财报：`{previous_target}`" if previous_path else "- 上一期关键财报：无",
+        f"- 本期事实分析任务：`{report_prompt_target}`",
+        f"- 未来经营推演任务：`{outlook_prompt_target}`",
+        f"- 财报前市场上下文：`{context.pre_context_path}`",
+        f"- 当前市场上下文：`{context.current_context_path}`",
+        f"- 上期基本面记忆：`{context.prior_memory_path}`",
+        f"- 既有产业研究候选：`{context.existing_industry_research_path}`",
+        f"- 冻结研究包来源：`{context.frozen_research_path}`" if context.frozen_research_path else "- 冻结研究包来源：未找到",
+        "",
+        "## 历史披露按需回溯（只读）",
+        "",
+        f"- Markdown 原文目录：`{disclosures_md_dir}`",
+        f"- PDF 原文目录：`{disclosures_pdf_dir}`",
+        "- 正常研究不批量读取多年财报。只有固定基本面规则定义的明确历史缺口出现时，才先在 Markdown 目录按文件名、报告期和关键词定位；目标报告没有 Markdown 时再读取对应 PDF。",
+        "- 不得修改披露缓存，不得批量转换 PDF，不得因本轮研究自动调用 MinerU。找不到或无法可靠提取时，记录数据缺口及其影响。",
+        "- 所有角色继续服从各自时间边界和禁读规则；目录中存在文件不代表该角色有权读取。",
+        "",
+        "## 角色读取边界",
+        "",
+        "- Expectation Scout 禁止读取最新财报、当前市场上下文和任何财报后信息；只能读取财报前上下文、上一期原始财报、上期基本面记忆中可验证的旧假设，以及公告前来源。",
+        "- Industry Researcher 可读取公司财报以识别业务暴露，但必须独立验证细分产业链，不得沿用候选行业标签下结论。",
+        "- Financial Author 第一遍不得读取上期基本面记忆；形成当前事实判断后再读取它做假设兑现检查。",
+        "- Research Challenger 读取初稿和全部合法输入，负责审计、追问、补搜和替代解释，不投票。",
+        "",
+        "## 单写者输出",
+        "",
+        f"- Industry Researcher：`{outputs['industry_chain_research']}`",
+        f"- Expectation Scout：`{outputs['expectation_snapshot']}`",
+        f"- Financial Author 初稿：`{outputs['draft_v1']}`",
+        f"- Research Challenger：`{outputs['challenge_round_01']}`",
+        f"- Financial Author 修订：`{outputs['draft_v2']}` 与 `{outputs['final_report']}`",
+        "",
+        "任何角色不得写其他角色文件，不得修改 `summary_index.json`。最终文件通过质量门禁后，由主 Agent 调用注册脚本。",
+    ]
+    agent_input_target.write_text("\n".join(agent_input_lines).strip() + "\n", encoding="utf-8")
+
+    manifest = {
+        "symbol": bundle.symbol,
+        "stock_name": bundle.stock_name,
+        "final_mandate": bundle.final_mandate,
+        "analysis_date": analysis_date,
+        "latest_announcement_id": bundle.latest_report.announcement_id,
+        "latest_report_date": bundle.latest_report.date,
+        "latest_announcement_datetime": bundle.latest_report.announcement_datetime,
+        "pre_announcement_market_date": context.pre_announcement_market_date,
+        "frozen_research_path": str(context.frozen_research_path) if context.frozen_research_path else None,
+        "latest_report_path": str(latest_target),
+        "previous_announcement_id": bundle.previous_report.announcement_id if bundle.previous_report else None,
+        "previous_report_date": bundle.previous_report.date if bundle.previous_report else None,
+        "previous_report_path": str(previous_target) if previous_path else None,
+        "report_analysis_prompt_path": str(report_prompt_target),
+        "future_outlook_prompt_path": str(outlook_prompt_target),
+        "pre_announcement_market_context_path": str(context.pre_context_path),
+        "current_market_context_path": str(context.current_context_path),
+        "valuation_framework_path": str(valuation_framework_target),
+        "prior_fundamental_memory_path": str(context.prior_memory_path),
+        "existing_industry_research_path": str(context.existing_industry_research_path),
+        "research_policy_paths": {name: str(path) for name, path in policy_paths.items()},
+        "agent_input_path": str(agent_input_target),
+        "research_output_paths": {name: str(path) for name, path in outputs.items()},
+        "output_path": str(bundle.output_path),
+        "summary_index_path": str(bundle.summary_index_path),
+        "industry_name": bundle.industry_name,
+    }
+    manifest_target.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    LOGGER.info(
+        "财报研究 workdir 已准备: symbol=%s analysis_date=%s workdir=%s",
+        bundle.symbol,
+        analysis_date,
+        workdir,
+    )
+    return workdir
+
+
+def validate_deep_research_artifacts(
+    *,
+    manifest_path: Path,
+    final_report_path: Path,
+) -> List[str]:
+    """Run deterministic publication checks without judging investment content."""
+
+    errors: List[str] = []
+    if not manifest_path.exists():
+        return [f"缺少 manifest.json: {manifest_path}"]
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return [f"manifest.json 无法解析: {exc}"]
+
+    declared_final = manifest.get("output_path")
+    if declared_final and Path(declared_final).resolve() != final_report_path.resolve():
+        errors.append(
+            f"最终报告路径与 manifest 不一致: declared={declared_final} actual={final_report_path}"
+        )
+
+    output_paths = manifest.get("research_output_paths") or {}
+    required = {
+        "draft_v1": output_paths.get("draft_v1"),
+        "challenge_round_01": output_paths.get("challenge_round_01"),
+        "draft_v2": output_paths.get("draft_v2"),
+    }
+    contents: Dict[str, str] = {}
+    for name, raw_path in required.items():
+        if not raw_path:
+            errors.append(f"manifest 缺少 research_output_paths.{name}")
+            continue
+        target = Path(raw_path)
+        if not target.exists():
+            errors.append(f"缺少研究过程文件: {target}")
+            continue
+        content = target.read_text(encoding="utf-8", errors="ignore").strip()
+        contents[name] = content
+        if len("".join(content.split())) < 80:
+            errors.append(f"研究过程文件为空或疑似占位: {target}")
+
+    if not final_report_path.exists():
+        errors.append(f"缺少最终财报报告: {final_report_path}")
+        return errors
+    final_content = final_report_path.read_text(encoding="utf-8", errors="ignore").strip()
+    if len("".join(final_content.split())) < 80:
+        errors.append(f"最终财报报告为空或疑似占位: {final_report_path}")
+    if re.search(r"\bTODO\b|PLACEHOLDER|待补充|待完善", final_content, re.IGNORECASE):
+        errors.append("最终财报报告仍包含占位符")
+    forbidden_fields = (
+        "recommended_action",
+        "action_num",
+        "price_target",
+        "stop_loss",
+    )
+    present_forbidden = [field for field in forbidden_fields if field in final_content]
+    if present_forbidden:
+        errors.append(f"最终财报报告包含交易字段: {present_forbidden}")
+
+    challenge = contents.get("challenge_round_01") or ""
+    if re.search(r"严重度\s*[：:]\s*high\b", challenge, re.IGNORECASE):
+        # 流程已取消 Closure 复核步骤；high 问题由 Author 在修订稿（draft_v2 + 最终报告）中解决。
+        # 最终报告若完全未体现对质询的处理痕迹（无未解决章节、无修订说明），视为未处理。
+        has_trace = bool(
+            re.search(r"未解决问题|披露限制|修订|质询|challenge", final_content, re.IGNORECASE)
+        )
+        if not has_trace:
+            errors.append("Challenger 存在 high 问题，但最终报告未见对质询的处理痕迹")
+    return errors
 
 
 def _empty_summary_index(symbol: str, stock_name: Optional[str] = None) -> Dict[str, Any]:
@@ -341,6 +665,25 @@ def _report_period_rank(fiscal_year: int, quarter: int) -> int:
     return fiscal_year * 12 + month_by_quarter.get(quarter, 0)
 
 
+def _extract_announcement_datetime(meta: AnnouncementMeta) -> Optional[str]:
+    """Recover the provider timestamp when it is preserved in the source URL."""
+
+    if not meta.url:
+        return None
+    try:
+        values = parse_qs(urlparse(meta.url).query).get("announcementTime") or []
+        if not values:
+            return None
+        raw_value = unquote(str(values[0])).strip()
+        parsed = datetime.fromisoformat(raw_value)
+        if parsed.time() == datetime.min.time():
+            # 巨潮常用 00:00:00 作为“仅有日期”的占位，不代表真实盘前时间。
+            return None
+        return parsed.isoformat(sep=" ")
+    except Exception:
+        return None
+
+
 def resolve_latest_deep_research_queue(run_date: Optional[str] = None) -> Path:
     if run_date:
         candidate = SELECTION_RUNS_ROOT / run_date / "11_deep_research_queue.json"
@@ -390,6 +733,7 @@ def _load_financial_report_entries(symbol: str) -> List[FinancialReportMeta]:
                 priority=priority,
                 pdf_path=Path(meta.pdf_path) if meta.pdf_path else None,
                 md_path=Path(meta.md_path) if meta.md_path else None,
+                announcement_datetime=_extract_announcement_datetime(meta),
             )
         )
     results.sort(
@@ -403,8 +747,18 @@ def _load_financial_report_entries(symbol: str) -> List[FinancialReportMeta]:
     return results
 
 
-def _select_latest_two_reports(symbol: str) -> tuple[Optional[FinancialReportMeta], Optional[FinancialReportMeta]]:
+def _select_latest_two_reports(
+    symbol: str,
+    *,
+    available_on_date: Optional[str] = None,
+) -> tuple[Optional[FinancialReportMeta], Optional[FinancialReportMeta]]:
     reports = _load_financial_report_entries(symbol)
+    if available_on_date:
+        reports = [
+            report
+            for report in reports
+            if report.date and report.date <= available_on_date
+        ]
     if not reports:
         return None, None
     latest = reports[0]
@@ -434,8 +788,13 @@ def select_latest_two_reports(symbol: str) -> tuple[Optional[FinancialReportMeta
 
 def _should_skip(symbol: str, latest: FinancialReportMeta) -> bool:
     summary_index = load_summary_index(symbol)
-    latest_completed = summary_index.get("latest_completed_report") or {}
-    return latest_completed.get("announcement_id") == latest.announcement_id
+    completed = [summary_index.get("latest_completed_report") or {}]
+    completed.extend(summary_index.get("history") or [])
+    return any(
+        entry.get("announcement_id") == latest.announcement_id
+        for entry in completed
+        if isinstance(entry, dict)
+    )
 
 
 def synthesize_manual_item(
@@ -501,7 +860,10 @@ def build_stock_report_bundles(
         industry_name = str(item.get("primary_board") or item.get("board") or item.get("industry") or "所属行业")
         if not isinstance(symbol, str) or not symbol:
             continue
-        latest, previous = _select_latest_two_reports(symbol)
+        latest, previous = _select_latest_two_reports(
+            symbol,
+            available_on_date=run_date,
+        )
         summary_index_path = _summary_index_path(symbol)
         if latest is None:
             bundles.append(

@@ -38,6 +38,12 @@ FIXED_STOCK_ANALYSIS_POLICY = (
     / "fixed_tracked"
     / "stock_analysis_policy.md"
 )
+WEB_RESEARCH_POLICY = (
+    PROJECT_ROOT
+    / "configs"
+    / "research"
+    / "web_research_policy.md"
+)
 
 
 def resolve_signature(raw_signature: str) -> str:
@@ -205,7 +211,19 @@ def build_stock_analysis_input(
         stock_pool_block_override=_build_stock_pool_block(target_symbols),
         prompt_context=prompt_context,
     )
-    common_policy = f"{shared_policy}\n\n---\n\n{research_policy}"
+    web_research_policy = get_skill_system_prompt(
+        run_date,
+        signature,
+        WEB_RESEARCH_POLICY,
+        stock_codes=target_symbols,
+        stock_pool_block_override=_build_stock_pool_block(target_symbols),
+        prompt_context=prompt_context,
+    )
+    common_policy = (
+        f"{shared_policy}\n\n---\n\n"
+        f"{web_research_policy}\n\n---\n\n"
+        f"{research_policy}"
+    )
     generated_at = datetime.now()
     sections = [
         "# fixed_tracked 个股共同分析输入",
@@ -213,6 +231,7 @@ def build_stock_analysis_input(
         f"- 生成日期: {run_date}",
         f"- 生成时间: {generated_at.strftime('%Y-%m-%d %H:%M:%S')}",
         f"- SHARED_POLICY_SOURCE: {FIXED_INVESTMENT_POLICY.resolve()}",
+        f"- WEB_RESEARCH_POLICY_SOURCE: {WEB_RESEARCH_POLICY.resolve()}",
         f"- RESEARCH_POLICY_SOURCE: {FIXED_STOCK_ANALYSIS_POLICY.resolve()}",
         f"- SIGNATURE: {signature}",
         "",

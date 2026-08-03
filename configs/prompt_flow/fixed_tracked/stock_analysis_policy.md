@@ -2,9 +2,11 @@
 
 ## 适用范围
 
-本文件与 `investment_policy.md` 一起生成 `03_stock_analysis_input.md`，供 Bull、Bear、Juror 和 finalizer 共同读取。
+本文件与 `investment_policy.md`、`configs/research/web_research_policy.md` 一起生成 `03_stock_analysis_input.md`，供 Bull、Bear、Juror 和 finalizer 共同读取。
 
 `investment_policy.md` 是角色定位、投资哲学和交易纪律的单一来源；本文件只补充逐股研究方法，不重复定义另一套投资风格。角色的具体职责和输出格式以各自的 Skill reference 为准。
+
+`web_research_policy.md` 是搜索入口、来源分级和证据准入的单一来源；本文件只定义 fixed_tracked 在什么情况下必须联网，不重复维护来源黑白名单。
 
 ## 当天组合上下文
 
@@ -90,7 +92,9 @@
 4. 准备支持 `BUY` 或 `SELL`，而关键依据依赖可能已经变化的外部事实；
 5. 不联网就无法区分普通高波动和新的基本面或事件驱动。
 
-搜索应围绕明确问题进行。优先公司公告、交易所、监管机构、政府、央行、统计机构和公司财报等一手来源。若只有二手来源，应交叉验证并降低结论置信度。
+若上一轮 `next_day_watchlist` 存在今天已经可以核验或具有高时效性的事项，Bull 和 Bear 在写 opening 前必须先逐项核验。每项应形成“已确认、已证伪、仍未知或尚未到期”的内部判断；有实质影响的结果直接写入相应理由，不增加新的 JSON 字段。找不到合格来源时必须明确写为未经可靠来源确认，不能默默跳过，也不能用低等级来源填空。
+
+搜索方法和来源能否进入论据，严格服从同一份 `web_research_policy.md`。百炼只负责召回候选来源，不代表搜索结果已经通过证据准入。
 
 联网得到的新证据必须写入对应理由、事实或推断，包括事件日期和来源。不要单独堆积链接而不说明它如何改变判断。
 

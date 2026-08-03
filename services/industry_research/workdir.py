@@ -132,6 +132,12 @@ def _render_deep_research_prompt(brief: Mapping[str, Any], outputs: Mapping[str,
 
 本任务只研究一个已由用户确认的产业主题，不作股票交易决策，也不修改任何交易文件。
 
+## 必读统一规则
+
+1. `configs/research/industry_chain_research_policy.md`
+2. `configs/research/web_research_policy.md`
+3. `.codex/skills/monthly-industry-research/references/output-contract.md`
+
 ## 必读输入
 
 1. `{outputs['research_brief']}`
@@ -150,16 +156,17 @@ def _render_deep_research_prompt(brief: Mapping[str, Any], outputs: Mapping[str,
 ## 固定研究顺序
 
 1. 先验证雷达信号，判断它属于结构性增长、普通周期反弹还是短期事件。
-2. 先拆分动力、储能与其他电池等终端分支，再建立总需求和三至五年悲观/基准/乐观 TAM 公式。
+2. 先验证 `terminal_theme → subchain → value_chain_node → company_exposure`，再拆分终端分支并建立三至五年悲观/基准/乐观 TAM 公式。
 3. 用单位耗用量把下游 GWh 传导到电芯、中游材料和上游资源，避免把单个应用场景误当成完整行业。
 4. 拆解需求、供给、库存、价格、交期、资本开支和扩产周期，定位真实供需错配。
 5. 绘制全产业链，判断收入增长最终在哪些节点转化为利润，并解释供给为何不能快速响应。
-6. 在最受益节点内识别前三名公司，强制记录主题收入占比、主题毛利、披露口径与其他主营业务。
+6. 在最受益节点内研究所有对结论重大的候选公司，强制记录主题收入占比、主题毛利、披露口径与其他主营业务；不预设公司是龙头，不规定公司数量。
 7. 综合公司必须采用分部加总思路；无法分拆时不得用公司总业绩冒充主题分部表现。
 8. 给出当前状态与状态迁移条件，并列出可观测的证伪信号。
 
 ## 搜索与证据要求
 
+- 所有外部搜索首先使用百炼 `bailian_web_search` 能力；不可用时失败关闭，不静默切换搜索引擎。
 - 优先使用政府、交易所、行业协会、公司公告、业绩会和客户/供应商材料。
 - 普通新闻只能作为线索；关键结论至少需要两个相互独立的来源，或一个权威原始来源。
 - 每条关键事实记录 `period_end`、`release_date`、`fetched_at`、来源标题和URL。

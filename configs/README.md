@@ -14,7 +14,7 @@ Defines the active fixed_tracked prompt sources:
 
 - `investment_policy.md` is the single source of the core investment strategy shared by every fixed_tracked agent
 - `investment_policy.md` + `main_policy.md` generate the main-agent `03_agent_input.md`
-- `investment_policy.md` + `stock_analysis_policy.md` generate `03_stock_analysis_input.md` for stock debate roles
+- `investment_policy.md` + `configs/research/web_research_policy.md` + `stock_analysis_policy.md` generate `03_stock_analysis_input.md` for stock debate roles
 - `stock_decision.schema.json` defines the final per-stock verdict
 - `stock_decision.example.json` gives the finalizer a complete schema-valid output example
 
