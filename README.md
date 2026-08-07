@@ -66,7 +66,7 @@ fixed_tracked 账本采用中心化管理 + 逐股多 Agent 辩论：
 ### 1. 激活虚拟环境 + 一键刷新全部数据
 
 ```bash
-source /home/zhangbeiqing/venv/ai_stock/bin/activate
+source venv/bin/activate
 python scripts/refresh_all_for_date.py --date cur_date
 ```
 
