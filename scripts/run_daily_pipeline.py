@@ -14,9 +14,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from services.pipeline.daily_pipeline import SKILL_FLOW_CONFIG, run_daily_pipeline
+from shared_data_access.market_calendar import NonTradingDayError
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description="运行 daily pipeline；默认仅生成综合 fixed_tracked，显式指定时加跑 short_book。")
     parser.add_argument(
         "--date",
@@ -66,17 +67,22 @@ def main() -> None:
     if args.all_books or args.manifest != "auto":
         prompt_config = None
 
-    run_daily_pipeline(
-        args.run_date,
-        base_dir=args.base_dir,
-        prompt_config=prompt_config,
-        signature=args.signature,
-        manifest_path=args.manifest,
-        max_workers=args.max_workers,
-        skip_disclosures=args.skip_disclosures,
-        all_books=args.all_books,
-    )
+    try:
+        run_daily_pipeline(
+            args.run_date,
+            base_dir=args.base_dir,
+            prompt_config=prompt_config,
+            signature=args.signature,
+            manifest_path=args.manifest,
+            max_workers=args.max_workers,
+            skip_disclosures=args.skip_disclosures,
+            all_books=args.all_books,
+        )
+    except NonTradingDayError as exc:
+        print(f"SKIPPED: {exc}")
+        return 0
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -17,6 +17,9 @@ from services.pipeline.steps.build_global_context import write_global_context
 from services.pipeline.steps.build_stock_research import write_stock_research_bundle
 from services.pipeline.steps.refresh_data import run_refresh_data
 from services.selection_system.store import load_json_file
+from shared_data_access.historical_prices import known_not_listed_as_of
+from shared_data_access.market_calendar import ensure_market_session
+from utlity import parse_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -152,6 +155,32 @@ def _collect_manifest_symbols(manifest: Dict[str, Any]) -> List[str]:
     return symbols
 
 
+def _exclude_known_not_listed(
+    symbols: Iterable[str],
+    run_date: str,
+    *,
+    base_dir: str | Path,
+) -> tuple[List[str], List[Dict[str, str]]]:
+    eligible: List[str] = []
+    excluded: List[Dict[str, str]] = []
+    for symbol in _dedupe_symbols(symbols):
+        first_date = known_not_listed_as_of(
+            parse_symbol(symbol),
+            run_date,
+            base_dir=base_dir,
+        )
+        if first_date is not None:
+            excluded.append(
+                {
+                    "symbol": symbol,
+                    "first_trading_date": first_date,
+                }
+            )
+            continue
+        eligible.append(symbol)
+    return eligible, excluded
+
+
 def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, Any]:
     base_path = Path(base_dir)
     selection_dir = base_path / "selection_runs" / run_date
@@ -181,7 +210,26 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
         if long_symbols:
             long_source_type = "quant_prefilter"
             long_source_path = str(long_prefilter)
-    fixed_symbols = _dedupe_symbols(tracked_symbols, manual_position_symbols, long_symbols)
+    tracked_symbols, tracked_not_listed = _exclude_known_not_listed(
+        tracked_symbols,
+        run_date,
+        base_dir=base_path,
+    )
+    long_symbols, long_not_listed = _exclude_known_not_listed(
+        long_symbols,
+        run_date,
+        base_dir=base_path,
+    )
+    short_symbols, short_not_listed = _exclude_known_not_listed(
+        short_symbols,
+        run_date,
+        base_dir=base_path,
+    )
+    fixed_symbols = _dedupe_symbols(
+        tracked_symbols,
+        manual_position_symbols,
+        long_symbols,
+    )
 
     fixed_book = {
         "book_type": "fixed_tracked",
@@ -197,6 +245,10 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
             "long_book_candidates": long_symbols,
             "long_book_source_type": long_source_type,
             "long_book_source_path": long_source_path,
+            "not_listed_as_of_date": [
+                *tracked_not_listed,
+                *long_not_listed,
+            ],
         },
     }
     books = [
@@ -209,6 +261,7 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
             "source_path": short_source_path,
             "capital_budget": 200000,
             "symbols": short_symbols,
+            "not_listed_as_of_date": short_not_listed,
         },
         {
             "book_type": "long_book",
@@ -218,6 +271,7 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
             "source_path": long_source_path,
             "capital_budget": 400000,
             "symbols": long_symbols,
+            "not_listed_as_of_date": long_not_listed,
         },
     ]
     return {
@@ -249,6 +303,11 @@ def run_book_pipeline(
     signature: str,
     book_type: str,
     max_workers: int = 1,
+    source_data_root: str | Path | None = None,
+    backtest_read_only: bool = False,
+    research_cache_root: str | Path | None = None,
+    agent_data_root: str | Path | None = None,
+    prompt_context_override: Dict[str, str] | None = None,
 ) -> tuple[Path, Dict[str, Any]]:
     target_symbols = [symbol for symbol in symbols if symbol]
     target_dir = Path(output_dir)
@@ -258,6 +317,8 @@ def run_book_pipeline(
         run_date,
         target_symbols,
         max_workers=max_workers,
+        source_data_root=source_data_root,
+        backtest_read_only=backtest_read_only,
     )
     snapshot_sec = perf_counter() - stage_start
 
@@ -265,6 +326,8 @@ def run_book_pipeline(
     write_global_context(
         run_date,
         target_dir,
+        backtest_read_only=backtest_read_only,
+        source_data_root=source_data_root,
     )
     global_context_sec = perf_counter() - stage_start
 
@@ -277,6 +340,12 @@ def run_book_pipeline(
         signature=signature,
         book_type=book_type,
         max_workers=max_workers,
+        research_cache_root=research_cache_root,
+        agent_data_root=agent_data_root,
+        report_release_slack_days=0 if backtest_read_only else 1,
+        allow_news_refresh=not backtest_read_only,
+        backtest_read_only=backtest_read_only,
+        source_data_root=source_data_root,
     )
     research_sec = perf_counter() - stage_start
 
@@ -289,6 +358,9 @@ def run_book_pipeline(
         signature=signature,
         prompt_config=prompt_config,
         snapshot_payload=snapshot_payload,
+        prompt_context_override=prompt_context_override,
+        source_data_root=source_data_root,
+        backtest_read_only=backtest_read_only,
     )
     agent_input_sec = perf_counter() - stage_start
 
@@ -319,6 +391,7 @@ def run_daily_pipeline_from_manifest(
     respect_default_books: bool = True,
     enabled_books: List[str] | None = None,
 ) -> Path:
+    ensure_market_session(run_date, market="CN", base_dir=base_dir)
     overall_start = perf_counter()
     output_dir = resolve_output_dir(base_dir, run_date)
     safe_clean_dir(output_dir)
@@ -426,6 +499,7 @@ def run_daily_pipeline(
     skip_disclosures: bool = False,
     all_books: bool = False,
 ) -> Path:
+    ensure_market_session(run_date, market="CN", base_dir=base_dir)
     LOGGER.info(
         "run_daily_pipeline 请求: date=%s, base_dir=%s, manifest=%s, prompt_config=%s, signature=%s, max_workers=%d",
         run_date,

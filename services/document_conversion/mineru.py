@@ -23,6 +23,16 @@ SUPPORTED_PDF_CONVERSION_PROFILES = {"financial_report", "general"}
 MINERU_API_PROTOCOL_VERSION = 2
 
 
+def _format_page_progress(processed_pages: int, total_pages: int, width: int = 20) -> str:
+    if total_pages <= 0:
+        return ""
+    processed = min(max(processed_pages, 0), total_pages)
+    ratio = processed / total_pages
+    filled = min(width, int(ratio * width))
+    bar = "█" * filled + "░" * (width - filled)
+    return f"进度 [{bar}] {processed}/{total_pages}页 ({ratio * 100:.1f}%)"
+
+
 class MinerUConversionError(RuntimeError):
     """Raised when MinerU cannot complete a document conversion."""
 
@@ -226,7 +236,7 @@ class PDFMarkdownConverter:
         deadline = time.monotonic() + self.settings.task_timeout_seconds
         status_url = f"{self.settings.api_url}/tasks/{task_id}"
         last_log = 0.0
-        page_info = f", {total_pages}页" if total_pages > 0 else ""
+        last_progress_pages: int | None = None
 
         while time.monotonic() < deadline:
             now = time.monotonic()
@@ -247,7 +257,23 @@ class PDFMarkdownConverter:
             if status not in {"pending", "processing"}:
                 raise MinerUConversionError(f"MinerU 返回未知任务状态: {payload}")
 
-            if now - last_log >= 10:
+            server_total_pages = payload.get("total_pages")
+            server_processed_pages = payload.get("processed_pages")
+            effective_total_pages = (
+                server_total_pages
+                if isinstance(server_total_pages, int) and server_total_pages > 0
+                else total_pages
+            )
+            processed_pages = (
+                server_processed_pages
+                if isinstance(server_processed_pages, int) and server_processed_pages >= 0
+                else None
+            )
+            progress_changed = (
+                processed_pages is not None
+                and processed_pages != last_progress_pages
+            )
+            if progress_changed or now - last_log >= 10:
                 started = payload.get("started_at")
                 elapsed_str = ""
                 if started:
@@ -258,14 +284,23 @@ class PDFMarkdownConverter:
                         elapsed_str = f", 已处理 {elapsed:.0f}s"
                     except Exception:
                         pass
+                progress_info = ""
+                if processed_pages is not None and effective_total_pages > 0:
+                    progress_info = ", " + _format_page_progress(
+                        processed_pages,
+                        effective_total_pages,
+                    )
+                elif effective_total_pages > 0:
+                    progress_info = f", 共{effective_total_pages}页"
                 LOGGER.info(
                     "MinerU 转换进行中: task_id=%s, status=%s%s%s",
                     task_id,
                     status,
-                    page_info,
+                    progress_info,
                     elapsed_str,
                 )
                 last_log = now
+                last_progress_pages = processed_pages
 
             time.sleep(self.settings.poll_interval_seconds)
 

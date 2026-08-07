@@ -127,6 +127,10 @@ def main() -> int:
 
     print(summarize_result(result))
 
+    if result.skipped_non_trading_date:
+        LOGGER.info("目标日期不是交易日，已正常跳过且未生成后续 skill 清单。")
+        return 0
+
     if result.succeeded:
         print(format_followup_checklist(run_date, include_selection_universe=args.include_selection_universe))
         LOGGER.info("一键刷新整体成功")

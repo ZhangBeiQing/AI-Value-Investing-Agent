@@ -189,11 +189,25 @@ def detect_valuation_basis_dates(valuation_markdown: str | None) -> list[str]:
     return list(dict.fromkeys(VALUATION_DATE_PATTERN.findall(valuation_markdown)))
 
 
-def _render_current_consensus(stock_root: Path, analysis_date: str) -> tuple[str, Optional[Path]]:
+def _render_current_consensus(
+    stock_root: Path,
+    analysis_date: str,
+    *,
+    historical_mode: bool = False,
+) -> tuple[str, Optional[Path]]:
     forecast_dir = stock_root / "profit_forecast"
     snapshot = forecast_dir / "snapshots" / f"{analysis_date.replace('-', '')}.csv"
     current = forecast_dir / "profit_forecast.csv"
-    source_path = snapshot if snapshot.exists() else current
+    source_path = (
+        snapshot
+        if snapshot.exists()
+        else (None if historical_mode else current)
+    )
+    if source_path is None:
+        return (
+            "> 未找到分析日不可变机构一致预期快照；历史回测禁止回退到当前缓存。",
+            None,
+        )
     if not source_path.exists():
         return "> 未找到分析日机构一致预期缓存。", None
     try:
@@ -272,8 +286,13 @@ def _render_current_context(
     market_payload: Optional[dict[str, Any]],
     market_error: Optional[str],
     stock_root: Path,
+    historical_mode: bool = False,
 ) -> str:
-    consensus_markdown, consensus_path = _render_current_consensus(stock_root, analysis_date)
+    consensus_markdown, consensus_path = _render_current_consensus(
+        stock_root,
+        analysis_date,
+        historical_mode=historical_mode,
+    )
     if market_payload:
         price_report = json.dumps(
             market_payload.get("price_report"),
@@ -339,9 +358,16 @@ def _render_current_context(
     return "\n".join(lines).strip() + "\n"
 
 
-def _select_prior_summary(summary_index_payload: dict[str, Any], current_announcement_id: str) -> Optional[Path]:
+def _select_prior_summary(
+    summary_index_payload: dict[str, Any],
+    current_announcement_id: str,
+    current_report_date: str,
+) -> Optional[Path]:
     for entry in summary_index_payload.get("history") or []:
         if entry.get("announcement_id") == current_announcement_id:
+            continue
+        report_date = str(entry.get("report_date") or "")
+        if not report_date or report_date >= current_report_date:
             continue
         raw_path = entry.get("output_path")
         if not raw_path:
@@ -375,6 +401,7 @@ def _write_prior_memory(
     *,
     summary_index_path: Path,
     current_announcement_id: str,
+    current_report_date: str,
 ) -> None:
     payload: dict[str, Any] = {}
     if summary_index_path.exists():
@@ -382,7 +409,11 @@ def _write_prior_memory(
             payload = json.loads(summary_index_path.read_text(encoding="utf-8"))
         except Exception as exc:
             LOGGER.warning("读取财报 summary_index 失败: path=%s error=%s", summary_index_path, exc)
-    prior_path = _select_prior_summary(payload, current_announcement_id)
+    prior_path = _select_prior_summary(
+        payload,
+        current_announcement_id,
+        current_report_date,
+    )
     lines = [
         "# 上期基本面记忆",
         "",
@@ -407,6 +438,7 @@ def _find_industry_card_candidates(
     stock_name: str,
     industry_name: str,
     cards_root: Path = INDUSTRY_CARDS_ROOT,
+    cutoff_date: Optional[str] = None,
 ) -> list[Path]:
     if not cards_root.exists():
         return []
@@ -417,6 +449,13 @@ def _find_industry_card_candidates(
     ]
     candidates: list[tuple[int, Path]] = []
     for path in cards_root.rglob("*.md"):
+        if cutoff_date is not None:
+            date_match = re.search(r"(20\d{2})[-_]?(\d{2})[-_]?(\d{2})", path.name)
+            if date_match is None:
+                continue
+            card_date = "-".join(date_match.groups())
+            if card_date > cutoff_date:
+                continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore").casefold()
         except OSError:
@@ -434,11 +473,13 @@ def _write_existing_industry_research(
     symbol: str,
     stock_name: str,
     industry_name: str,
+    cutoff_date: Optional[str] = None,
 ) -> None:
     candidates = _find_industry_card_candidates(
         symbol=symbol,
         stock_name=stock_name,
         industry_name=industry_name,
+        cutoff_date=cutoff_date,
     )
     lines = [
         "# 既有产业研究候选索引",
@@ -466,6 +507,7 @@ def build_financial_report_context(
     summary_index_path: Path,
     announcement_datetime: str | None = None,
     generate_current_market: bool = True,
+    historical_mode: bool = False,
 ) -> FinancialReportContextResult:
     """Generate all deterministic, non-conclusive context files for one stock."""
 
@@ -531,6 +573,7 @@ def build_financial_report_context(
             market_payload=market_payload,
             market_error=market_error,
             stock_root=stock_root,
+            historical_mode=historical_mode,
         ),
         encoding="utf-8",
     )
@@ -538,12 +581,14 @@ def build_financial_report_context(
         prior_path,
         summary_index_path=summary_index_path,
         current_announcement_id=current_announcement_id,
+        current_report_date=announcement_date,
     )
     _write_existing_industry_research(
         industry_path,
         symbol=symbol,
         stock_name=stock_name,
         industry_name=industry_name,
+        cutoff_date=analysis_date if historical_mode else None,
     )
     return FinancialReportContextResult(
         analysis_date=analysis_date,

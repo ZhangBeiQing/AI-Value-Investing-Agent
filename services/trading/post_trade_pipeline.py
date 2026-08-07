@@ -260,6 +260,7 @@ def validate_decision_json(
     *,
     expected_symbols: List[str] | None = None,
     book_type: str = "",
+    allow_empty_stock_decisions: bool = False,
 ) -> List[str]:
     errors: List[str] = []
     if not isinstance(decision, dict):
@@ -271,7 +272,10 @@ def validate_decision_json(
             errors.append(f"缺少顶层字段: {key}")
 
     ops = _decision_entries(decision)
-    if not isinstance(ops, list) or not ops:
+    if not isinstance(ops, list):
+        errors.append("stock_decisions 必须是数组")
+        return errors
+    if not ops and not allow_empty_stock_decisions:
         errors.append("stock_decisions 必须是非空数组")
         return errors
 

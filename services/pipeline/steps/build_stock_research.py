@@ -13,13 +13,16 @@ from core.logging import init_component_logger
 from services.research.financial_report import get_financial_report_summary
 from services.research.news_summary import search_stock_news
 from services.research.stock_analysis import analyze_stock_dynamics_and_valuation
-from services.trading.trade_summary import get_stock_memory_context
+from services.trading.trade_summary import (
+    get_stock_memory_context,
+    use_agent_data_root,
+)
 from utlity import ensure_stock_subdir, get_stock_data_dir, parse_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RESEARCH_ARTIFACT_CACHE_ROOT = PROJECT_ROOT / "data" / "research_artifact_cache"
-RESEARCH_ARTIFACT_SCHEMA_VERSION = 2
+RESEARCH_ARTIFACT_SCHEMA_VERSION = 4
 FINANCIAL_REPORT_SELECTION_SLACK_DAYS = 1
 LOGGER = init_component_logger(
     "BuildStockResearch",
@@ -94,10 +97,15 @@ def _artifact_lock(cache_path: Path) -> threading.Lock:
         return lock
 
 
-def _artifact_cache_path(symbol: str, run_date: str) -> Path:
+def _artifact_cache_path(
+    symbol: str,
+    run_date: str,
+    *,
+    cache_root: str | Path = RESEARCH_ARTIFACT_CACHE_ROOT,
+) -> Path:
     symbol_info = parse_symbol(symbol)
     stock_root = get_stock_data_dir(symbol_info)
-    cache_dir = RESEARCH_ARTIFACT_CACHE_ROOT / run_date
+    cache_dir = Path(cache_root) / run_date
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{stock_root.name}_{run_date}_artifact.json"
 
@@ -166,16 +174,27 @@ def _load_base_artifact(cache_path: Path, symbol: str) -> Optional[Dict[str, Any
     return payload
 
 
-def _build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
+def _build_base_artifact(
+    symbol: str,
+    run_date: str,
+    *,
+    report_release_slack_days: int = FINANCIAL_REPORT_SELECTION_SLACK_DAYS,
+    allow_news_refresh: bool = True,
+) -> Dict[str, Any]:
     with ThreadPoolExecutor(max_workers=3) as executor:
         price_future = executor.submit(analyze_stock_dynamics_and_valuation, symbol, run_date)
-        news_future = executor.submit(search_stock_news, symbol, run_date)
+        news_future = executor.submit(
+            search_stock_news,
+            symbol,
+            run_date,
+            allow_refresh=allow_news_refresh,
+        )
         # 早盘生成前一交易日研究包时，允许引用次日补生成的财报总结文件。
         financial_future = executor.submit(
             get_financial_report_summary,
             symbol,
             run_date,
-            report_release_slack_days=FINANCIAL_REPORT_SELECTION_SLACK_DAYS,
+            report_release_slack_days=report_release_slack_days,
         )
 
         price_payload = price_future.result()
@@ -199,8 +218,56 @@ def _build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
     }
 
 
-def _load_or_build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
-    cache_path = _artifact_cache_path(symbol, run_date)
+def _build_read_only_base_artifact(
+    symbol: str,
+    run_date: str,
+    *,
+    snapshot_payload: Mapping[str, Any] | None,
+    source_data_root: str | Path | None,
+) -> Dict[str, Any]:
+    # 回测与日常流水线使用同一个价格/估值分析入口。该入口本身支持指定
+    # today_time，会按历史日期生成并覆盖 data/stock_info 下的 analysis 与
+    # pe_pb_analysis 派生产物，同时把完整 Price/Valuation Report 返回给 04。
+    # 不再依赖“历史日期的派生 Markdown 必须已经存在”这一错误前提。
+    _ = snapshot_payload, source_data_root
+    price_payload = analyze_stock_dynamics_and_valuation(symbol, run_date)
+    news_raw = search_stock_news(symbol, run_date, allow_refresh=False)
+    try:
+        news_payload = json.loads(news_raw)
+    except Exception:
+        news_payload = {"raw_text": news_raw}
+    financial_payload = get_financial_report_summary(
+        symbol,
+        run_date,
+        report_release_slack_days=0,
+        include_consensus=False,
+        include_price_drift=False,
+    )
+    return {
+        "schema_version": RESEARCH_ARTIFACT_SCHEMA_VERSION,
+        "symbol": symbol,
+        "run_date": run_date,
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "mode": "backtest_read_only",
+        "price_payload": price_payload,
+        "news_payload": news_payload,
+        "financial_payload": financial_payload,
+    }
+
+
+def _load_or_build_base_artifact(
+    symbol: str,
+    run_date: str,
+    *,
+    cache_root: str | Path = RESEARCH_ARTIFACT_CACHE_ROOT,
+    report_release_slack_days: int = FINANCIAL_REPORT_SELECTION_SLACK_DAYS,
+    allow_news_refresh: bool = True,
+) -> Dict[str, Any]:
+    cache_path = _artifact_cache_path(
+        symbol,
+        run_date,
+        cache_root=cache_root,
+    )
     lock = _artifact_lock(cache_path)
     with lock:
         cached = _load_base_artifact(cache_path, symbol)
@@ -208,7 +275,12 @@ def _load_or_build_base_artifact(symbol: str, run_date: str) -> Dict[str, Any]:
             LOGGER.info("复用研究缓存: %s", cache_path)
             return cached
 
-        built = _build_base_artifact(symbol, run_date)
+        built = _build_base_artifact(
+            symbol,
+            run_date,
+            report_release_slack_days=report_release_slack_days,
+            allow_news_refresh=allow_news_refresh,
+        )
         cache_path.write_text(
             json.dumps(built, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -224,23 +296,79 @@ def build_research_markdown(
     snapshot_payload: Mapping[str, Any] | None = None,
     signature: str = "",
     book_type: str = "fixed_tracked",
+    research_cache_root: str | Path | None = None,
+    agent_data_root: str | Path | None = None,
+    report_release_slack_days: int = FINANCIAL_REPORT_SELECTION_SLACK_DAYS,
+    allow_news_refresh: bool = True,
+    backtest_read_only: bool = False,
+    source_data_root: str | Path | None = None,
 ) -> str:
     symbol_info = parse_symbol(symbol)
     stock_name = symbol_info.stock_name or symbol_info.symbol
-    _ = snapshot_payload
-    base_artifact = _load_or_build_base_artifact(symbol_info.symbol, run_date)
+    if backtest_read_only:
+        cache_path = _artifact_cache_path(
+            symbol_info.symbol,
+            run_date,
+            cache_root=research_cache_root or RESEARCH_ARTIFACT_CACHE_ROOT,
+        )
+        lock = _artifact_lock(cache_path)
+        with lock:
+            if cache_path.exists():
+                try:
+                    cached = json.loads(cache_path.read_text(encoding="utf-8"))
+                except Exception:
+                    cached = {}
+            else:
+                cached = {}
+            if (
+                cached.get("schema_version") == RESEARCH_ARTIFACT_SCHEMA_VERSION
+                and cached.get("mode") == "backtest_read_only"
+            ):
+                base_artifact = cached
+            else:
+                base_artifact = _build_read_only_base_artifact(
+                    symbol_info.symbol,
+                    run_date,
+                    snapshot_payload=snapshot_payload,
+                    source_data_root=source_data_root,
+                )
+                cache_path.write_text(
+                    json.dumps(base_artifact, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+    elif (
+        research_cache_root is None
+        and report_release_slack_days == FINANCIAL_REPORT_SELECTION_SLACK_DAYS
+        and allow_news_refresh
+    ):
+        base_artifact = _load_or_build_base_artifact(
+            symbol_info.symbol,
+            run_date,
+        )
+    else:
+        base_artifact = _load_or_build_base_artifact(
+            symbol_info.symbol,
+            run_date,
+            cache_root=research_cache_root or RESEARCH_ARTIFACT_CACHE_ROOT,
+            report_release_slack_days=report_release_slack_days,
+            allow_news_refresh=allow_news_refresh,
+        )
     price_payload = base_artifact.get("price_payload") or {}
     news_payload = base_artifact.get("news_payload") or {}
     financial_payload = base_artifact.get("financial_payload") or {}
-    memory_context = (
-        get_stock_memory_context(signature, symbol_info.symbol)
-        if signature
-        else {
-            "position_change_events": [],
+    if signature and agent_data_root is not None:
+        with use_agent_data_root(agent_data_root):
+            memory_context = get_stock_memory_context(
+                signature,
+                symbol_info.symbol,
+            )
+    elif signature:
+        memory_context = get_stock_memory_context(signature, symbol_info.symbol)
+    else:
+        memory_context = {
             "latest_thesis_review": {},
             "pending_checks": [],
         }
-    )
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines: List[str] = []
@@ -299,23 +427,14 @@ def build_research_markdown(
             "计划性操作条件和旧版 verdict 不会进入本轮 Prompt。"
         )
         lines.append("")
-        position_events = memory_context.get("position_change_events") or []
-        if position_events:
-            lines.append("### 4.1 已确认的仓位变化及其投资理由")
-            lines.append("")
-            lines.append(
-                "> action_num 在这里表示历史上已经确认的仓位变化，"
-                "不是今天应重复执行的数量。"
-            )
-            lines.append("")
-            lines.append("```json")
-            lines.append(_json_block(position_events))
-            lines.append("```")
-            lines.append("")
-
         latest_review = memory_context.get("latest_thesis_review") or {}
         if latest_review:
-            lines.append("### 4.2 最近一次投资逻辑复核")
+            lines.append("### 4.1 最近一次投资逻辑总结")
+            lines.append("")
+            lines.append(
+                "> 这里只保留最后一条历史总结。其中 action_type/action_num "
+                "记录当时决策，不是今天应重复执行的指令；当前真实持仓以当天输入为准。"
+            )
             lines.append("")
             lines.append("```json")
             lines.append(_json_block(latest_review))
@@ -324,7 +443,7 @@ def build_research_markdown(
 
         pending_checks = memory_context.get("pending_checks") or []
         if pending_checks:
-            lines.append("### 4.3 上轮遗留待核验事项")
+            lines.append("### 4.2 上轮遗留待核验事项")
             lines.append("")
             lines.append(
                 "> 以下内容只用于确定今天要核验哪些事实，"
@@ -342,11 +461,18 @@ def build_research_markdown(
     return "\n".join(lines)
 
 
-def research_output_path(symbol: str, run_date: str, output_dir: str | Path) -> Path:
+def research_output_path(
+    symbol: str,
+    run_date: str,
+    output_dir: str | Path,
+    *,
+    ensure_shared_dirs: bool = True,
+) -> Path:
     symbol_info = parse_symbol(symbol)
     stock_root = get_stock_data_dir(symbol_info)
-    ensure_stock_subdir(symbol_info, "financial_reports")
-    ensure_stock_subdir(symbol_info, "forecast")
+    if ensure_shared_dirs:
+        ensure_stock_subdir(symbol_info, "financial_reports")
+        ensure_stock_subdir(symbol_info, "forecast")
     filename = f"{stock_root.name}_{run_date}_research.md"
     target_dir = Path(output_dir) / "04_stock_research"
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -362,6 +488,12 @@ def write_stock_research_bundle(
     signature: str = "",
     book_type: str = "fixed_tracked",
     max_workers: int = 1,
+    research_cache_root: str | Path | None = None,
+    agent_data_root: str | Path | None = None,
+    report_release_slack_days: int = FINANCIAL_REPORT_SELECTION_SLACK_DAYS,
+    allow_news_refresh: bool = True,
+    backtest_read_only: bool = False,
+    source_data_root: str | Path | None = None,
 ) -> None:
     target_symbols = list(symbols) if symbols is not None else []
 
@@ -372,8 +504,19 @@ def write_stock_research_bundle(
             snapshot_payload=snapshot_payload,
             signature=signature,
             book_type=book_type,
+            research_cache_root=research_cache_root,
+            agent_data_root=agent_data_root,
+            report_release_slack_days=report_release_slack_days,
+            allow_news_refresh=allow_news_refresh,
+            backtest_read_only=backtest_read_only,
+            source_data_root=source_data_root,
         )
-        research_output_path(symbol, run_date, output_dir).write_text(content, encoding="utf-8")
+        research_output_path(
+            symbol,
+            run_date,
+            output_dir,
+            ensure_shared_dirs=not backtest_read_only,
+        ).write_text(content, encoding="utf-8")
 
     worker_count = max(1, min(int(max_workers or 1), len(target_symbols) or 1))
     if worker_count <= 1 or len(target_symbols) <= 1:

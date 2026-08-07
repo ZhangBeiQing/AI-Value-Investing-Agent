@@ -29,7 +29,41 @@ def main() -> None:
     )
     parser.add_argument("--signature", default="")
     parser.add_argument("--confirm", action="store_true", help="Compatibility flag; execution still proceeds directly.")
+    parser.add_argument(
+        "--backtest-root",
+        default="",
+        help="显式回测实验目录；指定后只执行隔离的模拟后处理。",
+    )
+    parser.add_argument(
+        "--execution-date",
+        default="",
+        help="回测实际成交日 YYYY-MM-DD；回测模式必填。",
+    )
+    parser.add_argument(
+        "--execution-price",
+        default="open",
+        choices=("open",),
+        help="回测成交价格口径；第一版只支持 open。",
+    )
     args = parser.parse_args()
+
+    if args.backtest_root:
+        if not args.execution_date:
+            parser.error("--backtest-root 模式必须提供 --execution-date")
+        from services.backtest.execution import simulate_post_trade
+        from services.backtest.experiment import load_backtest_experiment
+
+        experiment_root = Path(args.backtest_root).resolve()
+        experiment = load_backtest_experiment(
+            experiment_root.name,
+            backtests_root=experiment_root.parent,
+        )
+        simulate_post_trade(
+            experiment,
+            decision_date=args.run_date,
+            execution_date=args.execution_date,
+        )
+        return
 
     run_post_trade(
         args.run_date,

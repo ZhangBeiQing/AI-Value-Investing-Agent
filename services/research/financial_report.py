@@ -512,7 +512,14 @@ def _decorate_content(
     return content.rstrip() + appendix, metadata_text
 
 
-def get_financial_report_summary(symbol: str, today_time: str, *, report_release_slack_days: int = 0) -> dict:
+def get_financial_report_summary(
+    symbol: str,
+    today_time: str,
+    *,
+    report_release_slack_days: int = 0,
+    include_consensus: bool = True,
+    include_price_drift: bool = True,
+) -> dict:
     stock_code = symbol.strip()
     if is_etf_symbol(stock_code):
         message = {"error": "ETF/基金类标的没有季度财报摘要数据，请选择股票标的。", "stock": stock_code}
@@ -535,8 +542,16 @@ def get_financial_report_summary(symbol: str, today_time: str, *, report_release
         logger.error("解析 today_time 失败: %s", today_time)
         return message
 
-    cn_profit_forecast_md = _format_cn_profit_forecast_sections(symbol_info)
-    hk_profit_forecast_md = _format_hk_profit_forecast_sections(symbol_info, today_time)
+    cn_profit_forecast_md = (
+        _format_cn_profit_forecast_sections(symbol_info)
+        if include_consensus
+        else ""
+    )
+    hk_profit_forecast_md = (
+        _format_hk_profit_forecast_sections(symbol_info, today_time)
+        if include_consensus
+        else ""
+    )
     consensus_blocks = [part for part in (cn_profit_forecast_md, hk_profit_forecast_md) if part]
     consensus_md = "\n\n---\n\n".join(consensus_blocks).strip()
     forecast_text, forecast_path = _load_latest_forecast_markdown(symbol_info, today_dt)
@@ -622,7 +637,14 @@ def get_financial_report_summary(symbol: str, today_time: str, *, report_release
         )
         content = content.rstrip() + forecast_section
 
-    release_price, today_price, change_pct = _compute_price_drift(symbol_info, today_time, latest_meta.release_date)
+    if include_price_drift:
+        release_price, today_price, change_pct = _compute_price_drift(
+            symbol_info,
+            today_time,
+            latest_meta.release_date,
+        )
+    else:
+        release_price, today_price, change_pct = None, None, None
     enriched_content, metadata = _decorate_content(
         content,
         stock_name,

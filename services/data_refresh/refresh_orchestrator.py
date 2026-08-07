@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import List, Sequence
 
 from core.logging import get_logger
+from shared_data_access.market_calendar import inspect_market_session
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -81,10 +82,11 @@ class OrchestratorResult:
     fresh_heavy: bool
     steps: List[StepResult] = field(default_factory=list)
     overall_status: str = "success"
+    skipped_non_trading_date: bool = False
 
     @property
     def succeeded(self) -> bool:
-        return self.overall_status == "success"
+        return self.overall_status in {"success", "skipped"}
 
 
 def _run_step(name: str, command: Sequence[str]) -> StepResult:
@@ -223,6 +225,30 @@ def run_refresh_pipeline(
     4. generate_prefilter 或 include_selection_universe 根据参数选择后续步骤。
     """
     result = OrchestratorResult(run_date=run_date, fresh_heavy=fresh_heavy)
+    session = inspect_market_session(
+        run_date,
+        market="CN",
+        base_dir=base_dir,
+    )
+    if not session.is_trading_day:
+        message = (
+            f"{run_date} 不是 A 股交易日，跳过全部刷新；"
+            f"previous={session.previous_trading_day}, "
+            f"next={session.next_trading_day}, source={session.source}"
+        )
+        LOGGER.info(message)
+        result.overall_status = "skipped"
+        result.skipped_non_trading_date = True
+        result.steps.append(
+            StepResult(
+                name="trading_day_guard",
+                command=[],
+                status="skipped",
+                duration_sec=0.0,
+                message=message,
+            )
+        )
+        return result
 
     expand_universe = include_selection_universe or generate_prefilter
 

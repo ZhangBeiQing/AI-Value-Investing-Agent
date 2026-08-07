@@ -30,9 +30,9 @@ LOGGER = get_logger("FinancialReportSkill")
 
 REPORT_PERIOD_PATTERNS = [
     (re.compile(r"三季度|三季报|Q3|截至\d{4}年\d{1,2}月\d{1,2}日止九个月|截至\d{4}年\d{1,2}月\d{1,2}日止三个月及九个月", re.IGNORECASE), "q3", 3),
-    (re.compile(r"年度报告|年报|全年业绩|年度业绩|Q4|截至\d{4}年\d{1,2}月\d{1,2}日止年度", re.IGNORECASE), "annual", 4),
     (re.compile(r"半年度|半年报|中报|Q2|中期报告|中期业绩|截至\d{4}年\d{1,2}月\d{1,2}日止六个月|截至\d{4}年\d{1,2}月\d{1,2}日止三个月及六个月", re.IGNORECASE), "interim", 2),
     (re.compile(r"一季度|一季报|1季报|Q1|截至\d{4}年\d{1,2}月\d{1,2}日止三个月", re.IGNORECASE), "q1", 1),
+    (re.compile(r"年度报告|年报|全年业绩|年度业绩|Q4|截至\d{4}年\d{1,2}月\d{1,2}日止年度", re.IGNORECASE), "annual", 4),
 ]
 
 _CN_DIGITS = str.maketrans({
@@ -84,6 +84,7 @@ REPORT_EXCLUDE_HINTS = (
     "说明会", "制度", "问询", "回复", "利润分配", "权益分派", "募集资金", "非经营性资金占用",
     "关联资金往来", "审计委员会", "董事会", "监事会", "自愿性披露", "环境", "ESG", "社会责任",
     "英文版", "英文简版", "更正", "修订", "补充", "通告", "股东大会", "回购", "可转债", "规程",
+    "募集说明书", "披露提示",
 )
 
 PREVIOUS_PERIOD = {
@@ -165,8 +166,7 @@ def _clear_stale_research_outputs(
         "expectation_snapshot.md",
         "draft_v1.md",
         "challenge_round_01.md",
-        "draft_v2.md",
-        "closure_review.md",
+        "draft_v2.md",  # 仅清理旧流程遗留文件；新流程不再生成。
     ):
         target = research_outputs_dir / filename
         if target.is_file():
@@ -180,6 +180,7 @@ def prepare_financial_report_workdir(
     previous_path: Optional[Path],
     analysis_date: str,
     generate_current_market: bool = True,
+    backtest_context_path: Optional[Path] = None,
 ) -> Path:
     """Prepare deterministic inputs for the multi-agent research workflow."""
 
@@ -208,11 +209,16 @@ def prepare_financial_report_workdir(
     report_prompt_target = workdir / "03_report_analysis_prompt.md"
     outlook_prompt_target = workdir / "04_future_outlook_prompt.md"
     agent_input_target = workdir / "05_agent_input.md"
+    backtest_context_target = workdir / "00_backtest_context.md"
     valuation_framework_target = workdir / "valuation_framework.md"
     disclosures_md_dir = workdir.parent / "disclosures" / "md"
     disclosures_pdf_dir = workdir.parent / "disclosures" / "pdfs"
 
     _copy_to_workdir(latest_path, latest_target)
+    if backtest_context_path is not None:
+        _copy_to_workdir(backtest_context_path, backtest_context_target)
+    elif backtest_context_target.exists():
+        backtest_context_target.unlink()
     if previous_path:
         _copy_to_workdir(previous_path, previous_target)
     elif previous_target.exists():
@@ -251,6 +257,7 @@ def prepare_financial_report_workdir(
         stock_root=workdir.parent,
         summary_index_path=bundle.summary_index_path,
         generate_current_market=generate_current_market,
+        historical_mode=backtest_context_path is not None,
     )
 
     policy_paths = {
@@ -270,8 +277,6 @@ def prepare_financial_report_workdir(
         "expectation_snapshot": research_outputs_dir / "expectation_snapshot.md",
         "draft_v1": research_outputs_dir / "draft_v1.md",
         "challenge_round_01": research_outputs_dir / "challenge_round_01.md",
-        "draft_v2": research_outputs_dir / "draft_v2.md",
-        "closure_review": research_outputs_dir / "closure_review.md",
         "final_report": bundle.output_path,
     }
     agent_input_lines = [
@@ -288,6 +293,12 @@ def prepare_financial_report_workdir(
         f"- 公告时间：{bundle.latest_report.announcement_datetime or '未取得'}",
         f"- 财报前市场日：{context.pre_announcement_market_date}",
         f"- workdir：`{workdir}`",
+        (
+            f"- 运行模式：历史回测；全体角色必须先完整读取 `{backtest_context_target}`，"
+            "任何联网来源不得晚于其中的知识截止日"
+            if backtest_context_path is not None
+            else "- 运行模式：日常季度基本面研究"
+        ),
         "",
         "## 固定规则",
         "",
@@ -326,7 +337,7 @@ def prepare_financial_report_workdir(
         f"- Expectation Scout：`{outputs['expectation_snapshot']}`",
         f"- Financial Author 初稿：`{outputs['draft_v1']}`",
         f"- Research Challenger：`{outputs['challenge_round_01']}`",
-        f"- Financial Author 修订：`{outputs['draft_v2']}` 与 `{outputs['final_report']}`",
+        f"- Financial Author 修订并发布：`{outputs['final_report']}`",
         "",
         "任何角色不得写其他角色文件，不得修改 `summary_index.json`。最终文件通过质量门禁后，由主 Agent 调用注册脚本。",
     ]
@@ -337,6 +348,12 @@ def prepare_financial_report_workdir(
         "stock_name": bundle.stock_name,
         "final_mandate": bundle.final_mandate,
         "analysis_date": analysis_date,
+        "run_mode": "historical_backtest" if backtest_context_path is not None else "live",
+        "backtest_context_path": (
+            str(backtest_context_target)
+            if backtest_context_path is not None
+            else None
+        ),
         "latest_announcement_id": bundle.latest_report.announcement_id,
         "latest_report_date": bundle.latest_report.date,
         "latest_announcement_datetime": bundle.latest_report.announcement_datetime,
@@ -395,7 +412,6 @@ def validate_deep_research_artifacts(
     required = {
         "draft_v1": output_paths.get("draft_v1"),
         "challenge_round_01": output_paths.get("challenge_round_01"),
-        "draft_v2": output_paths.get("draft_v2"),
     }
     contents: Dict[str, str] = {}
     for name, raw_path in required.items():
@@ -429,15 +445,26 @@ def validate_deep_research_artifacts(
     if present_forbidden:
         errors.append(f"最终财报报告包含交易字段: {present_forbidden}")
 
+    forbidden_section_pattern = re.compile(
+        r"^#{1,6}\s*(?:\d+\s*[.、．]?\s*)?"
+        r"(?:未解决问题与披露限制|证据与来源)\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    forbidden_sections = forbidden_section_pattern.findall(final_content)
+    if forbidden_sections:
+        errors.append("最终财报报告包含禁止的过程性独立章节：未解决问题与披露限制/证据与来源")
+
     challenge = contents.get("challenge_round_01") or ""
     if re.search(r"严重度\s*[：:]\s*high\b", challenge, re.IGNORECASE):
-        # 流程已取消 Closure 复核步骤；high 问题由 Author 在修订稿（draft_v2 + 最终报告）中解决。
-        # 最终报告若完全未体现对质询的处理痕迹（无未解决章节、无修订说明），视为未处理。
-        has_trace = bool(
-            re.search(r"未解决问题|披露限制|修订|质询|challenge", final_content, re.IGNORECASE)
+        # 不要求最终报告暴露质询/修订过程；high 问题应被吸收到风险和验证章节。
+        has_risk_section = bool(
+            re.search(r"^#{1,6}\s*16\s*[.、．]?", final_content, re.MULTILINE)
         )
-        if not has_trace:
-            errors.append("Challenger 存在 high 问题，但最终报告未见对质询的处理痕迹")
+        has_watchlist_section = bool(
+            re.search(r"^#{1,6}\s*17\s*[.、．]?", final_content, re.MULTILINE)
+        )
+        if not has_risk_section or not has_watchlist_section:
+            errors.append("Challenger 存在 high 问题，但最终报告缺少 §16 风险或 §17 验证清单")
     return errors
 
 
@@ -782,19 +809,35 @@ def _select_latest_two_reports(
     return latest, previous
 
 
-def select_latest_two_reports(symbol: str) -> tuple[Optional[FinancialReportMeta], Optional[FinancialReportMeta]]:
-    return _select_latest_two_reports(symbol)
+def select_latest_two_reports(
+    symbol: str,
+    *,
+    available_on_date: Optional[str] = None,
+) -> tuple[Optional[FinancialReportMeta], Optional[FinancialReportMeta]]:
+    return _select_latest_two_reports(
+        symbol,
+        available_on_date=available_on_date,
+    )
 
 
 def _should_skip(symbol: str, latest: FinancialReportMeta) -> bool:
     summary_index = load_summary_index(symbol)
     completed = [summary_index.get("latest_completed_report") or {}]
     completed.extend(summary_index.get("history") or [])
-    return any(
-        entry.get("announcement_id") == latest.announcement_id
-        for entry in completed
-        if isinstance(entry, dict)
-    )
+    for entry in completed:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("announcement_id") != latest.announcement_id:
+            continue
+        raw_path = entry.get("output_path")
+        if not raw_path:
+            continue
+        output_path = Path(raw_path)
+        if not output_path.is_absolute():
+            output_path = PROJECT_ROOT / output_path
+        if output_path.exists() and output_path.stat().st_size > 0:
+            return True
+    return False
 
 
 def synthesize_manual_item(

@@ -47,7 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--require-deep-research",
         action="store_true",
-        help="注册前强制检查 draft/challenge/revision/closure 等季度深研过程产物。",
+        help="注册前强制检查 draft_v1、challenge_round_01、最终报告及质询闭环。",
+    )
+    parser.add_argument(
+        "--as-of-date",
+        help="按该历史日期选择应登记的最新财报，避免回测报告被登记到未来财报名下。",
     )
     return parser
 
@@ -55,7 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     symbol_info = parse_symbol(args.symbol)
-    latest_report, previous_report = select_latest_two_reports(symbol_info.symbol)
+    latest_report, previous_report = select_latest_two_reports(
+        symbol_info.symbol,
+        available_on_date=args.as_of_date,
+    )
     if latest_report is None:
         raise SystemExit(f"未找到 {symbol_info.symbol} 的最新财报公告，无法登记。")
 

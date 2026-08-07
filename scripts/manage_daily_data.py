@@ -22,6 +22,7 @@ from basic_stock_info import DEFAULT_PRICE_LOOKBACK_DAYS  # type: ignore
 from configs.stock_pool import TRACKED_A_STOCKS  # type: ignore
 from core.logging import init_component_logger  # type: ignore
 from shared_data_access.data_access import SharedDataAccess  # type: ignore
+from shared_data_access.exceptions import SymbolNotListedAsOfDateError  # type: ignore
 from utlity import ensure_stock_subdir, parse_symbol  # type: ignore
 
 LOG_DIR = PROJECT_ROOT / "logs" / "main_scripts" / "ManageDailyData"
@@ -68,7 +69,9 @@ def refresh_shared_data(
     skip_financial_refresh = force_refresh_prices and not force_refresh_financials
     force_price_flag = force_refresh_prices or force_refresh_financials
 
-    def _refresh_symbol(symbol: str) -> tuple[str, str | None]:
+    def _refresh_symbol(
+        symbol: str,
+    ) -> tuple[str, str | None, str | None]:
         try:
             info = parse_symbol(symbol)
             local_sda = SharedDataAccess(
@@ -84,12 +87,15 @@ def refresh_shared_data(
                 force_refresh_financials=force_refresh_financials,
                 skip_financial_refresh=skip_financial_refresh,
             )
-            return info.symbol, None
+            return info.symbol, None, None
+        except SymbolNotListedAsOfDateError as exc:
+            return exc.symbol, None, str(exc)
         except Exception as exc:
-            return symbol, str(exc)
+            return symbol, str(exc), None
 
     worker_count = max(1, min(int(max_workers or 1), len(symbols) or 1))
     failures: Dict[str, str] = {}
+    skipped_not_listed: Dict[str, str] = {}
     with log_file.open("a", encoding="utf-8") as log:
         log.write(f"[shared_data] start {target_date} | symbols={len(symbols)}\n")
         log.write(
@@ -99,8 +105,14 @@ def refresh_shared_data(
         )
         if worker_count <= 1:
             for symbol in symbols:
-                symbol_name, error = _refresh_symbol(symbol)
+                symbol_name, error, skipped_reason = _refresh_symbol(symbol)
                 log.write(f"  >> refresh {symbol_name}\n")
+                if skipped_reason:
+                    skipped_not_listed[symbol_name] = skipped_reason
+                    log.write(
+                        f"  -- skipped_not_listed {symbol_name}: "
+                        f"{skipped_reason}\n"
+                    )
                 if error:
                     failures[symbol_name] = error
                     log.write(f"  !! failed {symbol_name}: {error}\n")
@@ -112,8 +124,14 @@ def refresh_shared_data(
                 }
                 for future in concurrent.futures.as_completed(future_map):
                     raw_symbol = future_map[future]
-                    symbol_name, error = future.result()
+                    symbol_name, error, skipped_reason = future.result()
                     log.write(f"  >> refresh {symbol_name or raw_symbol}\n")
+                    if skipped_reason:
+                        skipped_not_listed[symbol_name or raw_symbol] = skipped_reason
+                        log.write(
+                            f"  -- skipped_not_listed "
+                            f"{symbol_name or raw_symbol}: {skipped_reason}\n"
+                        )
                     if error:
                         failures[symbol_name or raw_symbol] = error
                         log.write(f"  !! failed {symbol_name or raw_symbol}: {error}\n")
@@ -121,6 +139,12 @@ def refresh_shared_data(
     if failures:
         details = "\n".join(f"- {symbol}: {message}" for symbol, message in sorted(failures.items()))
         raise RuntimeError(f"shared data 刷新失败:\n{details}")
+    if skipped_not_listed:
+        LOGGER.info(
+            "历史日期早于上市首个交易日，跳过 %d 只股票: %s",
+            len(skipped_not_listed),
+            ", ".join(sorted(skipped_not_listed)),
+        )
     return {
         "name": "refresh_shared_data",
         "status": "success",
@@ -129,6 +153,9 @@ def refresh_shared_data(
             "indicator_count": len(macro_panel.get("indicators", {})),
             "central_bank_count": len(macro_panel.get("central_banks", {})),
         },
+        "skipped_not_listed_count": len(skipped_not_listed),
+        "skipped_not_listed_symbols": sorted(skipped_not_listed),
+        "skipped_not_listed_reasons": skipped_not_listed,
     }
 
 
@@ -190,38 +217,56 @@ def manage_daily_data(args: argparse.Namespace) -> int:
     try:
         ensure_manual_research_dirs(symbols)
         LOGGER.info("开始刷新 shared data: date=%s, symbols=%d", target_date, len(refresh_symbols))
-        steps.append(
-            refresh_shared_data(
-                target_date,
-                refresh_symbols,
-                force_refresh_prices=args.force_refresh_price,
-                force_refresh_financials=args.force_refresh,
-                log_file=log_file,
-                max_workers=args.max_workers,
-            )
+        shared_refresh_result = refresh_shared_data(
+            target_date,
+            refresh_symbols,
+            force_refresh_prices=args.force_refresh_price,
+            force_refresh_financials=args.force_refresh,
+            log_file=log_file,
+            max_workers=args.max_workers,
         )
+        steps.append(shared_refresh_result)
+        skipped_not_listed = set(
+            shared_refresh_result.get("skipped_not_listed_symbols") or []
+        )
+        active_symbols = [
+            symbol for symbol in symbols if symbol not in skipped_not_listed
+        ]
         LOGGER.info("shared data 刷新完成")
 
-        basic_cmd = [
-            sys.executable,
-            "-u",
-            "basic_stock_info.py",
-            "--today-time",
-            target_date,
-            "--get-look-back-days",
-            str(args.look_back_days),
-            "--max-workers",
-            str(args.max_workers),
-            "--symbols",
-            *symbols,
-        ]
-        if args.force_refresh:
-            basic_cmd.append("--force-refresh-financials")
+        if active_symbols:
+            basic_cmd = [
+                sys.executable,
+                "-u",
+                "basic_stock_info.py",
+                "--today-time",
+                target_date,
+                "--get-look-back-days",
+                str(args.look_back_days),
+                "--max-workers",
+                str(args.max_workers),
+                "--symbols",
+                *active_symbols,
+            ]
+            if args.force_refresh:
+                basic_cmd.append("--force-refresh-financials")
+            else:
+                basic_cmd.append("--skip-financial-refresh")
+            LOGGER.info(
+                "开始运行 basic_stock_info: active=%d skipped_not_listed=%d",
+                len(active_symbols),
+                len(skipped_not_listed),
+            )
+            steps.append(run_subprocess("basic_stock_info", basic_cmd, log_file))
+            LOGGER.info("basic_stock_info 完成")
         else:
-            basic_cmd.append("--skip-financial-refresh")
-        LOGGER.info("开始运行 basic_stock_info")
-        steps.append(run_subprocess('basic_stock_info', basic_cmd, log_file))
-        LOGGER.info("basic_stock_info 完成")
+            steps.append(
+                {
+                    "name": "basic_stock_info",
+                    "status": "skipped",
+                    "message": "全部目标股票在该历史日期尚未上市",
+                }
+            )
 
         status_path = LOG_DIR / "latest_status.json"
         status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -239,13 +284,25 @@ def manage_daily_data(args: argparse.Namespace) -> int:
         # 简单判断：如果 args.symbols 或 args.symbols_file 存在，则视为部分更新
         try:
             if args.symbols or args.symbols_file:
-                LOGGER.info("开始按指定股票并发运行 disclosures_builder: symbols=%d", len(symbols))
+                if not active_symbols:
+                    steps.append(
+                        {
+                            "name": "disclosures_builder_selected",
+                            "status": "skipped",
+                            "message": "没有该历史日期已上市的目标股票",
+                        }
+                    )
+                    return 0
+                LOGGER.info(
+                    "开始按指定股票并发运行 disclosures_builder: symbols=%d",
+                    len(active_symbols),
+                )
                 cmd = [
                     sys.executable,
                     "-u",
                     "news/disclosures_builder.py",
                     "--symbols",
-                    *symbols,
+                    *active_symbols,
                     "--model",
                     "qwen-doc-turbo",
                     "--audit-model",
