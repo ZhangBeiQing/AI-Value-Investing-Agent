@@ -19,6 +19,8 @@
 7. 三份 Juror ballot
 8. `final/vote_summary.json`
 
+**研究包必须分段顺序完整读到结尾**：若文件较长（通常 40-60KB、近千行），必须用 Read 按 offset 分多次读到末尾，禁止只靠关键词搜索、`grep` 或局部摘录理解研究包。只有完整读完本股研究包后，才允许开始写 verdict。
+
 只有在现有材料无法完成字段或存在决定性事实冲突时，才做定向补证。不得用新一轮广泛搜索推翻已经完成的投票。
 
 ## 动作约束
@@ -71,6 +73,8 @@
 - 完整参考 `stock_decision.example.json` 的结构，但不得复制其中的示例公司、事实或结论。
 
 ## 唯一输出
+
+写文件前先完整阅读 `.codex/skills/auto-trading-fixed-tracked/references/json-writing-guide.md`，按其中「提交前强制自检」校验后再回传。
 
 只写主 Agent 指定的：
 

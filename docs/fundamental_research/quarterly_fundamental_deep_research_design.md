@@ -962,21 +962,10 @@ research_outputs/challenge_round_01.md
 - Challenger 新增的来源；
 - 所有原始输入。
 
-生成：
+修订后直接生成最终 `financial_reports/YYYYMMDD.md`，不再重复写一份
+`research_outputs/draft_v2.md`。
 
-```text
-research_outputs/draft_v2.md
-```
-
-### 14.2 Challenger 复核
-
-只有存在重大问题时再运行复核：
-
-```text
-research_outputs/closure_review.md
-```
-
-### 14.3 停止条件
+### 14.2 停止条件
 
 研究完成需要满足：
 
@@ -1019,9 +1008,12 @@ data/stock_info/{stock_name}_{symbol}/financial_reports/YYYYMMDD.md
 15. 程浩然天花板估值及适用限制；
 16. 风险、替代解释和证伪条件；
 17. 下一季度验证清单；
-18. 未解决问题与披露限制。
 
 不限制每节条目数量。
+
+过程稿可以保留“未解决问题与披露限制”和“证据与来源”供角色对质，但最终报告
+不输出这两个独立章节。无法解决且影响判断的问题并入第 16 或第 17 节，来源贴近
+对应事实标注。
 
 ## 16. `summary_index.json` 写入
 
@@ -1199,7 +1191,7 @@ Codex 存在并发限制时，只限制同时运行数量，不改变角色和�
 | Expectation Scout | `expectation_snapshot.md` |
 | Financial Author 初稿 | `draft_v1.md` |
 | Research Challenger | `challenge_round_01.md` |
-| Financial Author 修订 | `draft_v2.md`、最终财报 Markdown |
+| Financial Author 修订 | 最终财报 Markdown |
 | 主 Agent/注册脚本 | `summary_index.json` |
 
 如共享产业链研究，Industry Researcher 先写共享文件；股票 workdir 只复制路径或只读快照，不允许多股票 Agent 回写共享文件。
@@ -1216,7 +1208,7 @@ Codex 存在并发限制时，只限制同时运行数量，不改变角色和�
 | 百炼不可用 | 研究角色失败关闭，等待用户处理或明确允许 fallback |
 | 产业链无法识别 | 不复用旧研究，按公司独立研究并说明 |
 | Challenger 发现重大问题 | 不直接发布，回到 Author 修订 |
-| 高严重度问题无法解决 | 最终报告明确列为未解决，不伪造答案 |
+| 高严重度问题无法解决 | 按影响融入最终报告 §16/§17，不伪造答案或单列过程附录 |
 | 最终 Markdown 未生成 | 不更新 `summary_index.json` |
 
 ## 22. 对 `monthly-industry-research` 的调整
@@ -1337,7 +1329,7 @@ services/pipeline/daily_pipeline.py
 
 - Author 先写 `draft_v1.md`；
 - Challenger 自动提问、补搜和提出修改；
-- Author 生成 `draft_v2.md` 和最终报告；
+- Author 直接生成吸收质询后的最终报告；
 - 高严重度问题未闭环时不直接注册。
 
 ### 阶段五：历史预测快照和自动质量门禁
@@ -1386,7 +1378,7 @@ services/pipeline/daily_pipeline.py
 - 产业链研究不是泛泛行业背景；
 - 初稿明确实际与预期差；
 - Challenger 提出了内容相关的新问题；
-- 修订稿实际吸收了质询；
+- 最终报告实际吸收了质询；
 - 最终报告路径兼容；
 - `summary_index.json` 正确更新；
 - 没有修改交易 `01-08`。

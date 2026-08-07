@@ -556,13 +556,12 @@ BUY, SELL, FLAT -> 无多数
 
 `stock_decisions.json` 继续完整保存所有历史决策，不删除 `recommended_action` 或旧字段。生成下一轮 `04_stock_research` 时，Python 使用 `get_stock_memory_context()` 构建研究记忆视图：
 
-- 保留所有已确认 BUY/SELL 仓位变化及其 `delta_summary`、事实、推断、正反方理由和风险；
-- 保留最近一次非仓位变化的投资逻辑复核；
+- 只保留最后一次投资逻辑总结，不再把所有历史 BUY/SELL 全文注入下一轮 Prompt；
 - 保留上轮待核验事项；
 - 排除历史 `recommended_action`、`price_target` 和其他过期执行计划；
 - 旧格式 `court.verdict` 可能混有价格和加仓指令，因此只保留其 `court.pro/con`；新格式 verdict 按新职责可进入长期记忆。
 
-这样既保留长期投资所需的“为什么买卖”记忆，又避免较弱模型把一周前的价格条件机械当成今日纪律。
+这样保留最近一次完整逻辑和下一轮核验线索，同时避免旧 BUY/SELL 论证反复累积、稀释当天证据或把一周前的价格条件机械当成今日纪律。
 
 ## 13. 代码修改范围
 
