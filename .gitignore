@@ -99,6 +99,9 @@ data/
 .env
 *:Zone.Identifier
 
+# ---- 个人运行 prompt（不纳入版本管理） ----
+/每日运行prompt
+
 # ---- 个人研究笔记（不纳入版本管理） ----
 /AI-Agents-in-Depth-zh-CN.md
 /CField-API-Docs-en.md

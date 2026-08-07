@@ -1,22 +1,53 @@
+# 核心数据与计算
+pandas==2.3.3
+numpy==1.26.4
+scipy==1.15.3
+
+# 数据源 API
+akshare==1.18.39
+fredapi==0.5.2
+requests==2.33.0
+
+# LLM & Agent 框架
+openai==1.109.1
 langchain==1.0.2
 langchain-openai==1.0.1
-langchain-mcp-adapters>=0.1.0
-fastmcp==2.12.5
-pandas-market-calendars>=4.3.1
+langchain-mcp-adapters==0.2.1
+mcp==1.28.1
+tiktoken==0.12.0
 
-# 股票分析系统依赖
-akshare>=1.12.0
-pandas>=2.0.0
-numpy>=1.24.0
-requests>=2.31.0
-filetype>=1.2.0
-IPython>=8.0.0
-google-generativeai>=0.3.0
-pydantic>=2.0.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-ta-lib>=0.6.8
-openai>=1.55.0
-python-dotenv
-dashscope>=1.24.0
-fredapi>=0.5.0
+# Token 与分词
+dashscope==1.25.14
+google-generativeai==0.8.6
+google-genai==1.67.0
+
+# Web 解析
+beautifulsoup4==4.14.3
+lxml==6.0.2
+
+# 配置与校验
+pydantic==2.12.5
+PyYAML==6.0.3
+python-dotenv==1.2.2
+
+# 可视化 (分析报告 / 回测图表)
+matplotlib==3.9.0
+seaborn==0.13.2
+
+# 技术分析
+TA-Lib==0.6.8
+stockstats==0.6.8
+
+# 交易日历
+pandas-market-calendars==5.3.1.2
+
+# 工具类
+filetype==1.2.0
+IPython==8.38.0
+loguru==0.7.3
+tqdm==4.67.3
+py_mini_racer==0.6.0
+json_repair==0.53.0
+
+# 测试
+pytest==9.0.2
