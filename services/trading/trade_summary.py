@@ -1,7 +1,10 @@
 import json
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from collections import defaultdict
+from pathlib import Path
 from typing import List, Optional
 from configs.stock_pool import TRACKED_A_STOCKS
 from core.logging import init_component_logger
@@ -10,10 +13,29 @@ from utlity import get_last_trading_day
 # --- 1. 文件路径定义 (模拟数据库) ---
 # 路径改造为按 signature 分目录，避免多 Agent 数据串扰
 
+_AGENT_DATA_ROOT: ContextVar[Path | None] = ContextVar(
+    "agent_data_root",
+    default=None,
+)
+
 
 def _data_dir(signature: str) -> str:
     """根据 agent 的 signature 返回专属数据目录路径。"""
-    return os.path.join("data", "agent_data", signature)
+    root = _AGENT_DATA_ROOT.get()
+    if root is None:
+        return os.path.join("data", "agent_data", signature)
+    return str(root / signature)
+
+
+@contextmanager
+def use_agent_data_root(agent_data_root: str | Path):
+    """Temporarily route all trade-summary reads and writes to one isolated root."""
+
+    token = _AGENT_DATA_ROOT.set(Path(agent_data_root).resolve())
+    try:
+        yield
+    finally:
+        _AGENT_DATA_ROOT.reset(token)
 
 
 def _stock_operations_file(signature: str) -> str:
@@ -487,7 +509,7 @@ def _project_decision_memory(entry: dict) -> dict:
 
 
 def get_stock_memory_context(signature: str, stock_code: str) -> dict:
-    """读取完整交易历史，并生成不含过期执行计划的研究记忆视图。
+    """读取完整交易历史，只投影最后一次投资逻辑总结。
 
     原始 `stock_decisions.json` 不做删改。返回值只用于生成下一轮
     `04_stock_research`，不会暴露历史 recommended_action、price_target
@@ -503,15 +525,9 @@ def get_stock_memory_context(signature: str, stock_code: str) -> dict:
         key=lambda entry: str(entry.get("operation_date") or "")
     )
 
-    position_change_events = [
-        _project_decision_memory(entry)
-        for entry in stock_operations
-        if entry.get("action_type") in {"BUY", "SELL"}
-    ]
-
     latest_thesis_review = {}
     latest_entry = stock_operations[-1] if stock_operations else None
-    if latest_entry and latest_entry.get("action_type") not in {"BUY", "SELL"}:
+    if latest_entry:
         latest_thesis_review = _project_decision_memory(latest_entry)
 
     pending_checks = []
@@ -525,7 +541,6 @@ def get_stock_memory_context(signature: str, stock_code: str) -> dict:
             ]
 
     return {
-        "position_change_events": position_change_events,
         "latest_thesis_review": latest_thesis_review,
         "pending_checks": pending_checks,
     }

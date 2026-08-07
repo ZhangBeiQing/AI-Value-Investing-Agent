@@ -263,6 +263,7 @@ class BasicStockInfoService:
         analysis_datetime: Optional[datetime] = None,
         symbol_infos: Optional[Dict[str, SymbolInfo]] = None,
         target_dates: Optional[Dict[str, date]] = None,
+        persist_snapshot: bool = True,
     ) -> None:
         self.base_dir = resolve_base_dir(base_dir)
         self.price_lookback_days = max(price_lookback_days, MIN_PRICE_LOOKBACK_DAYS)
@@ -273,6 +274,7 @@ class BasicStockInfoService:
         self.skip_financial_refresh = skip_financial_refresh
         self.symbol_infos = symbol_infos or {}
         self.target_dates = target_dates or {}
+        self.persist_snapshot = persist_snapshot
         base_analysis_date = (
             analysis_datetime.date()
             if analysis_datetime is not None
@@ -407,7 +409,8 @@ class BasicStockInfoService:
         if errors:
             payload["errors"] = errors
         payload["field_notes"] = FIELD_NOTES
-        self._persist_stock_snapshots(stocks)
+        if self.persist_snapshot:
+            self._persist_stock_snapshots(stocks)
         return payload
 
     def build_payload_from_normalized(
@@ -429,7 +432,8 @@ class BasicStockInfoService:
         if errors:
             payload["errors"] = errors
         payload["field_notes"] = FIELD_NOTES
-        self._persist_stock_snapshots(stocks)
+        if self.persist_snapshot:
+            self._persist_stock_snapshots(stocks)
         return payload
 
     def _persist_stock_snapshots(self, stocks: Dict[str, Dict[str, Any]]) -> None:
@@ -1036,6 +1040,7 @@ def basic_info(
     skip_financial_refresh: bool = False,
     today_time: Optional[Union[str, datetime]] = None,
     use_cache: bool = True,
+    persist_snapshot: bool = True,
 ) -> Dict[str, Any]:
     analysis_dt = _parse_analysis_time(today_time)
     analysis_date = (
@@ -1089,6 +1094,7 @@ def basic_info(
             analysis_datetime=analysis_dt,
             symbol_infos=symbol_infos,
             target_dates=target_dates,
+            persist_snapshot=persist_snapshot,
         )
         payload = service.build_payload_from_normalized(missing_symbols)
         computed_data = payload.get("stocks", {})
@@ -1126,19 +1132,24 @@ def build_basic_snapshot(
     symbols: Iterable[str],
     run_date: str,
     *,
+    base_dir: Optional[str | Path] = None,
     price_lookback_days: int = DEFAULT_PRICE_LOOKBACK_DAYS,
     max_workers: int = 1,
+    backtest_read_only: bool = False,
 ) -> Dict[str, Any]:
     return basic_info(
         symbols,
+        base_dir=base_dir,
         today_time=run_date,
         max_workers=max_workers,
         price_lookback_days=price_lookback_days,
         force_refresh=False,
         force_refresh_financials=False,
-        skip_financial_refresh=False,
+        skip_price_refresh=backtest_read_only,
+        skip_financial_refresh=backtest_read_only,
         # 生成流水线产物时直接重算，避免 basic_info_cache 里的旧派生字段污染输出。
         use_cache=False,
+        persist_snapshot=not backtest_read_only,
     )
 
 

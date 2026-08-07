@@ -42,18 +42,22 @@ def build_quant_prefilter_for_date(
     run_date: str,
     *,
     base_dir: str | Path = "data",
+    source_base_dir: str | Path | None = None,
     config: QuantPrefilterConfig | None = None,
     ensure_factor_store: bool = True,
 ) -> dict[str, Path]:
-    """Build TopN combined/short/long prefilter outputs from factor snapshots."""
+    """Build prefilter outputs, optionally reading factors from another root."""
 
     config = config or QuantPrefilterConfig()
     paths = SelectionSystemPaths.from_base_dir(base_dir)
+    source_paths = SelectionSystemPaths.from_base_dir(
+        source_base_dir if source_base_dir is not None else base_dir
+    )
     paths.ensure_directories()
     paths.ensure_run_dir(run_date)
     frame = load_factor_snapshot_frame(
         run_date,
-        base_dir=paths.base_dir,
+        base_dir=source_paths.base_dir,
         ensure_factor_store=ensure_factor_store,
         max_staleness_days=config.max_staleness_days,
     )

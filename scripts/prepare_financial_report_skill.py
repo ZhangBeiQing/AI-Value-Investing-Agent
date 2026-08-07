@@ -135,6 +135,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="即使最新财报已登记，也只重建 workdir 供调试/评审；不覆盖最终财报，不修改 summary_index。",
     )
+    parser.add_argument(
+        "--backtest-context",
+        help="历史回测的 00_backtest_context.md；提供后复制到逐股 workdir 并强制所有角色读取。",
+    )
     return parser
 
 
@@ -292,6 +296,11 @@ def main() -> int:
             previous_path=previous_path,
             analysis_date=analysis_date,
             generate_current_market=not args.skip_market_context,
+            backtest_context_path=(
+                Path(args.backtest_context)
+                if args.backtest_context
+                else None
+            ),
         )
         ready.append(
             {

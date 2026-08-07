@@ -68,7 +68,8 @@ def pick_macro_file(range_hint: Optional[str], today_dt: Optional[datetime]) -> 
         if dated_candidates:
             dated_candidates.sort(key=lambda pair: pair[0])
             return dated_candidates[-1][1]
-        logger.warning("未找到早于 %s 的宏观总结文件，将返回最新一篇。", today_dt.date().isoformat())
+        logger.warning("未找到早于 %s 的宏观总结文件，不使用未来文件回退。", today_dt.date().isoformat())
+        return None
 
     return files[-1]
 
@@ -77,7 +78,11 @@ def read_file(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def get_macro_summary(today_time: Optional[str] = None) -> str:
+def get_macro_summary(
+    today_time: Optional[str] = None,
+    *,
+    include_objective_panel: bool = True,
+) -> str:
     logger.info("get_macro_summary 请求: today_time=%s", today_time)
     today_dt = None
     if today_time:
@@ -101,11 +106,12 @@ def get_macro_summary(today_time: Optional[str] = None) -> str:
 
     panel_markdown = ""
     run_date = today_dt.strftime("%Y-%m-%d") if today_dt else datetime.now().strftime("%Y-%m-%d")
-    try:
-        panel_payload = load_or_build_macro_objective_panel(run_date)
-        panel_markdown = render_macro_objective_panel_markdown(panel_payload)
-    except Exception as exc:
-        logger.warning("加载宏观客观数据面板失败: %s", exc)
+    if include_objective_panel:
+        try:
+            panel_payload = load_or_build_macro_objective_panel(run_date)
+            panel_markdown = render_macro_objective_panel_markdown(panel_payload)
+        except Exception as exc:
+            logger.warning("加载宏观客观数据面板失败: %s", exc)
 
     logger.info("get_macro_summary 命中文件: %s", target)
     if panel_markdown:

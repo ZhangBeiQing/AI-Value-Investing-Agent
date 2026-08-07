@@ -104,7 +104,9 @@ def filter_news_before_today(
                 continue
             diagnostics.append(f"跳过新闻（无法解析日期）: {item.get('title', '未知标题')}")
             continue
-        if dt_value >= today_time or dt_value < start_time:
+        # `today_time` 表示收盘后的分析日。当天已经发布的公告属于 D 日可知
+        # 信息，应当纳入；只排除 D 日之后的未来公告。
+        if dt_value.date() > today_time.date() or dt_value < start_time:
             continue
         item["_datetime_obj"] = dt_value
         filtered.append(item)
@@ -179,13 +181,20 @@ def _filter_low_impact_noise(items: List[Dict[str, Any]], diagnostics: List[str]
     return cleaned
 
 
-def _try_update_disclosures_for_stock(stock_name: str, stock_code: str, lookback_days: int = 365) -> None:
-    from news.disclosures_builder import update_disclosures_for_stock
+def _try_update_disclosures_for_stock(stock_code: str, lookback_days: int = 365) -> None:
+    from news.disclosures_builder import audit_news_json, update_disclosures_for_stock
 
-    update_disclosures_for_stock(stock_name, stock_code, lookback_days=lookback_days)
+    symbol_info = parse_symbol(stock_code)
+    update_disclosures_for_stock(symbol_info, lookback_days=lookback_days)
+    audit_news_json(symbol_info, "deepseek-v4-flash")
 
 
-def search_stock_news(symbol: str, today_time: str) -> str:
+def search_stock_news(
+    symbol: str,
+    today_time: str,
+    *,
+    allow_refresh: bool = True,
+) -> str:
     diagnostics: List[str] = []
     stock_code = symbol.strip()
     stock_name = SYMBOL_NAME_MAP.get(stock_code, stock_code)
@@ -217,12 +226,13 @@ def search_stock_news(symbol: str, today_time: str) -> str:
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     items = collect_news_items(stock_name, stock_code, diagnostics)
-    if not items:
+    if not items and allow_refresh:
         try:
-            _try_update_disclosures_for_stock(stock_name, stock_code, lookback_days=365)
+            _try_update_disclosures_for_stock(stock_code, lookback_days=365)
             items = collect_news_items(stock_name, stock_code, diagnostics)
         except Exception as exc:
             diagnostics.append(f"公告构建失败: {exc}")
+    if not items:
         payload = {
             "stock": f"{stock_name} ({stock_code})",
             "today": today_time,

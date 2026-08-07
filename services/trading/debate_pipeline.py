@@ -12,6 +12,7 @@ from typing import Any
 
 from core.logging import get_logger
 from services.trading.decision_contract import validate_stock_decision_entry
+from utlity.stock_utils import parse_symbol, sanitize_stock_name
 
 
 LOGGER = get_logger("DebatePipeline")
@@ -19,7 +20,10 @@ VALID_ACTIONS = ("BUY", "SELL", "HOLD", "FLAT")
 VALID_PRICE_IMPRESSIONS = (
     "明显低估",
     "偏低估",
+    "合理偏低估",
     "合理",
+    "合理偏贵",
+    "偏贵",
     "略贵",
     "明显高估",
     "泡沫",
@@ -37,13 +41,43 @@ def normalize_debate_symbol(symbol: str) -> str:
     return normalized
 
 
-def debate_symbol_dir(book_dir: str | Path, symbol: str) -> Path:
-    return Path(book_dir) / "debate" / normalize_debate_symbol(symbol)
+def debate_directory_name(symbol: str) -> str:
+    """Return the human-readable, filesystem-safe directory name for a debate."""
+    normalized_symbol = normalize_debate_symbol(symbol)
+    try:
+        stock_name = sanitize_stock_name(
+            parse_symbol(normalized_symbol).stock_name
+        )
+    except Exception as exc:
+        LOGGER.warning(
+            "无法解析辩论标的名称，目录退回仅代码: symbol=%s error=%s",
+            normalized_symbol,
+            exc,
+        )
+        return normalized_symbol
+    return f"{stock_name}_{normalized_symbol}"
+
+
+def debate_symbol_dir(
+    book_dir: str | Path,
+    symbol: str,
+    *,
+    allow_legacy: bool = True,
+) -> Path:
+    """Resolve a debate directory, reading legacy code-only directories if needed."""
+    normalized_symbol = normalize_debate_symbol(symbol)
+    debate_root = Path(book_dir) / "debate"
+    named_dir = debate_root / debate_directory_name(normalized_symbol)
+    legacy_dir = debate_root / normalized_symbol
+    if allow_legacy and not named_dir.exists() and legacy_dir.exists():
+        return legacy_dir
+    return named_dir
 
 
 def prepare_debate_directories(book_dir: str | Path, symbol: str) -> Path:
     """Create role-owned directories without creating or overwriting results."""
-    symbol_dir = debate_symbol_dir(book_dir, symbol)
+    # 新运行统一使用“名称_代码”；旧代码目录只为 aggregate/validate 兼容保留。
+    symbol_dir = debate_symbol_dir(book_dir, symbol, allow_legacy=False)
     directories = [
         symbol_dir / "advocates" / "bull",
         symbol_dir / "advocates" / "bear",
@@ -420,6 +454,7 @@ __all__ = [
     "VALID_PRICE_IMPRESSIONS",
     "aggregate_jury_votes",
     "atomic_write_json",
+    "debate_directory_name",
     "debate_symbol_dir",
     "normalize_debate_symbol",
     "prepare_debate_directories",

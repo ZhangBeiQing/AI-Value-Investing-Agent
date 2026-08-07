@@ -18,7 +18,11 @@ from shared_financial_utils import (
 from utlity import resolve_base_dir, SymbolInfo, is_etf_symbol
 
 from .cache_registry import CacheKind, build_cache_dir, check_cache, ensure_symbol_data
-from .exceptions import CacheIntegrityError, DataUnavailableError
+from .exceptions import (
+    CacheIntegrityError,
+    DataUnavailableError,
+    SymbolNotListedAsOfDateError,
+)
 from .models import (
     ChipDistributionBundle,
     DisclosureBundle,
@@ -27,6 +31,7 @@ from .models import (
     PriceDataBundle,
     ShareInfo,
 )
+from .historical_prices import price_cache_coverage_start
 from .macro_objective_panel import (
     load_macro_objective_panel,
     load_or_build_macro_objective_panel,
@@ -440,6 +445,26 @@ class SharedDataAccess:
         frame.index = pd.to_datetime(frame.index, errors="coerce")
         frame = frame[~frame.index.isna()]
         frame = frame.sort_index()
+        coverage_start = price_cache_coverage_start(
+            symbolInfo,
+            base_dir=self.base_dir,
+        )
+        as_of_date = as_of_dt.strftime("%Y-%m-%d")
+        first_trading_date = (
+            frame.index.min().strftime("%Y-%m-%d")
+            if not frame.empty
+            else None
+        )
+        if (
+            coverage_start is not None
+            and first_trading_date is not None
+            and coverage_start <= as_of_date < first_trading_date
+        ):
+            raise SymbolNotListedAsOfDateError(
+                symbol=symbolInfo.symbol,
+                as_of_date=as_of_date,
+                first_trading_date=first_trading_date,
+            )
         start_dt = datetime.now() - timedelta(days=LOOKBACK_PRICE_DAYS)
         mask = (frame.index >= start_dt) & (frame.index <= as_of_dt)
         sliced = frame.loc[mask]

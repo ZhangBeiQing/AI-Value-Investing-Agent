@@ -45,6 +45,8 @@ WEB_RESEARCH_POLICY = (
     / "web_research_policy.md"
 )
 
+DEFAULT_ANALYSIS_INDEX_REF = "data/skill_runs/_analysis_index.json"
+
 
 def resolve_signature(raw_signature: str) -> str:
     if raw_signature:
@@ -92,6 +94,7 @@ def build_user_query(research_files: List[Path], run_date: str, book_type: str) 
 def build_fixed_main_user_query(
     research_files: List[Path],
     run_date: str,
+    analysis_index_ref: str = DEFAULT_ANALYSIS_INDEX_REF,
 ) -> str:
     """Build the fixed_tracked main-agent-only runtime input."""
     lines = [
@@ -106,7 +109,7 @@ def build_fixed_main_user_query(
         "- 01_global_context.md",
         f"- data/selection_runs/{run_date}/06_hot_news_state.json（可选）",
         f"- data/selection_runs/{run_date}/05_board_heat_digest.json（可选）",
-        "- data/skill_runs/_analysis_index.json（不存在时按冷启动处理）",
+        f"- {analysis_index_ref}（不存在时按冷启动处理）",
         "",
         "## 个股研究包索引（仅用于确认文件存在，主 Agent 不打开内容）",
         "",
@@ -125,6 +128,7 @@ def build_agent_input(
     stock_codes: Optional[List[str]] = None,
     book_type: str = "fixed_tracked",
     prompt_context: Optional[Dict[str, str]] = None,
+    analysis_index_ref: Optional[str] = None,
 ) -> str:
     prompt_path = Path(prompt_config)
     target_symbols = stock_codes or []
@@ -177,7 +181,11 @@ def build_agent_input(
         "## USER_QUERY",
         "",
         (
-            build_fixed_main_user_query(research_files, run_date)
+            build_fixed_main_user_query(
+                research_files,
+                run_date,
+                analysis_index_ref=analysis_index_ref or DEFAULT_ANALYSIS_INDEX_REF,
+            )
             if book_type == "fixed_tracked"
             else build_user_query(research_files, run_date, book_type)
         ),
@@ -251,8 +259,16 @@ def build_snapshot_payload(
     symbols: List[str],
     *,
     max_workers: int = 1,
+    source_data_root: str | Path | None = None,
+    backtest_read_only: bool = False,
 ) -> Dict[str, Any]:
-    return build_basic_snapshot(symbols, run_date, max_workers=max_workers)
+    return build_basic_snapshot(
+        symbols,
+        run_date,
+        base_dir=source_data_root,
+        max_workers=max_workers,
+        backtest_read_only=backtest_read_only,
+    )
 
 
 def write_agent_input_bundle(
@@ -265,21 +281,38 @@ def write_agent_input_bundle(
     prompt_config: str | Path | None = None,
     snapshot_payload: Dict[str, Any] | None = None,
     max_workers: int = 1,
+    prompt_context_override: Optional[Dict[str, str]] = None,
+    source_data_root: str | Path | None = None,
+    backtest_read_only: bool = False,
 ) -> None:
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     resolved_signature = resolve_signature(signature)
     resolved_prompt_config = Path(prompt_config) if prompt_config else DEFAULT_PROMPT_CONFIG
-    prompt_context = get_skill_prompt_context(
+    prompt_context = prompt_context_override or get_skill_prompt_context(
         run_date,
         resolved_signature,
         stock_codes=symbols,
     )
 
+    # 回测场景下，主 Agent 必须读取实验目录内的冻结分析索引
+    # （由 merge_subagent_decisions.py 按 --base-dir 写入），而不是日常共享索引，
+    # 否则会读到未来日期的记录，造成时间穿越。
+    analysis_index_ref: Optional[str] = None
+    if backtest_read_only:
+        skill_runs_root = target_dir.parent.parent
+        backtest_index = skill_runs_root / "_analysis_index.json"
+        try:
+            analysis_index_ref = str(backtest_index.relative_to(PROJECT_ROOT).as_posix())
+        except ValueError:
+            analysis_index_ref = str(backtest_index.resolve())
+
     snapshot_payload = snapshot_payload or build_snapshot_payload(
         run_date,
         symbols,
         max_workers=max_workers,
+        source_data_root=source_data_root,
+        backtest_read_only=backtest_read_only,
     )
     (target_dir / "02_basic_snapshot_payload.json").write_text(
         json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
@@ -294,7 +327,14 @@ def write_agent_input_bundle(
         stock_codes=symbols,
         book_type=book_type,
         prompt_context=prompt_context,
+        analysis_index_ref=analysis_index_ref,
     )
+    # 回测场景：把 main_policy 正文中写死的共享索引路径也替换为实验目录冻结索引，
+    # 避免主 Agent 按 Step 3 正文去读未来日期的日常索引造成时间穿越。
+    if analysis_index_ref and analysis_index_ref != DEFAULT_ANALYSIS_INDEX_REF:
+        agent_input = agent_input.replace(
+            DEFAULT_ANALYSIS_INDEX_REF, analysis_index_ref
+        )
     (target_dir / "03_agent_input.md").write_text(agent_input, encoding="utf-8")
     if book_type == "fixed_tracked":
         stock_analysis_input = build_stock_analysis_input(

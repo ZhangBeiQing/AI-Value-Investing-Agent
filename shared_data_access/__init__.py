@@ -39,6 +39,12 @@ from .industry_catalog import (
     load_industry_catalog_cached,
     update_industry_catalog_cached,
 )
+from .market_calendar import (
+    NonTradingDayError,
+    ensure_market_session,
+    inspect_market_session,
+    market_sessions_between,
+)
 
 __all__ = [
     "SharedDataAccess",
@@ -51,6 +57,10 @@ __all__ = [
     "load_industry_financial_snapshot_cached",
     "load_industry_catalog_cached",
     "load_macro_objective_panel",
+    "NonTradingDayError",
+    "ensure_market_session",
+    "inspect_market_session",
+    "market_sessions_between",
     "load_or_build_macro_objective_panel",
     "render_macro_objective_panel_markdown",
     "update_board_history_ths_cached",

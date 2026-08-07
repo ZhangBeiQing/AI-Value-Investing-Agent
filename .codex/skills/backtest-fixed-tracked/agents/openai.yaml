@@ -1,0 +1,4 @@
+interface:
+  display_name: "固定股池历史回测"
+  short_description: "隔离运行固定股池多 Agent 历史回测并生成净值结果"
+  default_prompt: "使用 $backtest-fixed-tracked 回测指定日期区间的固定股池策略。"
