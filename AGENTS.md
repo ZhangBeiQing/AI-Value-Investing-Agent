@@ -107,7 +107,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 | 增加研究/快照字段 | `services/research/`, `services/snapshot/`, `.codex/rules/shared-data-access.md` |
 | 增加外部数据缓存 | `shared_data_access/`, `shared_financial_utils.py`, `.codex/skills/extend-shared-data-access/SKILL.md` |
 | 调整交易后处理 | `scripts/run_post_trade.py`, `services/trading/`, `.codex/rules/skill-pipeline.md` |
-| 排查主链路失败 | `logs/`, `latest_status.json`, `.codex/rules/testing.md`, `.codex/skills/debug-skill-run/SKILL.md` |
+| 排查主链路失败 | `logs/`, `latest_status.json`, `.codex/rules/testing.md` |
 | 统一日志接入 | `core/logging.py`, `.codex/rules/code-style.md` |
 
 ## 数据与缓存规则
@@ -146,10 +146,9 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - `auto-trading-fixed-tracked`：固定股票池 `fixed_tracked` 的单账本交易分析与后处理 skill
 - `auto-trading-short-book`：短期股票池 `short_book` 的单账本交易分析与后处理 skill
 - `auto-trading-long-book`：长期股票池 `long_book` 的单账本交易分析与后处理 skill
+- `backtest-fixed-tracked`：按历史交易日串行回放固定池多 Agent 决策，使用隔离账本和 D+1 开盘模拟成交
 - `add-skill-pipeline-step`：新增或重构 `skill` 流水线步骤时使用
 - `extend-shared-data-access`：新增数据源、缓存目录或指标依赖时使用
-- `debug-skill-run`：`manage_daily_data` / `run_daily_pipeline` / `run_post_trade` 失败时使用
-
 以上 skill 位于 `.codex/skills/`。
 
 ## Commands

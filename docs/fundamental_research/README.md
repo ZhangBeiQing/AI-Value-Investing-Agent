@@ -116,14 +116,12 @@ research_outputs/
 ├── industry_chain_research.md
 ├── expectation_snapshot.md
 ├── draft_v1.md
-├── challenge_round_01.md
-├── draft_v2.md
-└── closure_review.md       # challenge 出现 high 问题时需要
+└── challenge_round_01.md
 ```
 
 - Industry Researcher 写产业链研究；
 - Expectation Scout 写财报前预期；
-- Financial Author 写初稿、修订稿和最终报告；
+- Financial Author 写初稿，并在读取质询后直接写最终报告；
 - Challenger 写质询及条件复核；
 - 主 Agent 通过脚本更新 `summary_index.json`。
 
@@ -136,7 +134,7 @@ python scripts/register_financial_report_summary.py \
   --require-deep-research
 ```
 
-`--require-deep-research` 会检查初稿、质询、修订稿、最终文件和 high 问题 closure。门禁失败时不会更新 `summary_index.json`。
+`--require-deep-research` 会检查初稿、质询、最终文件和 high 问题闭环。门禁失败时不会更新 `summary_index.json`。
 
 ## 8. 下游使用
 

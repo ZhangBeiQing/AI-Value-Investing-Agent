@@ -223,13 +223,14 @@
 - 逐项回应 Challenger；
 - 修正数字、归因、预期差、产业链、估值和未来情景；
 - 不接受的质询必须用证据解释；
-- 无法解决的高严重度问题写入“未解决问题与披露限制”，并说明对结论的影响；
-- 按 `financial_report_output_schema.md` 生成完整修订稿与最终报告；
+- 无法由公开信息解决但仍影响判断的问题，按性质融入最终报告 §16“风险、替代解释
+  与证伪条件”或 §17“下一季度验证清单”，不得单列“未解决问题与披露限制”；
+- 来源贴近对应事实和判断标注，不得在最终报告单列“证据与来源”；
+- 按 `financial_report_output_schema.md` 直接生成吸收质询后的完整最终报告；
 - 最终报告不得包含真实交易动作。
 
 ### 唯一写入
 
-- `research_outputs/draft_v2.md`
-- `manifest.json` 声明的最终 `financial_reports/YYYYMMDD.md`
+`manifest.json` 声明的最终 `financial_reports/YYYYMMDD.md`
 
 不得修改 `summary_index.json`。

@@ -15,6 +15,8 @@
 3. 热点主题和板块热度文件（存在时）
 4. 当前股票唯一的 `04_stock_research/*_research.md`
 
+**研究包必须分段顺序完整读到结尾**：若文件较长（通常 40-60KB、近千行），必须用 Read 按 offset 分多次读到末尾，禁止只靠关键词搜索、`grep` 或局部摘录理解研究包。只有完整读完本股研究包后，才允许开始写 opening。
+
 不得读取其他股票研究包。按共同分析规则完成必要的联网补证。
 
 ## 分析要求
@@ -28,6 +30,8 @@
 - 若没有可信的反对理由，允许输出空数组，不编造理由。
 
 ## 唯一输出
+
+写文件前先完整阅读 `.codex/skills/auto-trading-fixed-tracked/references/json-writing-guide.md`，按其中「提交前强制自检」校验后再回传。
 
 只写主 Agent 指定的 `bear/opening.json`：
 

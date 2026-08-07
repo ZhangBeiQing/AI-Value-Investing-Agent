@@ -15,6 +15,8 @@ Rebuttal 的任务不是重新写一份 opening，也不是强制反驳每一条
 3. 之前已经读取的共同分析规则和原始证据；
 4. 在反驳依赖新的高时效事实时，进行定向联网核验。
 
+若需复核研究包中对应章节，可以按需重新分段读取相关部分（不要求重读全文，但禁止仅凭记忆或摘录引用未核对的原文）。
+
 ## 审核方法
 
 按对方 `arguments` 的顺序逐条检查：
@@ -28,6 +30,8 @@ Rebuttal 的任务不是重新写一份 opening，也不是强制反驳每一条
 - 不得修改双方 opening。
 
 ## 唯一输出
+
+写文件前先完整阅读 `.codex/skills/auto-trading-fixed-tracked/references/json-writing-guide.md`，按其中「提交前强制自检」校验后再回传。
 
 只写主 Agent 指定的本方 `rebuttal.json`：
 

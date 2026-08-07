@@ -64,15 +64,22 @@ data/stock_info/{stock_name}_{symbol}/disclosures/pdfs/
 
 ## 三、产业链分组
 
-读取所有 ready item 的 `05_agent_input.md`、财报业务描述和 `existing_industry_research.md`，按以下层级分组：
+**每家公司必须有行业研究**：每只 ready 股票都要由 Industry Researcher 完成其所在细分产业链的行业研究，没有例外，不能因为单公司或无法归组就跳过行业研究。
+
+读取所有 ready item 的 `05_agent_input.md`、财报业务描述和 `existing_industry_research.md`，按以下层级识别每家公司的细分产业链：
 
 ```text
 terminal_theme → subchain → value_chain_node → company_exposure
 ```
 
-复用必须以 `subchain` 相同为前提。“AI 硬件”不是可复用细分链；PCB、光模块、液冷、存储、电源和服务器分别研究。无法可靠归组时按单公司独立研究。
+**同一产业链可复用，不同产业链各自分析**：
 
-同一细分产业链只启动一个 Industry Researcher。它可以在一份共享研究中覆盖该组所有公司，但必须分别研究公司业务暴露。共享文件先由该 Agent 单独写完，再作为只读输入给组内股票；其他角色不得回写。旧 card 只作线索，所有可变事实必须按本次披露窗口刷新。
+- 当同一天选中的多只股票属于同一细分产业链（`subchain` 相同）时，只启动一个 Industry Researcher，用一份共享行业研究覆盖该组所有公司，但必须分别研究每家公司对公司自身的业务暴露；
+- 不同细分产业链的股票必须各自启动自己的 Industry Researcher，独立完成各自的行业研究，不得相互借用；
+- “AI 硬件”不是可复用细分链；PCB、光模块、液冷、存储、电源和服务器分别研究；
+- 即使当天只有一只股票，也必须为它启动 Industry Researcher，完成该股所在细分产业链的行业研究。
+
+共享文件先由该 Agent 单独写完，再作为只读输入给组内股票；其他角色不得回写。旧 card 只作线索，所有可变事实必须按本次披露窗口刷新。
 
 ## 四、分波次执行
 
@@ -82,7 +89,7 @@ terminal_theme → subchain → value_chain_node → company_exposure
 2. 每股启动一个 Expectation Scout；
 3. 等产业链研究与预期快照完成后，每股启动一个 Financial Author 写 `draft_v1.md`；
 4. 每股启动一个 Research Challenger 写 `challenge_round_01.md`；
-5. 复用原 Financial Author 会话，读取质询并写 `draft_v2.md` 和最终报告；
+5. 复用原 Financial Author 会话，读取质询并直接写最终报告；
 6. 主 Agent 通过质量门禁后逐股注册。
 
 不得为了省并发让同一个 Agent 同时担任 Author 和 Challenger。Author 初稿与修订必须复用同一会话，不额外启动 Finalizer。
@@ -110,17 +117,19 @@ terminal_theme → subchain → value_chain_node → company_exposure
 
 Author 完成修订后，主 Agent 检查：
 
-- `draft_v1.md`、`challenge_round_01.md`、`draft_v2.md` 和最终报告均存在且非占位；
+- `draft_v1.md`、`challenge_round_01.md` 和最终报告均存在且非占位；
 - 财报前预期没有时间穿越；
 - 年度一致预期没有冒充季度一致预期；
 - 最新增强估值的财务基准期已说明；
 - 新财报口径 TTM/Forward 估值已重算，或明确说明无法计算；
 - 最近两年整体与重大业务趋势、同比、环比、季节性和归因已覆盖；
 - 产业链结论落到公司收入/利润暴露，没有预设龙头；
-- Challenger 的高严重度问题已由 Author 在修订稿中解决，或列入未解决事项并说明影响；
+- Challenger 的高严重度问题已由 Author 解决，或按影响融入最终报告 §16/§17；
+- 最终报告不含“未解决问题与披露限制”或“证据与来源”独立章节；
 - 最终报告不含占位符、伪造来源或交易指令。
 
-高严重度问题未闭环时，不注册。允许在最终报告中保留真正无法由公开信息回答的问题，但必须说明它如何影响结论。
+高严重度问题未闭环时不注册。真正无法由公开信息回答的问题必须融入 §16/§17，
+说明其对判断的影响和后续验证方式，不得输出研究过程附录。
 
 ## 七、注册最终报告
 
@@ -147,3 +156,18 @@ Financial Author 不得自行写 `summary_index.json`。注册失败时保留研
 - `summary_index.json` 是否注册成功。
 
 不在汇报中代替报告生成买卖建议。
+
+## 九、历史回测调用
+
+当 `backtest-fixed-tracked` 因 `needs_financial_research` 调用本 Skill 时：
+
+- 使用回测状态返回的 `preparation_command`，只处理 `required_items`；
+- 每股 `05_agent_input.md` 会声明历史回测模式，全体角色必须先完整读取同
+  workdir 的 `00_backtest_context.md`；
+- Industry Researcher、Author 与 Challenger 的联网资料不得晚于回测决策日；
+  Expectation Scout 继续使用更严格的财报公告前截止时间；
+- 历史模式找不到分析日一致预期快照时禁止回退到当前预测缓存；
+- 上期基本面记忆只能选当前财报公告日以前的已登记报告，不能读取后来财报；
+- 产业研究候选只能列出文件名可确认不晚于回测日的历史 card；
+- 注册必须使用返回模板并保留
+  `--as-of-date {decision_date} --require-deep-research`。

@@ -1,4 +1,4 @@
-更新日期：2026-08-03
+更新日期：2026-08-04
 
 # AI-Value-Investing-Agent 项目系统白皮书
 
@@ -12,7 +12,7 @@
 
 ## 1. 日常主流程（这是「每天真正跑的链路」）
 
-仓库当前的实际日常节奏：早上 7 点起床后，对**昨天收盘**的数据做分析，并为下一交易日生成预案。所有脚本的 `--date` 都指「要分析的交易日」，默认 `today - 1`；周末/节假日如果「昨天」不是交易日，需要手动指定最近一个交易日。
+仓库当前的实际日常节奏：早上 7 点起床后，对**昨天收盘**的数据做分析，并为下一交易日生成预案。所有脚本的 `--date` 都指「要分析的交易日」，默认 `today - 1`；周末/节假日如果「昨天」不是交易日，需要手动指定最近一个交易日。`refresh_all_for_date.py` 和 `run_daily_pipeline.py` 都有程序级交易日守卫：误传休市日时以成功状态显示 `SKIPPED`，不刷新数据、不创建该日 `skill_runs`，也不继续打印后续 Skill 清单。
 
 ### 1.1 一键刷数据 + 量化初筛
 
@@ -171,7 +171,9 @@ data/skill_runs/YYYY-MM-DD/
 ### 3.1 统一入口 `SharedDataAccess`
 
 - **唯一入口**：`shared_data_access.SharedDataAccess.prepare_dataset(symbolInfo, as_of_date, ...)` 是访问 akshare / 巨潮的唯一路径。
+- **交易日入口**：`shared_data_access.market_calendar` 优先使用 `000001.IDX` 实际行情日期，缓存不能完整覆盖请求区间时使用 `pandas_market_calendars` 的 `SSE` 日历；加载失败时直接报错，禁止退化成“周一至周五”近似。
 - 它会先调用 `ensure_symbol_data` 刷新价格、财报、股本、公告缓存，再按 `as_of_date` 截断 DataFrame，组装 `FinancialDataBundle` / `PriceDataBundle` / `ShareInfo` / `DisclosureBundle` 返回。
+- 当历史请求日期早于价格缓存首个交易日时，统一标记为 `not_listed_as_of_date` 并从当日研究集合排除；缓存缺失、损坏或已上市股票异常缺数据仍按错误处理。
 - ETF / 指数会自动降级为「仅价格」模式。
 - 设计与调用姿势详见 `docs/share_data_access/README.md`。
 
@@ -310,9 +312,9 @@ data/skill_runs/YYYY-MM-DD/
 | `auto-trading-fixed-tracked` | 用户说「开始今天固定股票池交易」 → `fixed_tracked/05_decision.json` |
 | `auto-trading-short-book` | 用户说「开始今天短线股票池交易」 → `short_book/05_decision.json` |
 | `auto-trading-long-book` | 用户说「开始今天长期股票池交易」 → `long_book/05_decision.json` |
+| `backtest-fixed-tracked` | 指定历史区间 → 隔离运行 fixed_tracked 多 Agent 决策、D+1 开盘模拟成交与净值汇总 |
 | `add-skill-pipeline-step` | 修改 / 新增 01-08 流水线步骤时使用 |
 | `extend-shared-data-access` | 新增数据源、缓存目录、衍生指标时使用 |
-| `debug-skill-run` | 主链路（`manage_daily_data` / `run_daily_pipeline` / `run_post_trade`）失败时使用 |
 
 ### 7.4 Commands（`.codex/commands/`）
 

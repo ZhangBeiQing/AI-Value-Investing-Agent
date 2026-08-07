@@ -167,7 +167,7 @@ load_yesterday_daily_summary(signature: str) -> dict | None
 # 加载昨天的 portfolio_daily_summary 条目
 ```
 
-`build_stock_research` 使用 `get_stock_memory_context` 生成 `04_stock_research` 的“持仓与投资逻辑记忆”。完整历史仍保存在 `stock_decisions.json`；下一轮 Agent只看到安全投影视图，而不是上一轮的完整执行计划。其他历史函数继续服务组合上下文和旧流程。
+`build_stock_research` 使用 `get_stock_memory_context` 生成 `04_stock_research` 的“持仓与投资逻辑记忆”。完整历史仍保存在 `stock_decisions.json`；下一轮 Agent只看到最后一次投资逻辑总结及其待核验事项，不再注入所有历史 BUY/SELL 全文，也不会读取上一轮完整执行计划。其他历史函数继续服务组合上下文和旧流程。
 
 ## 5. AI 输出格式（输入 → 系统）
 

@@ -40,7 +40,12 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("002415.SZ", "海康威视", "安防监控"),
     StockEntry("02513.HK", "智谱", "人工智能大模型"),
     StockEntry("603283.SH", "赛腾股份", "消费电子自动化设备"),
-    StockEntry("301536.SZ", "星宸科技", "AI视觉芯片")
+    StockEntry("301536.SZ", "星宸科技", "AI视觉芯片"),
+    StockEntry("688235.SH", "百济神州-U", "创新药"),
+    StockEntry("600036.SH", "招商银行", "零售银行"),
+    StockEntry("601398.SH", "工商银行", "国有大行"),
+    StockEntry("603195.SH", "公牛集团", "民用电工"),
+    StockEntry("603288.SH", "海天味业", "调味品龙头")
 ]
 
 
