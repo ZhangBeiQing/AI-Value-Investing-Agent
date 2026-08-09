@@ -168,6 +168,63 @@ class BacktestLedger:
             if symbol != "CASH" and float(shares or 0) > 0
         )
 
+    def average_costs(self, on_or_before: str | None = None) -> dict[str, float]:
+        """Replay the append-only execution ledger and return current average costs."""
+
+        records = self.records()
+        if on_or_before:
+            records = [
+                record
+                for record in records
+                if isinstance(record.get("date"), str)
+                and record["date"] <= on_or_before
+            ]
+        records.sort(
+            key=lambda item: (str(item.get("date") or ""), int(item.get("id") or 0))
+        )
+
+        tracked_shares: dict[str, float] = {}
+        average_costs: dict[str, float] = {}
+        for record in records:
+            action_payload = record.get("this_action") or {}
+            for action in action_payload.get("actions") or []:
+                if not isinstance(action, dict):
+                    continue
+                symbol = str(action.get("symbol") or "").strip()
+                action_type = str(action.get("action") or "").upper()
+                try:
+                    shares = float(action.get("shares") or 0)
+                    price = float(action.get("price") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if not symbol or symbol == "CASH" or shares <= 0:
+                    continue
+
+                previous_shares = tracked_shares.get(symbol, 0.0)
+                if action_type == "BUY" and price > 0:
+                    previous_cost = average_costs.get(symbol, 0.0)
+                    new_shares = previous_shares + shares
+                    average_costs[symbol] = (
+                        previous_cost * previous_shares + price * shares
+                    ) / new_shares
+                    tracked_shares[symbol] = new_shares
+                elif action_type == "SELL":
+                    remaining_shares = max(0.0, previous_shares - shares)
+                    if remaining_shares == 0:
+                        tracked_shares.pop(symbol, None)
+                        average_costs.pop(symbol, None)
+                    else:
+                        tracked_shares[symbol] = remaining_shares
+
+        if not records:
+            return {}
+        latest_positions = dict(records[-1].get("positions") or {})
+        return {
+            symbol: cost
+            for symbol, cost in average_costs.items()
+            if float(latest_positions.get(symbol, 0.0) or 0.0) > 0
+        }
+
     def mark_to_market(
         self,
         target_date: str,

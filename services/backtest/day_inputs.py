@@ -31,24 +31,6 @@ from services.trading.trade_summary import (
 LOGGER = get_logger("BacktestDayInputs")
 
 
-def _load_filled_orders(agent_data_root: Path, signature: str) -> list[dict[str, Any]]:
-    """读取回测订单流，返回 execution_date <= run_date 的已成交记录。"""
-    orders_file = agent_data_root / signature / "orders.jsonl"
-    if not orders_file.exists():
-        return []
-    orders: list[dict[str, Any]] = []
-    for line in orders_file.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict):
-            orders.append(payload)
-    return orders
-
-
 def _position_label(symbol: str) -> str:
     """返回带名称的持仓标签，如 海康威视_002415.SZ；CASH 保持原样。"""
     if symbol == "CASH":
@@ -64,67 +46,67 @@ def _portfolio_position_summary(
     experiment: BacktestExperiment,
     run_date: str,
     positions: dict[str, float],
-) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
-    """按已成交订单计算每只持仓的加权平均成本、浮动盈亏与盈亏率。
+) -> tuple[dict[str, float], dict[str, float], dict[str, str]]:
+    """按隔离仓位账本计算每只持仓的平均成本、浮动盈亏与盈亏率。
 
     返回 (costs, profits, return_pcts)，键为带名称的持仓标签（如 海康威视_002415.SZ）；
     只含当前持股 > 0 的股票。
-    成本 = 已成交 BUY 成交额合计 / 已成交 BUY 股数合计（忽略手续费，回测费率 0）。
+    成本按 position.jsonl 的成交动作回放：买入采用移动加权均价，卖出不改变剩余成本，
+    清仓后重新买入则重置成本（回测费率为 0）。
     浮动盈亏 = (run_date 收盘 - 加权成本) * 当前持股数。
     """
-    orders = _load_filled_orders(
-        experiment.context.agent_data_root,
-        experiment.signature,
+    ledger = BacktestLedger(
+        agent_data_root=experiment.context.agent_data_root,
+        signature=experiment.signature,
+        source_data_root=experiment.context.source_data_root,
     )
-    bought_shares: dict[str, float] = {}
-    bought_amount: dict[str, float] = {}
-    for order in orders:
-        if order.get("status") != "filled":
-            continue
-        exec_date = str(order.get("execution_date") or "")
-        if exec_date and exec_date > run_date:
-            continue
-        symbol = order.get("symbol")
-        if not symbol or symbol == "CASH":
-            continue
-        action = str(order.get("action") or "").upper()
-        if action != "BUY":
-            continue
-        shares = float(order.get("filled_shares") or 0)
-        price = float(order.get("execution_price") or 0)
-        if shares <= 0 or price <= 0:
-            continue
-        bought_shares[symbol] = bought_shares.get(symbol, 0.0) + shares
-        bought_amount[symbol] = bought_amount.get(symbol, 0.0) + shares * price
+    average_costs = ledger.average_costs(on_or_before=run_date)
+    held_symbols = {
+        symbol
+        for symbol, raw_shares in positions.items()
+        if symbol != "CASH" and float(raw_shares or 0) > 0
+    }
+    missing_cost_symbols = sorted(held_symbols.difference(average_costs))
+    if missing_cost_symbols:
+        raise RuntimeError(
+            "回测持仓成本无法从 position.jsonl 完整回放，拒绝生成不完整的 03_agent_input.md: "
+            + ", ".join(missing_cost_symbols)
+        )
 
     costs: dict[str, float] = {}
     profits: dict[str, float] = {}
-    return_pcts: dict[str, float] = {}
+    return_pcts: dict[str, str] = {}
+    missing_price_symbols: list[str] = []
     for symbol, raw_shares in positions.items():
         if symbol == "CASH":
             continue
         shares = float(raw_shares or 0)
         if shares <= 0:
             continue
-        total_shares = bought_shares.get(symbol, 0.0)
-        total_amount = bought_amount.get(symbol, 0.0)
-        if total_shares <= 0 or total_amount <= 0:
-            continue
-        avg_cost = total_amount / total_shares
+        avg_cost = average_costs[symbol]
+        label = _position_label(symbol)
+        costs[label] = round(avg_cost, 4)
         price = close_on_or_before(
             parse_symbol(symbol),
             run_date,
             base_dir=experiment.context.source_data_root,
         )
         if price is None:
+            missing_price_symbols.append(symbol)
             continue
         _, close = price
-        label = _position_label(symbol)
-        costs[label] = round(avg_cost, 4)
         profits[label] = round((close - avg_cost) * shares, 2)
         if avg_cost > 0:
-            return_pcts[label] = round((close / avg_cost - 1.0) * 100.0, 2)
+            return_pct = (close / avg_cost - 1.0) * 100.0
+            return_pcts[label] = f"{return_pct:.2f}%"
+    if missing_price_symbols:
+        raise RuntimeError(
+            f"回测持仓缺少 {run_date} 或之前的收盘价，拒绝生成不完整的持仓盈亏: "
+            + ", ".join(sorted(missing_price_symbols))
+        )
     return costs, profits, return_pcts
+
+
 COPY_INPUTS = (
     "01_global_context.md",
     "02_basic_snapshot_payload.json",
