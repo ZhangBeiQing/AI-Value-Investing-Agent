@@ -84,7 +84,7 @@ REPORT_EXCLUDE_HINTS = (
     "说明会", "制度", "问询", "回复", "利润分配", "权益分派", "募集资金", "非经营性资金占用",
     "关联资金往来", "审计委员会", "董事会", "监事会", "自愿性披露", "环境", "ESG", "社会责任",
     "英文版", "英文简版", "更正", "修订", "补充", "通告", "股东大会", "回购", "可转债", "规程",
-    "募集说明书", "披露提示",
+    "募集说明书", "披露提示", "业绩发布会", "业绩说明会", "发布会",
 )
 
 PREVIOUS_PERIOD = {
@@ -453,6 +453,13 @@ def validate_deep_research_artifacts(
     forbidden_sections = forbidden_section_pattern.findall(final_content)
     if forbidden_sections:
         errors.append("最终财报报告包含禁止的过程性独立章节：未解决问题与披露限制/证据与来源")
+
+    header_meta_pattern = re.compile(
+        r"^[-*]\s*(?:本期财报|上一期关键财报|分析日(?:\s*/?\s*回测决策日)?|回测决策日|知识截止|单位|数据来源|修订说明)\s*[：:]\s*\S",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    if header_meta_pattern.search("\n".join(final_content.splitlines()[:20])):
+        errors.append("最终财报报告标题下包含禁止的元信息键值行块（本期财报/分析日/数据来源/修订说明等）")
 
     challenge = contents.get("challenge_round_01") or ""
     if re.search(r"严重度\s*[：:]\s*high\b", challenge, re.IGNORECASE):
