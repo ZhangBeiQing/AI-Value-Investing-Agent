@@ -375,3 +375,6 @@ python scripts/run_post_trade.py \
 - 文件不存在、JSON 损坏或校验失败时，不得默默跳过。
 - 纯 JSON 格式错误由原文件所有者修复；结论冲突向用户报告。
 - 旧 `subagent_result` 流程只作为历史兼容，不在新 fixed_tracked 辩论流程中使用。
+
+## 10. 主Agent绝对不能把任何自己的主观感受传递给subagent!!! 这是被绝对禁止的！！在生成给subagent的prompt的时，主agent只是一个客观的透传工具，绝对不能擅自提醒subagent或者告诉subagent
+自己的观点！！！绝对禁止
