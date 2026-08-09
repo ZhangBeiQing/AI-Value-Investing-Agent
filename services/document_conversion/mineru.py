@@ -185,7 +185,7 @@ class PDFMarkdownConverter:
         except (requests.RequestException, ValueError) as exc:
             raise MinerUConversionError(
                 f"无法连接 MinerU API {self.settings.api_url}。"
-                "请先运行 scripts/start_mineru_api.sh，并检查 /health。"
+                "请先让用户手动运行 scripts/start_mineru_api.sh，并检查 /health，禁止AI自动运行mineru。"
             ) from exc
 
         protocol_version = payload.get("protocol_version")

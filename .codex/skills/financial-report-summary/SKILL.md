@@ -161,7 +161,17 @@ Financial Author 不得自行写 `summary_index.json`。注册失败时保留研
 
 当 `backtest-fixed-tracked` 因 `needs_financial_research` 调用本 Skill 时：
 
-- 使用回测状态返回的 `preparation_command`，只处理 `required_items`；
+- **先就近复用，后启动角色**：对 `required_items` 的每一项，先在其
+  `data/stock_info/{stock_name}_{symbol}/financial_reports/` 目录下查找是否存在
+  公告日与决策日相邻（通常 ±2 个自然日以内）且已经完成深度研究的总结文件
+  （`YYYYMMDD.md`，文件内容非占位、长度足够）。若存在，直接用该文件注册：
+  `python scripts/register_financial_report_summary.py --symbol {symbol} --path {现有文件} --as-of-date {decision_date}`
+  （不要加 `--require-deep-research`，因为该文件并非本轮 workdir 深研产物，其
+  manifest 不存在）。注册后该股票门禁即通过，不需要启动任何角色，也不调用 MinerU。
+  A 股与港股对同一份定期报告可能有两个渠道公告（港股海外监管公告 vs A 股年报），
+  公告日相邻时视为同一份报告，可安全复用；
+- 找不到相邻已注册总结时，才使用回测状态返回的 `preparation_command` 正常启动
+  深研流程，只处理 `required_items`；
 - 每股 `05_agent_input.md` 会声明历史回测模式，全体角色必须先完整读取同
   workdir 的 `00_backtest_context.md`；
 - Industry Researcher、Author 与 Challenger 的联网资料不得晚于回测决策日；
