@@ -25,7 +25,7 @@ class ForcedShortBookEntry:
 
 TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("300476.SZ", "胜宏科技", "GB300 HDI板独家份额50%"),
-    StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
+    # StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
     StockEntry("002714.SZ", "牧原股份", "生猪养殖"),
     StockEntry("603501.SH", "豪威集团", "半导体设计"),
     StockEntry("600276.SH", "恒瑞医药", "创新医药"),
@@ -38,7 +38,7 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("518800.SH", "黄金基金ETF", "黄金"),
     StockEntry("688213.SH", "思特威-W", "sensor传感器"),
     StockEntry("002415.SZ", "海康威视", "安防监控"),
-    StockEntry("02513.HK", "智谱", "人工智能大模型"),
+   #  StockEntry("02513.HK", "智谱", "人工智能大模型"),
     StockEntry("603283.SH", "赛腾股份", "消费电子自动化设备"),
     StockEntry("301536.SZ", "星宸科技", "AI视觉芯片"),
     StockEntry("688235.SH", "百济神州-U", "创新药"),
@@ -50,8 +50,8 @@ TRACKED_A_STOCKS: List[StockEntry] = [
 
 
 FORCED_SHORT_BOOK_STOCKS: List[ForcedShortBookEntry] = [
-    ForcedShortBookEntry("02513.HK", "智谱", "人工强制纳入短线候选"),
-    ForcedShortBookEntry("07709.HK", "南方东英海力士2倍做多", "人工强制纳入短线候选"),
+   #  ForcedShortBookEntry("02513.HK", "智谱", "人工强制纳入短线候选"),
+   #  ForcedShortBookEntry("07709.HK", "南方东英海力士2倍做多", "人工强制纳入短线候选"),
 ]
 
 TRACKED_SYMBOLS: List[str] = [entry.symbol for entry in TRACKED_A_STOCKS]
