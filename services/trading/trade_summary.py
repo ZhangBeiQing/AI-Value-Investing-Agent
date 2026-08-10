@@ -78,6 +78,7 @@ SUMMARY_DETAIL_FIELDS = [
     "risk_reward_setup",
     "motion",
     "court",
+    "price_impression",
     "recommended_action",
     "action_num",
     "action_type",
