@@ -7,6 +7,7 @@
     python scripts/refresh_all_for_date.py --date 2026-04-22
     python scripts/refresh_all_for_date.py --fresh-heavy  # 连财报结构化数据一起强刷
     python scripts/refresh_all_for_date.py --include-selection-universe
+    python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-date
 """
 
 from __future__ import annotations
@@ -47,7 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--date",
         default=_default_date(),
-        help="要分析的交易日 YYYY-MM-DD（默认为昨天）。周末或节假日请手动指定最近一个交易日。",
+        help=(
+            "要分析的日期 YYYY-MM-DD（默认为昨天）。默认要求交易日；"
+            "周末或节假日补充分析需同时传 --allow-non-trading-date。"
+        ),
     )
     parser.add_argument(
         "--fresh-heavy",
@@ -96,6 +100,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="跳过新闻采集和板块热度分析步骤。",
     )
+    parser.add_argument(
+        "--allow-non-trading-date",
+        action="store_true",
+        help=(
+            "显式允许在周末或节假日按该自然日刷新并生成分析输入；"
+            "仅用于盘外补充宏观/新闻分析，不表示该日可以交易。"
+        ),
+    )
     return parser
 
 
@@ -104,12 +116,13 @@ def main() -> int:
     run_date: str = args.date
 
     LOGGER.info(
-        "开始一键刷新：date=%s, fresh_heavy=%s, max_workers=%d, include_selection_universe=%s, generate_prefilter=%s",
+        "开始一键刷新：date=%s, fresh_heavy=%s, max_workers=%d, include_selection_universe=%s, generate_prefilter=%s, allow_non_trading_date=%s",
         run_date,
         args.fresh_heavy,
         args.max_workers,
         args.include_selection_universe,
         not args.no_generate_prefilter,
+        args.allow_non_trading_date,
     )
 
     result = run_refresh_pipeline(
@@ -123,6 +136,7 @@ def main() -> int:
         include_selection_universe=args.include_selection_universe,
         generate_prefilter=not args.no_generate_prefilter,
         skip_news_boards=args.skip_news_boards,
+        allow_non_trading_date=args.allow_non_trading_date,
     )
 
     print(summarize_result(result))
@@ -132,7 +146,13 @@ def main() -> int:
         return 0
 
     if result.succeeded:
-        print(format_followup_checklist(run_date, include_selection_universe=args.include_selection_universe))
+        print(
+            format_followup_checklist(
+                run_date,
+                include_selection_universe=args.include_selection_universe,
+                allow_non_trading_date=args.allow_non_trading_date,
+            )
+        )
         LOGGER.info("一键刷新整体成功")
         return 0
 

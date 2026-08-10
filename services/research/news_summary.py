@@ -199,7 +199,7 @@ def search_stock_news(
     stock_code = symbol.strip()
     stock_name = SYMBOL_NAME_MAP.get(stock_code, stock_code)
 
-    if is_etf_symbol(stock_code):
+    if is_etf_symbol(parse_symbol(stock_code)):
         payload = {
             "stock": f"{stock_name} ({stock_code})",
             "today": today_time,

@@ -65,15 +65,24 @@ data/skill_runs/_analysis_index.json
 
 主 Agent必须让目标角色直接读取对应文件。禁止在运行时 prompt 中复制、概括或改写这些规则。
 
-**主 Agent 的角色边界：只负责调度与文件路径，不代做任何个股决策。** 主 Agent 只向 subagent 传递「角色身份、必读文件清单、唯一输出路径」这三类必要信息；所有具体决策——包括价值判断、`action_num` 的数量、分批建仓的规模与条件、价格区间、取整方式、仓位比例——都必须由对应 subagent 在读完其规则与研究包后自行得出。主 Agent 不得在 prompt 中写入任何结论、数字、比例、取整或价格引导，即使是为了「确保结果正确」；正确的产出只能来自 subagent 按规则自主推理，而非主 Agent 的干预。违反时，输出看似正确也属于越界。
+## 3.1 模型角色路由
 
-**主 Agent 的角色边界：只负责调度与文件路径，不代做任何个股决策。** 主 Agent 只向 subagent 传递「角色身份、必读文件清单、唯一输出路径」这三类必要信息；所有具体决策——包括价值判断、`action_num` 的数量、分批建仓的规模与条件、价格区间、取整方式、仓位比例——都必须由对应 subagent 在读完其规则与研究包后自行得出。主 Agent 不得在 prompt 中写入任何结论、数字、比例、取整或价格引导，即使是为了「确保结果正确」；正确的产出只能来自 subagent 按规则自主推理，而非主 Agent 的干预。违反时，输出看似正确也属于越界。
+固定股池辩论必须按以下 OpenCode subagent profile 派发：
+
+- Bull opening、Bear opening，以及复用原会话的 Bull/Bear rebuttal：`fixed-tracked-advocate-luna`（GPT-5.6 Luna）；
+- 三名独立 Juror 与唯一 finalizer：`fixed-tracked-adjudicator-terra`（GPT-5.6 Terra）。
+- 如果是回测模式为了降低成本，全部使用更便宜的`fixed-tracked-advocate-luna`（GPT-5.6 Luna）
+
+Juror 属于有投票权的裁判角色，不得改用 Luna。除非专用 profile 不可用且用户明确同意降级，否则不得静默回退到通用 Agent 或其他模型。
+
+**主 Agent 的角色边界：只负责调度与文件路径，不代做任何个股决策，不传递任何客观规则，所有规则都在文件里，主agent只要让subagent看文件就行** 主 Agent 只向 subagent 传递「角色身份、必读文件清单、唯一输出路径」这三类必要信息；所有具体决策——包括价值判断、`action_num` 的数量、分批建仓的规模与条件、价格区间、取整方式、仓位比例——都必须由对应 subagent 在读完其规则与研究包后自行得出。主 Agent 不得在 prompt 中写入任何结论、数字、比例、取整或价格引导或者分析规则、分析方法等，即使是为了「确保结果正确」；正确的产出只能来自 subagent 按规则自主推理，而非主 Agent 的干预。违反时，输出看似正确也属于越界。
 
 ## 4. 阶段 A：建立 P0
 
 ### A1. 确定日期
 
-用户明确指定 `YYYY-MM-DD` 时使用该日期，否则使用最近一个已经产生收盘数据的交易日。目录中的日期就是“要分析的交易日”，不是下一交易日。
+用户明确指定 `YYYY-MM-DD` 时使用该日期，否则使用最近一个已经产生收盘数据的交易日。
+主agent再给不同subaget比如bull bear juror和finalizer派发任务时，必须显式告诉它当前分析的日期
 
 ### A2. 主 Agent读取
 
@@ -84,8 +93,11 @@ data/skill_runs/_analysis_index.json
 3. `01_global_context.md`
 4. `_analysis_index.json`（存在时）
 5. 热点主题和板块热度文件（存在时）
+6. `data/agent_data/book-fixed_tracked/latest_decision_snapshot.json`（存在时）
 
 不要打开任何 `04_stock_research/*_research.md`。
+
+快照仅用于识别各股票上次结论、待验证事实和遗留风险，不能替代当天资料，也不得把其中历史动作、数量或价格计划当作当天直接指令。
 
 ### A3. 输出 P0 并暂停
 
@@ -102,16 +114,18 @@ data/skill_runs/_analysis_index.json
 
 对用户确认后的每只 P0 股票执行本节。不同股票可以并行，同一股票内部必须按阶段顺序执行。
 
-### B0. 全量并发调度（硬性规定，禁止分批）
+### B0. 并发调度（单阶段每批最多 10 个）
 
-**主 Agent 必须一次性并发启动当天全部 P0 股票同一阶段的全部 subagent，禁止按股票或按批次分批启动。** 这是硬性要求，不得因"担心 Agent 数量太多"、"平台并发上限"或"想先看几只结果再决定"而拆批。
+主 Agent 在同一阶段每批最多同时启动 **10 个 subagent**。若当天该阶段需要超过 10 个，必须按批次执行：上一批全部结束、目标文件全部落盘并校验通过后，才能启动下一批。不得超过 10 个，以避免平台资源竞争导致任务空返回、写错日期目录或文件缺失。
 
-- 阶段一（Opening）：全部 P0 股票 × Bull + Bear = `2 × N` 个 subagent，一次性全部启动；
-- 阶段二（Rebuttal）：复用原 Bull/Bear 会话，全部 P0 × 2 = `2 × N` 个 follow-up，一次性全部唤醒；
-- 阶段三（Juror）：全部 P0 × 3 名独立 Juror = `3 × N` 个 subagent，一次性全部启动；
-- 阶段四（Finalizer）：全部 P0 × 1 = `N` 个 finalizer，一次性全部启动。
+批次只按平台并发上限拆分，不改变研究逻辑；不得在同一股票内部跨阶段混跑，也不得在前一批产物未核验时启动后一批。
 
-示例：8 只 P0 → 同时启动 16 个 Bull/Bear → 同时唤醒 16 个 rebuttal → 同时启动 24 个 Juror → 同时启动 8 个 finalizer。16 只 P0 同理：32 → 32 → 48 → 16。当前平台支持同时运行数百个 subagent，**完全不需要考虑并发数量上限**。
+- 阶段一（Opening）：全部 P0 股票 × Bull + Bear = `2 × N` 个 subagent，按每批最多 10 个启动；
+- 阶段二（Rebuttal）：复用原 Bull/Bear 会话，全部 P0 × 2 = `2 × N` 个 follow-up，按每批最多 10 个唤醒；
+- 阶段三（Juror）：全部 P0 × 3 名独立 Juror = `3 × N` 个 subagent，按每批最多 10 个启动；
+- 阶段四（Finalizer）：全部 P0 × 1 = `N` 个 finalizer，按每批最多 10 个启动。
+
+示例：8 只 P0 的 Opening/Rebuttal 各 16 个，拆成 10+6 两批；Juror 为 24 个，拆成 10+10+4 三批；Finalizer 为 8 个，可一批完成。16 只 P0 时，Opening/Rebuttal 各 32 个，拆成 10+10+10+2 四批；Juror 为 48 个，拆成 10+10+10+10+8 五批；Finalizer 为 16 个，拆成 10+6 两批。
 
 每一阶段必须等该阶段全部 P0 的产物落盘并校验通过后，才统一进入下一阶段；阶段之间不得混跑。单只股票的 `opening → rebuttal → jury → aggregate → finalizer` 内部顺序仍必须严格保持，只是多只股票之间全程并行。
 
@@ -161,6 +175,8 @@ debate/{stock_name}_{symbol}/
 
 ### B2. 并行创建 Bull 和 Bear
 
+各角色把结果写入现有字段，不增加 JSON 字段。Bull/Bear opening 必须创建为 `fixed-tracked-advocate-luna`。
+
 Bull 运行时 prompt：
 
 ```text
@@ -176,6 +192,8 @@ Bull 运行时 prompt：
 
 只允许写入：
 data/skill_runs/{date}/fixed_tracked/debate/{stock_name}_{symbol}/advocates/bull/opening.json
+
+opening 必须遵守财报前盈利推演协议；不得用“等待财报”替代可完成的高频经营分析。
 
 禁止读取其他股票研究包，禁止修改其他辩论文件或 05_decision.json。
 完成后只回传文件路径。
@@ -221,7 +239,7 @@ subagent 返回空结果或未落盘文件时，先检查是否为原会话未�
 
 ### B4. 并行创建三个 Juror
 
-创建三个相互独立的 Agent。每个 Juror 使用相同输入，但写入不同目录：
+创建三个相互独立的 `fixed-tracked-adjudicator-terra` Agent。每个 Juror 使用相同输入，但写入不同目录：
 
 ```text
 你担任 {symbol} {stock_name} 的独立 {juror_id}。
@@ -239,6 +257,8 @@ subagent 返回空结果或未落盘文件时，先检查是否为原会话未�
 不得读取 jury/ 下其他 Juror 的文件。
 只允许写入：
 data/skill_runs/{date}/fixed_tracked/debate/{stock_name}_{symbol}/jury/{juror_id}/ballot.json
+
+投票前必须审计双方是否完成财报前盈利推演；`HOLD`/`FLAT` 不得仅因财报尚未发布。
 
 禁止修改其他文件或 05_decision.json。完成后只回传文件路径。
 ```
@@ -272,7 +292,7 @@ python scripts/manage_debate.py aggregate \
 
 ### B6. 生成唯一 Stock Verdict
 
-为当前股票创建一个独立 finalizer。不得复用任一 Juror，避免某名 Juror 在整理最终底稿时放大自己的选票。finalizer 不是第四名裁判，无权改变 `vote_summary.resolved_action`。
+为当前股票创建一个独立 `fixed-tracked-adjudicator-terra` finalizer。不得复用任一 Juror，避免某名 Juror 在整理最终底稿时放大自己的选票。finalizer 不是第四名裁判，无权改变 `vote_summary.resolved_action`。
 
 ```text
 担任 {symbol} {stock_name} 的唯一 finalizer。
@@ -364,13 +384,15 @@ python scripts/run_post_trade.py \
   --signature book-fixed_tracked
 ```
 
+成功后，除更新 `data/agent_data/book-fixed_tracked/decision_summary.json` 外，还会更新同目录的 `latest_decision_snapshot.json`。该文件按股票保留 `decision_summary.json` 中 `end_date` 最新的一条完整分析结果；下一交易日主 Agent 在阶段 A 选择 P0 前应读取它，不得把其中历史动作或价格计划当作当天直接执行指令。
+
 不得修改真实交易、价格引用、仓位和最小交易单位规则。
 
 ## 9. 调度和失败规则
 
 - 每只股票常规使用 6 个逻辑 Agent：Bull、Bear、Juror 01、02、03、finalizer。
 - 常规共 8 个 turn：2 opening、2 rebuttal follow-up、3 ballot、1 finalizer。
-- **全部 P0 股票必须同时并发启动辩论，不分批**：无论 P0 有多少只（例如 8 只或 16 只），一律在同一次调度中为每只股票并行创建 Bull/Bear/Juror/finalizer，不要因为"平台并发上限"或"担心 Agent 数量太多"而把股票拆成多批串行执行。具体按第 5 节 B0「全量并发调度」执行：Opening 一次性启动 `2×N`、Rebuttal 一次性唤醒 `2×N`、Juror 一次性启动 `3×N`、Finalizer 一次性启动 `N`。**禁止每次只启动其中几只股票的 subagent**，否则视为违规调度。每只股票内部的 `opening → rebuttal → jury → aggregate → finalizer` 阶段顺序仍然必须严格保持，但不同股票之间全部并行。
+- **所有 P0 股票必须完成辩论，但单阶段每批并发不得超过 10 个**：Opening、Rebuttal、Juror、Finalizer 分别按第 5 节 B0 的批次规则执行。每批结束后必须检查目标文件数量、JSON 可解析性和 Schema，再进入下一批；每只股票内部的 `opening → rebuttal → jury → aggregate → finalizer` 阶段顺序仍然必须严格保持。
 - 同一 symbol 内严格执行 `opening → rebuttal → jury → aggregate → finalizer`。
 - 文件不存在、JSON 损坏或校验失败时，不得默默跳过。
 - 纯 JSON 格式错误由原文件所有者修复；结论冲突向用户报告。

@@ -1,6 +1,6 @@
 # SharedDataAccess 使用说明
 
-更新日期：2026-07-14
+更新日期：2026-08-09
 
 ## 1. 模块使命
 
@@ -33,7 +33,7 @@ prepare_dataset(
 主要职责：
 
 1. 调用 `ensure_symbol_data` 触发抓取或刷新本地缓存，支持价格 / 财报 / 股本按需独立刷新
-2. 自动识别指数或 ETF，只返回价格数据，防止对无财务数据的标的发起无效请求
+2. 自动识别指数或 ETF，只返回价格数据，防止对无财务数据的标的发起无效请求；港股 ETF/杠杆产品没有稳定代码前缀，识别时必须传递含名称的完整 `SymbolInfo`
 3. 组装 `PreparedData`：
    - `financials` (`FinancialDataBundle`)：`profit_sheet.csv` / `balance_sheet.csv` / `cash_flow_sheet.csv` / `analysis_indicator.csv` / `financial_abstract.csv`
    - `prices` (`PriceDataBundle`)：`price.csv` 内最近 `price_lookback_days`（默认 1800 天）的行情，包含起止日期、源文件

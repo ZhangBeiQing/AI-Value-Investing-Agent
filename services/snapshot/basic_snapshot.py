@@ -498,7 +498,7 @@ class BasicStockInfoService:
         price_df = self._normalize_price_frame(dataset.prices.frame)
         indicator_price_df = self._build_indicator_gateway_frame(symbol_info, price_df)
 
-        is_etf = is_etf_symbol(symbol_info.symbol)
+        is_etf = is_etf_symbol(symbol_info)
         if is_etf:
             latest_price = _round(self._latest_close(symbol_info.symbol, price_df))
             latest_volume = _round(self._latest_volume(symbol_info.symbol, price_df))

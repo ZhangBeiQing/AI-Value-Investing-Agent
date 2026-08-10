@@ -178,6 +178,47 @@ def calculate_hk_indicator_ttm(
         work_df[revenue_col] = pd.to_numeric(work_df[revenue_col], errors="coerce")
 
     fiscal_end = _parse_fiscal_year_end(work_df)
+
+    # 港股缓存通常只有半年报和年报，不能把这些稀疏期间当作四个季度滚动相加。
+    # 年报直接取全年；半年报用「上年全年 + 本年累计 - 上年同期累计」构造 TTM。
+    annual_rows = work_df[work_df["REPORT_DATE"].dt.month.eq(12)]
+    annual_profit_map = {
+        int(row["REPORT_DATE"].year): float(row["HOLDER_PROFIT"])
+        for _, row in annual_rows.iterrows()
+    }
+    same_period_map = {
+        (int(row["REPORT_DATE"].year), int(row["REPORT_DATE"].month)): float(row["HOLDER_PROFIT"])
+        for _, row in work_df.iterrows()
+        if int(row["REPORT_DATE"].month) in (3, 6, 9)
+    }
+    sparse_ttm_rows: List[Dict[str, Any]] = []
+    for _, row in work_df.iterrows():
+        report_date = row["REPORT_DATE"]
+        year = int(report_date.year)
+        month = int(report_date.month)
+        cumulative_profit = float(row["HOLDER_PROFIT"])
+        if month == 12:
+            ttm_profit = cumulative_profit
+        elif month in (3, 6, 9):
+            prior_annual = annual_profit_map.get(year - 1)
+            prior_same_period = same_period_map.get((year - 1, month))
+            if prior_annual is None or prior_same_period is None:
+                continue
+            ttm_profit = prior_annual + cumulative_profit - prior_same_period
+        else:
+            continue
+        sparse_ttm_rows.append(
+            {
+                "REPORT_DATE": report_date,
+                "TTM_NET_PROFIT": ttm_profit / 100000000,
+                "TTM_NET_PROFIT_RAW": ttm_profit,
+                "TTM_REVENUE": np.nan,
+                "TTM_EPS": float(row[eps_col]) if eps_col and pd.notna(row.get(eps_col)) else np.nan,
+            }
+        )
+    if sparse_ttm_rows:
+        return pd.DataFrame(sparse_ttm_rows)
+
     profit_prev: Dict[int, float] = {}
     revenue_prev: Dict[int, float] = {}
     quarterly_rows: List[Dict[str, Any]] = []

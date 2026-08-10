@@ -1,82 +1,235 @@
-# 单日自动调度
+# 回测逐日调度与角色模板
 
-实验交易日序列中，前 `N-1` 日是决策日，最后一日是最终按收盘价计价日。
-不要为最后一日创建无法在区间内成交的订单。
+本文件只定义“当天怎样调度”。文件所有权、推进门和隔离边界以 [产物与所有权契约](artifact-contract.md) 为准；历史联网边界以 [联网防穿越规则](guarded-web-policy.md) 为准。
 
-交易日序列必须使用 `resolve_experiment_trading_dates()` 的结果。该函数优先读取
-`000001.IDX` 实际行情日期，不能完整覆盖时使用 `SSE` 交易所日历；不要自行枚举
-自然日或工作日。`execution_date` 必须等于该序列中 `decision_date` 后的紧邻日期。
+## 1. 日期和执行日
 
-## 长耗时命令执行
+交易日由 `resolve_experiment_trading_dates()` 解析，禁止手工枚举。前 `N-1` 个日期是决策日，最后一日只用于期末收盘估值。
 
-公告同步与审计、财报准备、PDF 转 Markdown、`prepare-day`、批量重建研究包等命令
-可能持续数十分钟。主 Agent执行这些命令时必须遵守：
+```text
+decision_date = D 日收盘后生成研究和 05
+execution_date = 实验交易日序列中 D 的紧邻下一日
+```
 
-1. 若命令工具支持完整超时参数，将超时设为 `3600` 秒（`3600000` 毫秒）。这是
-   最大允许运行时间，不是固定等待时间；命令运行 20 分钟完成时应立即返回。
-2. 若命令工具采用 session、PTY、yield 或 poll 机制，保持同一个运行会话并持续
-   轮询直到进程退出，累计最多等待 1 小时。初次调用只返回 session、暂时没有新
-   输出或工具短暂 yield，都不代表命令失败，不得因此重启同一命令。
-3. 长命令执行期间至少每 60 秒检查一次会话；仍在运行时向用户简短报告“命令仍
-   在运行”和已运行阶段/时长，不能让用户长时间无法判断程序是正常运行还是卡住。
-4. 执行长命令时保留原始标准输出和标准错误，禁止在命令末尾追加
-   `2>&1 | tail -40`、`| tail`、`| head`、`| grep` 等截断或过滤实时输出的管道，
-   也不要把命令静默放入后台。需要排查时，应在命令结束后另行读取日志文件。
-5. 命令退出后记录退出码，并读取其状态文件、checkpoint 或输出文件确认真实结果；
-   不能只根据最后几行文本判断成功。
+每一天先执行：
 
-## 输入准备
+```bash
+python scripts/manage_fixed_tracked_backtest.py prepare-day \
+  --experiment-id {experiment_id} \
+  --date {decision_date} \
+  --build-missing-inputs \
+  --max-workers 6
+```
 
-1. 运行 `prepare-day --build-missing-inputs`。
-2. 读取 `00_prepare_status.json`。
-3. 检查 `announcement_preparation`。单股公告准备失败会记录 warning 并在后续
-   日期重试；04 会暂时使用该股已有的本地审计公告，不能用未来公告补空。
-4. `status == needs_financial_research` 时，执行返回的财报准备命令和完整
-   `financial-report-summary` 多角色闭环，使用 `--as-of-date` 注册，再重跑
-   返回的 `resume_prepare_day_command`。财报门禁通过以前禁止进入 P0。
-5. 其他 `status != ready` 时停止该日。
-6. 读取当日 `run_manifest.json`，确认股票集合由冻结固定池、12 长期量化候选和持仓股构成。
+读 `{root}/00_prepare_status.json`。`needs_financial_research` 时严格按主 Skill 的财报门禁处理；任何其他非 `ready` 状态都停止当天。
 
-## P0
+```text
+{root} = data/backtests/fixed_tracked/{experiment_id}/skill_runs/{decision_date}/fixed_tracked
+{skill_runs_root} = data/backtests/fixed_tracked/{experiment_id}/skill_runs
+```
 
-主 Agent只读取 00、01、02、03 和可选市场文件，按 `03_agent_input.md` 建立 P0。不要打开 04。
+## 2. P0 与空 P0
 
-无 P0 时不凭空创建个股 verdict，运行：
+主 Agent只读取 `{root}/00`、`01`、`02`、`03`、`{experiment_root}/agent_data/backtest-{experiment_id}/latest_decision_snapshot.json`（存在时）与可选市场级文件，按 `{root}/03_agent_input.md` 选择 P0；不得读 04。快照仅用于上次结论、待验证事实和遗留风险的历史上下文，不能替代当天资料或形成直接交易指令。回测自动接受 P0。
+
+P0 为空时：
 
 ```bash
 python scripts/manage_fixed_tracked_backtest.py no-trade-day \
   --experiment-id {experiment_id} \
-  --date {date} \
+  --date {decision_date} \
   --reason "P0 为空，组合层未发现需要深度辩论的交易机会"
 ```
 
-它只在回测实验目录生成显式空 `05_decision.json`；正式日常 05 的非空契约不变。
+然后跳到第 6 节执行 D+1 无交易结算。
 
-## 辩论
+## 3. 辩论批次和共同规则
+
+每只 P0 固定使用 6 个逻辑角色：Bull、Bear、Juror 01、Juror 02、Juror 03、finalizer；Bull/Bear rebuttal 必须复用 opening 的原会话。
+
+同一阶段最多 10 个 subagent。超过时只按并发上限拆批；上一批目标文件全部落盘并通过 JSON/schema 校验后才启动下一批。不同股票可并行，同一股票严格按：
+
+```text
+prepare → opening → rebuttal → jury → aggregate → finalizer → validate
+```
+
+所有 JSON 写入者先完整读取 `auto-trading-fixed-tracked/references/json-writing-guide.md`，写后按其中要求校验。
+
+主 Agent prompt 只能传：角色身份、日期、必读文件清单、唯一输出路径。不得附加任何研究结论、数字、交易数量、规则解释或主观观点。
+
+## 4. 准备辩论目录
 
 对每只 P0：
 
-1. `manage_debate.py prepare`，`--base-dir` 指向实验 `skill_runs`。
-2. Bull/Bear 同时开始，各自读取 00、共同规则、本股 04 和角色 reference。**Bull 与 Bear 是每只 P0 固定的两个 subagent 会话，保存其 task_id，整个辩论流程必须复用同一会话，不得在任一阶段重新创建全新 Agent。**
-3. Opening 完成后**唤醒原 Agent 的同一会话**（复用 task_id）发送 rebuttal follow-up：反驳 Bear 用原 Bull 会话，反驳 Bull 用原 Bear 会话。subagent 返回空或未落盘时，用原 task_id 续写，不立即新起 Agent。
-4. 三名 Juror 相互独立，不读取彼此 ballot。
-5. `aggregate` 使用实验 `position.jsonl` 中当日实际持股数。
-6. Finalizer 服从 `resolved_action`，生成完整股票 verdict。
-7. `validate --require-verdict`。
+```bash
+python scripts/manage_debate.py prepare \
+  --date {decision_date} \
+  --book-type fixed_tracked \
+  --symbol {symbol} \
+  --base-dir {skill_runs_root}
+```
 
-不同股票可按平台上限并行；同一股票阶段不能乱序。
+`prepare` 只创建目录，不能把它当作研究或投票完成。
 
-## 合并和执行
+## 5. 角色模板
 
-所有 P0 校验后合并 05。回测不暂停等待用户确认。
+### 5.1 Bull / Bear Opening
 
-后处理必须显式提供 `--backtest-root` 和 `--execution-date`。缺少这两个参数时禁止调用，避免落入真实分支。
+Bull：
 
-成功 06 是当日成交幂等凭证。不得删除成功 06 后重跑同一订单。
+```text
+你担任 {symbol} {stock_name} 在 {decision_date} 的 Bull advocate。
 
-## 扩展实验
+直接完整读取：
+1. {root}/00_backtest_context.md
+2. .codex/skills/auto-trading-fixed-tracked/references/debate-bull.md
+3. .codex/skills/auto-trading-fixed-tracked/references/json-writing-guide.md
+4. {root}/03_stock_analysis_input.md
+5. {root}/01_global_context.md
+6. 与本股直接相关的热点和板块文件（存在时）
+7. 当前股票唯一的 {root}/04_stock_research/*_research.md
 
-当用户要求从原结果继续到更晚日期时，先执行 `manage_fixed_tracked_backtest.py
-extend`，再执行 `status`。不要创建第二个实验，也不要复制或重命名原实验目录。
-原结束日扩展后会成为新的决策日；从 `status.progress.next_date` 继续本文件的单日
-流程，新增区间完成后重新 `finalize`。
+只允许写入：
+{root}/debate/{stock_name}_{symbol}/advocates/bull/opening.json
+
+完成后只回传文件路径和完成状态。
+```
+
+Bear 使用同一模板，只替换角色为 `Bear advocate`、reference 为 `debate-bear.md`、输出为 `advocates/bear/opening.json`。
+
+等待两份 opening 合法后才进入 rebuttal。
+
+### 5.2 Rebuttal：必须复用原会话
+
+保存每只股票 Bull 和 Bear opening 的 task ID。Bull follow-up：
+
+```text
+继续担任 {symbol} {stock_name} 在 {decision_date} 的原 Bull advocate。
+
+直接完整读取：
+1. {root}/00_backtest_context.md
+2. .codex/skills/auto-trading-fixed-tracked/references/debate-rebuttal.md
+3. .codex/skills/auto-trading-fixed-tracked/references/json-writing-guide.md
+4. {root}/debate/{stock_name}_{symbol}/advocates/bull/opening.json
+5. {root}/debate/{stock_name}_{symbol}/advocates/bear/opening.json
+
+只允许写入：
+{root}/debate/{stock_name}_{symbol}/advocates/bull/rebuttal.json
+
+完成后只回传文件路径和完成状态。
+```
+
+Bear 对称执行，输出自己的 `bear/rebuttal.json`。原会话空返回或未落盘时，先用原 task ID 续写；仅平台无法恢复原会话时允许新建，并记录该例外。
+
+### 5.3 三名独立 Juror
+
+`juror_01`、`juror_02`、`juror_03` 必须是互不共享上下文的新会话，不得读取彼此 ballot：
+
+```text
+你担任 {symbol} {stock_name} 在 {decision_date} 的独立 {juror_id}。
+
+直接完整读取：
+1. {root}/00_backtest_context.md
+2. .codex/skills/auto-trading-fixed-tracked/references/debate-juror.md
+3. .codex/skills/auto-trading-fixed-tracked/references/json-writing-guide.md
+4. {root}/03_stock_analysis_input.md
+5. {root}/01_global_context.md
+6. 当前股票唯一的 {root}/04_stock_research/*_research.md
+7. {root}/debate/{stock_name}_{symbol}/advocates/bull/opening.json
+8. {root}/debate/{stock_name}_{symbol}/advocates/bull/rebuttal.json
+9. {root}/debate/{stock_name}_{symbol}/advocates/bear/opening.json
+10. {root}/debate/{stock_name}_{symbol}/advocates/bear/rebuttal.json
+
+只允许写入：
+{root}/debate/{stock_name}_{symbol}/jury/{juror_id}/ballot.json
+
+完成后只回传文件路径和完成状态。
+```
+
+### 5.4 本地聚合
+
+三份 ballot 均合法后，读取隔离账本中 D 日实际持股数，执行：
+
+```bash
+python scripts/manage_debate.py aggregate \
+  --date {decision_date} \
+  --book-type fixed_tracked \
+  --symbol {symbol} \
+  --position-shares {isolated_position_shares} \
+  --base-dir {skill_runs_root}
+```
+
+Agent 无权写 `vote_summary.json`。若原 ballot 被修订，必须重新 aggregate，不能手工改汇总。
+
+### 5.5 独立 Finalizer
+
+Finalizer 必须不是任何 Juror：
+
+```text
+你担任 {symbol} {stock_name} 在 {decision_date} 的唯一 finalizer。
+
+直接完整读取：
+1. {root}/00_backtest_context.md
+2. .codex/skills/auto-trading-fixed-tracked/references/debate-finalizer.md
+3. .codex/skills/auto-trading-fixed-tracked/references/json-writing-guide.md
+4. configs/prompt_flow/fixed_tracked/stock_decision.schema.json
+5. configs/prompt_flow/fixed_tracked/stock_decision.example.json
+6. {root}/03_stock_analysis_input.md
+7. {root}/01_global_context.md
+8. 当前股票唯一的 {root}/04_stock_research/*_research.md
+9. {root}/debate/{stock_name}_{symbol}/advocates/bull/opening.json
+10. {root}/debate/{stock_name}_{symbol}/advocates/bull/rebuttal.json
+11. {root}/debate/{stock_name}_{symbol}/advocates/bear/opening.json
+12. {root}/debate/{stock_name}_{symbol}/advocates/bear/rebuttal.json
+13. {root}/debate/{stock_name}_{symbol}/jury/juror_01/ballot.json
+14. {root}/debate/{stock_name}_{symbol}/jury/juror_02/ballot.json
+15. {root}/debate/{stock_name}_{symbol}/jury/juror_03/ballot.json
+16. {root}/debate/{stock_name}_{symbol}/final/vote_summary.json
+
+只允许写入：
+{root}/debate/{stock_name}_{symbol}/final/stock_verdict.json
+
+完成后只回传文件路径和完成状态。
+```
+
+Finalizer 必须服从 `vote_summary.resolved_action`，不是第四名 Juror。
+
+每只 P0 finalizer 完成后：
+
+```bash
+python scripts/manage_debate.py validate \
+  --date {decision_date} \
+  --book-type fixed_tracked \
+  --symbol {symbol} \
+  --base-dir {skill_runs_root} \
+  --require-verdict
+```
+
+## 6. 合并、校验与 D+1 执行
+
+所有 P0 都通过 `--require-verdict` 后：
+
+```bash
+python scripts/merge_subagent_decisions.py \
+  --date {decision_date} \
+  --book-type fixed_tracked \
+  --source debate \
+  --base-dir {skill_runs_root}
+```
+
+补齐并校验 `{root}/05_decision.json` 的 `summary_date`、`system_risk_notes`、`system_focus_items`。这些仅是组合层字段；主 Agent不得改写任何单股 verdict 的研究事实、投票或动作。
+
+然后执行隔离 D+1 模拟：
+
+```bash
+python scripts/manage_fixed_tracked_backtest.py execute-day \
+  --experiment-id {experiment_id} \
+  --date {decision_date} \
+  --execution-date {execution_date}
+```
+
+该入口会校验 `execution_date` 必须等于下一交易日，并写入 06-08。不得调用没有 `--backtest-root` 的真实后处理路径。
+
+## 7. 长耗时命令
+
+`prepare-day`、公告同步、财报准备、PDF 转换和批量重建可能耗时很长。保持同一进程/会话持续轮询，不因短暂无输出重启命令；累计最多等待一小时。至少每 60 秒检查一次状态并向用户报告。命令退出后必须读状态文件或输出文件确认结果，不能只看最后一行日志。

@@ -105,7 +105,9 @@ def prepare_backtest_financial_disclosures(
     checkpoint = _load_checkpoint(experiment)
     symbol_states = checkpoint.setdefault("symbols", {})
     requested = list(dict.fromkeys(str(symbol).strip() for symbol in symbols if symbol))
-    skipped_etfs = [symbol for symbol in requested if is_etf_symbol(symbol)]
+    skipped_etfs = [
+        symbol for symbol in requested if is_etf_symbol(parse_symbol(symbol))
+    ]
     pending = [
         symbol
         for symbol in requested
@@ -199,7 +201,7 @@ def inspect_backtest_financial_research(
     requested = [
         symbol
         for symbol in dict.fromkeys(str(item).strip() for item in symbols if item)
-        if not is_etf_symbol(symbol)
+        if not is_etf_symbol(parse_symbol(symbol))
     ]
     items = [
         synthesize_manual_item(symbol, final_mandate="backtest_fixed_tracked")

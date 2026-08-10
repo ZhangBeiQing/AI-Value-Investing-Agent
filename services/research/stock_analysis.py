@@ -148,7 +148,7 @@ def run_enhanced_pe_pb_analysis(symbol: str, today_time: str) -> Dict[str, Any]:
     if not symbol:
         raise ValueError("symbol 参数不能为空")
     symbol_info = parse_symbol(symbol.strip())
-    if is_etf_symbol(symbol_info.symbol) or _is_index_symbol(symbol_info):
+    if is_etf_symbol(symbol_info) or _is_index_symbol(symbol_info):
         logger.info("run_enhanced_pe_pb_analysis 检测到ETF/指数标的，直接返回空结果: %s", symbol_info.symbol)
         return {"error": "ETF/指数标的不支持 PE/PB 分析，请选择股票标的。", "symbol": symbol_info.symbol}
 
@@ -203,7 +203,7 @@ def summarize_stock_price_dynamics(
 
     symbol_info = parse_symbol(symbol.strip())
     is_index = _is_index_symbol(symbol_info)
-    is_etf = is_etf_symbol(symbol_info.symbol)
+    is_etf = is_etf_symbol(symbol_info)
     similar_enabled = not (is_index or is_etf)
     stock_name = _resolve_stock_name(symbol_info)
 
@@ -303,7 +303,7 @@ def analyze_stock_dynamics_and_valuation(symbol: str, today_time: str) -> Dict[s
 
     valuation_analysis: Optional[Dict[str, Any]] = None
     valuation_reason: Optional[str] = None
-    if is_etf_symbol(symbol_info.symbol) or _is_index_symbol(symbol_info):
+    if is_etf_symbol(symbol_info) or _is_index_symbol(symbol_info):
         valuation_reason = "ETF/指数标的不支持估值分析"
     else:
         valuation_analysis = run_enhanced_pe_pb_analysis(symbol=symbol_info.symbol, today_time=today_time)

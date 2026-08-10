@@ -162,7 +162,7 @@ class SharedDataAccess:
 
         # 判断是否为指数或ETF
         is_index = symbolInfo.market == "CN_INDEX"
-        is_etf = is_etf_symbol(symbolInfo.symbol)
+        is_etf = is_etf_symbol(symbolInfo)
         
         # 对于指数和ETF，只加载价格数据，跳过财务和股本数据
         if is_index or is_etf:
@@ -274,7 +274,7 @@ class SharedDataAccess:
         """
         # 判断是否为指数或ETF，直接返回空的财务数据
         is_index = symbolInfo.market == "CN_INDEX"
-        is_etf = is_etf_symbol(symbolInfo.symbol)
+        is_etf = is_etf_symbol(symbolInfo)
         if is_index or is_etf:
             self.logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，返回空财务数据")
             return FinancialDataBundle(
@@ -500,7 +500,7 @@ class SharedDataAccess:
         """
         # 判断是否为指数或ETF，直接返回默认的股本数据
         is_index = symbolInfo.market == "CN_INDEX"
-        is_etf = is_etf_symbol(symbolInfo.symbol)
+        is_etf = is_etf_symbol(symbolInfo)
         if is_index or is_etf:
             self.logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，返回默认股本数据")
             return ShareInfo(

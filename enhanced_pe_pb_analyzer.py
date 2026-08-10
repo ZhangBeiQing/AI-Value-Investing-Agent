@@ -258,8 +258,8 @@ class EnhancedPEPBAnalyzer:
             profit_sheet,
             logger=LOGGER,
         )
-        if hk_abstract_metrics and not hk_abstract_metrics["ttm_df"].empty:
-            ttm_profit_df = hk_abstract_metrics["ttm_df"]
+        # 港股财务摘要的 EPS_TTM 可能与利润表不一致。利润表的股东应占利润
+        # 是估值主链的权威来源，摘要只保留作辅助指标（如 BPS）。
         if ttm_profit_df.empty:
             raise DataQualityError(f"{symbol.symbol} 无法构建TTM净利润序列")
 
@@ -370,16 +370,6 @@ class EnhancedPEPBAnalyzer:
         else:
             pb = self._compute_pb(dataset, market_cap, symbol)
             ps = self._compute_ps(profit_sheet, market_cap)
-
-        if symbol.is_hk_market() and hk_abstract_metrics:
-            latest_eps = hk_abstract_metrics.get("latest_eps")
-            if latest_eps and latest_eps != 0:
-                pe_ttm = latest_price / latest_eps
-                pe_ttm_note = f"基于财务摘要 EPS_TTM={latest_eps:.3f}"
-                pe_deduct = pe_ttm
-                pe_deduct_note = "港股基于 EPS_TTM 估算 PE"
-                ttm_profit = latest_eps * total_shares
-                deduct_profit = ttm_profit
 
         if symbol.is_hk_market() and hk_abstract_metrics:
             equity_value_map_override = hk_abstract_metrics.get("equity_map") or {}

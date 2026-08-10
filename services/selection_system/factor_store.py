@@ -311,7 +311,7 @@ def _computed_basic_info_row(
         logger=QUIET_DATA_LOGGER,
     )
 
-    is_etf = is_etf_symbol(symbol_info.symbol)
+    is_etf = is_etf_symbol(symbol_info)
     is_index = symbol_info.market == "CN_INDEX"
     try:
         if is_etf or is_index:

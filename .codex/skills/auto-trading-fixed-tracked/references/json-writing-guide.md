@@ -205,13 +205,12 @@ JSON 不允许在最后一个元素后写逗号：
 
 ## 提交前强制自检（每份文件必做）
 
-写完任何 JSON 后，运行以下命令验证，**确认输出 OK 才回传**：
+写完任何 JSON 后，必须使用先验证json的格式：
 
 ```bash
-python -c "import json; d=json.load(open('<你的文件绝对路径>')); print('JSON OK', type(d).__name__)"
+/home/zhangbeiqing/venv/ai_stock/bin/python -c "import json; d=json.load(open('<你的文件绝对路径>')); print('JSON OK', type(d).__name__)"
 ```
-
-校验通过（打印 `JSON OK`）才算完成；失败则修复后重新校验。不要回传一个自己都没验证过的 JSON。
+失败则修复后重新校验。不要回传一个自己都没验证过的 JSON。
 
 额外检查：
 - 文件是否被 markdown 代码块或任何非 JSON 文本包裹；
