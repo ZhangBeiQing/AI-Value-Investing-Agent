@@ -29,9 +29,12 @@ python scripts/refresh_all_for_date.py --date 2026-06-11 --skip-news-boards
 
 # 启用旧口径完整选股管线（生成 07/08/09/10/11，仅在显式启用 AI 选股 skill 时使用）
 python scripts/refresh_all_for_date.py --date 2026-06-11 --include-selection-universe
+
+# 周末/节假日吸收新增宏观和新闻；仅放宽分析日期，不表示该日可以交易
+python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-date
 ```
 
-`--date` 在本项目中**始终**指「要分析的交易日」（即最近一个已收盘的交易日），默认 `today - 1`。周末或节假日「昨天」不是交易日时，要手动指定最近一个交易日。
+`--date` 默认指「要分析的交易日」（即最近一个已收盘的交易日），默认 `today - 1`。周末或节假日只需要最近一次收盘数据时，要手动指定最近一个交易日；确需按休市自然日吸收新增宏观与新闻时，必须显式传入 `--allow-non-trading-date`。该参数不会改变价格数据的最后交易日，也不会放宽回测或真实交易执行的交易日约束。
 
 ## 3. 编排顺序
 

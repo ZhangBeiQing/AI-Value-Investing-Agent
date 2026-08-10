@@ -262,18 +262,30 @@ def is_cn_etf(symbolInfo: SymbolInfo) -> bool:
     return is_cn_etf_symbol(symbolInfo.symbol)
 
 
-def is_etf_symbol(symbol: str) -> bool:
-    """判断是否为 ETF/基金/杠杆产品类标的。"""
+def is_etf_symbol(symbol: str | SymbolInfo) -> bool:
+    """判断是否为 ETF/基金/杠杆产品类标的。
+
+    港股 ETF 和杠杆产品没有稳定的代码前缀，必须结合 ``SymbolInfo``
+    中已经解析出的名称判断，不能只依赖 ``configs.stock_pool`` 静态映射。
+    """
+    symbol_info = symbol if isinstance(symbol, SymbolInfo) else None
+    raw_symbol = symbol_info.symbol if symbol_info else symbol
     try:
-        normalized = normalize_symbol(symbol)
+        normalized = normalize_symbol(raw_symbol)
     except SymbolFormatError:
         return False
     if is_cn_etf_symbol(normalized):
         return True
+
+    text_parts = []
+    if symbol_info is not None:
+        text_parts.extend([symbol_info.stock_name, symbol_info.description])
     stock_entry = _SYMBOL_METADATA_MAP.get(normalized)
-    if stock_entry is None:
+    if stock_entry is not None:
+        text_parts.extend([stock_entry.name, stock_entry.description])
+    if not text_parts:
         return False
-    text = f"{stock_entry.name} {stock_entry.description}".upper()
+    text = " ".join(_sanitize_stock_name_value(item) for item in text_parts).upper()
     return any(keyword.upper() in text for keyword in ETF_KEYWORDS)
 
 

@@ -623,7 +623,7 @@ def update_cn_profit_forecast_cached(
         logger = get_logger("CacheRegistry")
 
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = is_etf_symbol(symbolInfo.symbol)
+    is_etf = is_etf_symbol(symbolInfo)
     if not symbolInfo.is_cn_market() or is_index or is_etf:
         return pd.DataFrame()
 
@@ -725,7 +725,7 @@ def update_financial_data_cached(
 
     # 判断是否为指数或ETF，跳过财务数据获取
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = is_etf_symbol(symbolInfo.symbol)
+    is_etf = is_etf_symbol(symbolInfo)
     if is_index or is_etf:
         logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，跳过财务数据获取")
         return {}
@@ -940,7 +940,7 @@ def update_price_data_cached(
                     )
                 else:
                     # 判断是否为ETF（A股ETF代码通常以51、58、15、16、50、53等开头）
-                    is_etf = symbolInfo.is_cn_market() and is_etf_symbol(symbolInfo.symbol)
+                    is_etf = symbolInfo.is_cn_market() and is_etf_symbol(symbolInfo)
                     
                     if is_etf:
                         # 使用ETF专用函数获取数据
@@ -997,7 +997,7 @@ def update_share_info_cached(
 
     # 判断是否为index和ETF（A股ETF代码通常以51、58、15、16、50、53等开头）
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = is_etf_symbol(symbolInfo.symbol)
+    is_etf = is_etf_symbol(symbolInfo)
     if is_etf or is_index:
         logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为ETF或指数，跳过股本数据获取")
         return
@@ -1084,7 +1084,7 @@ def update_chip_distribution_cached(
         logger = get_logger("CacheRegistry")
 
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = is_etf_symbol(symbolInfo.symbol)
+    is_etf = is_etf_symbol(symbolInfo)
     if not symbolInfo.is_cn_market() or is_index or is_etf:
         logger.info("%s %s 暂不支持筹码分布缓存，跳过", symbolInfo.stock_name, symbolInfo.symbol)
         return pd.DataFrame()
@@ -1750,7 +1750,7 @@ def ensure_symbol_data(
 
     # 判断是否为指数或ETF
     is_index = symbolInfo.market == "CN_INDEX"
-    is_etf = is_etf_symbol(symbolInfo.symbol)
+    is_etf = is_etf_symbol(symbolInfo)
     
     # 对于普通股票，获取所有数据
     if not is_index and not is_etf:

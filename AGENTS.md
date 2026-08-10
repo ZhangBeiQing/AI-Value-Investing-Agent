@@ -51,6 +51,7 @@ cp .env.example .env
 # --date 语义统一为「要分析的交易日」（默认 today-1）；周末/节假日请手动指定最近一个交易日
 python scripts/refresh_all_for_date.py
 python scripts/refresh_all_for_date.py --date 2026-04-21
+python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-date  # 休市日补充宏观/新闻分析
 python scripts/refresh_all_for_date.py --fresh-heavy   # 额外强刷财报结构化数据等重缓存
 
 # 仅在需要手动准备或调试单步链路时使用
@@ -61,9 +62,10 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 ## 日期语义（统一口径）
 
-- `--date` 在本项目所有主脚本中一律指「要分析的交易日」，即**收盘数据已经产生的那一天**。
+- `--date` 在本项目主脚本中默认指「要分析的交易日」，即**收盘数据已经产生的那一天**。
 - 日常节奏：第二天早上 7 点起床后，对昨日收盘数据做分析与次日预案，所以默认值为 `today - 1`。
 - 周末或节假日「昨天」不是交易日时，需要手动指定最近一个交易日，例如周一早上传 `--date <上周五>`。
+- 若确需在周末或节假日吸收休市期间新增的宏观与新闻信息，`refresh_all_for_date.py` 和 `run_daily_pipeline.py` 可显式传 `--allow-non-trading-date`，按该自然日生成研究与下一交易日预案；该参数不表示休市日可以成交，也不得用于放宽回测交易日约束。
 - 不要再出现「传明天的日期」这种用法；若夜盘 7 点临时跑一轮，请改成第二天早上再跑，以保证 akshare 当日行情/新闻已刷齐。
 
 ## Boundaries

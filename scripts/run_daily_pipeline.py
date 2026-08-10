@@ -61,6 +61,14 @@ def main() -> int:
         action="store_true",
         help="跳过公告（disclosures）刷新阶段，加速 pipeline。",
     )
+    parser.add_argument(
+        "--allow-non-trading-date",
+        action="store_true",
+        help=(
+            "显式允许在周末或节假日按该自然日生成分析产物；"
+            "仅用于盘外补充宏观/新闻分析，不表示该日可以交易。"
+        ),
+    )
     args = parser.parse_args()
 
     prompt_config = args.prompt_config
@@ -77,6 +85,7 @@ def main() -> int:
             max_workers=args.max_workers,
             skip_disclosures=args.skip_disclosures,
             all_books=args.all_books,
+            allow_non_trading_date=args.allow_non_trading_date,
         )
     except NonTradingDayError as exc:
         print(f"SKIPPED: {exc}")

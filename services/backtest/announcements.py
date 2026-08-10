@@ -156,7 +156,9 @@ def prepare_backtest_announcements(
     checkpoint = _load_checkpoint(experiment)
     symbol_states = checkpoint.setdefault("symbols", {})
     requested = list(dict.fromkeys(str(symbol).strip() for symbol in symbols if symbol))
-    skipped_etfs = [symbol for symbol in requested if is_etf_symbol(symbol)]
+    skipped_etfs = [
+        symbol for symbol in requested if is_etf_symbol(parse_symbol(symbol))
+    ]
     pending = [
         symbol
         for symbol in requested

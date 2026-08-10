@@ -203,6 +203,7 @@ def run_refresh_pipeline(
     include_selection_universe: bool = False,
     generate_prefilter: bool = True,
     skip_news_boards: bool = False,
+    allow_non_trading_date: bool = False,
 ) -> OrchestratorResult:
     """按固定顺序刷新每日分析所需数据。
 
@@ -230,7 +231,7 @@ def run_refresh_pipeline(
         market="CN",
         base_dir=base_dir,
     )
-    if not session.is_trading_day:
+    if not session.is_trading_day and not allow_non_trading_date:
         message = (
             f"{run_date} 不是 A 股交易日，跳过全部刷新；"
             f"previous={session.previous_trading_day}, "
@@ -249,6 +250,23 @@ def run_refresh_pipeline(
             )
         )
         return result
+    if not session.is_trading_day:
+        message = (
+            f"已显式允许非交易日分析：date={run_date}, "
+            f"previous={session.previous_trading_day}, "
+            f"next={session.next_trading_day}, source={session.source}；"
+            "本次只刷新研究与预案输入，不表示该日可以成交"
+        )
+        LOGGER.warning(message)
+        result.steps.append(
+            StepResult(
+                name="trading_day_guard",
+                command=[],
+                status="success",
+                duration_sec=0.0,
+                message=message,
+            )
+        )
 
     expand_universe = include_selection_universe or generate_prefilter
 
@@ -346,15 +364,30 @@ def run_refresh_pipeline(
     return result
 
 
-def format_followup_checklist(run_date: str, *, include_selection_universe: bool = False) -> str:
+def format_followup_checklist(
+    run_date: str,
+    *,
+    include_selection_universe: bool = False,
+    allow_non_trading_date: bool = False,
+) -> str:
     """打印后续需要人工触发的 skill / 脚本清单。"""
+
+    non_trading_arg = " --allow-non-trading-date" if allow_non_trading_date else ""
+    date_label = "分析日期" if allow_non_trading_date else "交易日"
+    non_trading_notice = (
+        "注意：当前为休市日，只生成研究与下一交易日预案；"
+        "不要在休市日执行 run_post_trade。"
+        if allow_non_trading_date
+        else ""
+    )
 
     if include_selection_universe:
         lines = [
             "",
             "=" * 72,
-            f"数据刷新完成（交易日 {run_date}）。接下来请依次人工触发：",
+            f"数据刷新完成（{date_label} {run_date}）。接下来请依次人工触发：",
             "=" * 72,
+            non_trading_notice,
             "",
             "【分析 skill（需 LLM / 联网）】",
             "  1. /daily-macro-summary              → data/macro_economy/"
@@ -368,7 +401,7 @@ def format_followup_checklist(run_date: str, *, include_selection_universe: bool
             "  5. /financial-report-summary         → 各股 financial_reports/*.md",
             "",
             "【三账本 01-04 产物】",
-            f"  6. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6 --all-books",
+            f"  6. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6 --all-books{non_trading_arg}",
             "",
             "【三账本交易 skill（生成 05_decision.json 后人工确认）】",
             "  7. /auto-trading-fixed-tracked",
@@ -386,8 +419,9 @@ def format_followup_checklist(run_date: str, *, include_selection_universe: bool
     lines = [
         "",
         "=" * 72,
-        f"数据刷新 & 量化初筛完成（交易日 {run_date}）。接下来请依次人工触发：",
+        f"数据刷新 & 量化初筛完成（{date_label} {run_date}）。接下来请依次人工触发：",
         "=" * 72,
+        non_trading_notice,
         "",
         "【宏观与新闻总结 skill（需 LLM / 联网）】",
         "  1. /daily-macro-summary              → data/macro_economy/"
@@ -402,7 +436,7 @@ def format_followup_checklist(run_date: str, *, include_selection_universe: bool
         "  4. /financial-report-summary         → 各股 financial_reports/*.md",
         "",
         "【三账本 01-04 产物】",
-        f"  5. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6 --all-books",
+        f"  5. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6 --all-books{non_trading_arg}",
         "",
         "【三账本交易 skill（生成 05_decision.json 后人工确认）】",
         "  6. /auto-trading-fixed-tracked",

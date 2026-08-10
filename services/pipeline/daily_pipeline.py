@@ -18,7 +18,10 @@ from services.pipeline.steps.build_stock_research import write_stock_research_bu
 from services.pipeline.steps.refresh_data import run_refresh_data
 from services.selection_system.store import load_json_file
 from shared_data_access.historical_prices import known_not_listed_as_of
-from shared_data_access.market_calendar import ensure_market_session
+from shared_data_access.market_calendar import (
+    NonTradingDayError,
+    inspect_market_session,
+)
 from utlity import parse_symbol
 
 
@@ -47,6 +50,27 @@ def _slowest_stage_label(stage_costs: Dict[str, float]) -> str:
     if not stage_costs:
         return ""
     return max(stage_costs.items(), key=lambda item: item[1])[0]
+
+
+def _guard_analysis_date(
+    run_date: str,
+    *,
+    base_dir: str | Path,
+    allow_non_trading_date: bool,
+) -> None:
+    session = inspect_market_session(run_date, market="CN", base_dir=base_dir)
+    if session.is_trading_day:
+        return
+    if not allow_non_trading_date:
+        raise NonTradingDayError(session)
+    LOGGER.warning(
+        "已显式允许非交易日分析: date=%s, previous=%s, next=%s, source=%s；"
+        "本次只生成研究与交易预案，不代表该日可以成交",
+        run_date,
+        session.previous_trading_day,
+        session.next_trading_day,
+        session.source,
+    )
 
 
 def resolve_output_dir(base_dir: str, run_date: str) -> Path:
@@ -390,8 +414,13 @@ def run_daily_pipeline_from_manifest(
     max_workers: int = 1,
     respect_default_books: bool = True,
     enabled_books: List[str] | None = None,
+    allow_non_trading_date: bool = False,
 ) -> Path:
-    ensure_market_session(run_date, market="CN", base_dir=base_dir)
+    _guard_analysis_date(
+        run_date,
+        base_dir=base_dir,
+        allow_non_trading_date=allow_non_trading_date,
+    )
     overall_start = perf_counter()
     output_dir = resolve_output_dir(base_dir, run_date)
     safe_clean_dir(output_dir)
@@ -498,17 +527,25 @@ def run_daily_pipeline(
     max_workers: int = 4,
     skip_disclosures: bool = False,
     all_books: bool = False,
+    allow_non_trading_date: bool = False,
 ) -> Path:
-    ensure_market_session(run_date, market="CN", base_dir=base_dir)
     LOGGER.info(
-        "run_daily_pipeline 请求: date=%s, base_dir=%s, manifest=%s, prompt_config=%s, signature=%s, max_workers=%d",
+        "run_daily_pipeline 请求: date=%s, base_dir=%s, manifest=%s, prompt_config=%s, signature=%s, max_workers=%d, allow_non_trading_date=%s",
         run_date,
         base_dir,
         manifest_path or "auto",
         str(prompt_config) if prompt_config else "",
         signature,
         max_workers,
+        allow_non_trading_date,
     )
+    compatibility_mode = bool(prompt_config or signature)
+    if compatibility_mode:
+        _guard_analysis_date(
+            run_date,
+            base_dir=base_dir,
+            allow_non_trading_date=allow_non_trading_date,
+        )
     if manifest_path and str(manifest_path) != "auto":
         manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     else:
@@ -572,4 +609,5 @@ def run_daily_pipeline(
         max_workers=max_workers,
         respect_default_books=not all_books,
         enabled_books=manifest.get("all_books") if all_books else None,
+        allow_non_trading_date=allow_non_trading_date,
     )

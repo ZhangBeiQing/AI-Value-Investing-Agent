@@ -48,6 +48,11 @@ def _operation_summary_file(signature: str) -> str:
     return os.path.join(_data_dir(signature), "decision_summary.json")
 
 
+def _latest_decision_snapshot_file(signature: str) -> str:
+    """每只股票最新一条决策摘要的快照路径。"""
+    return os.path.join(_data_dir(signature), "latest_decision_snapshot.json")
+
+
 def _portfolio_summary_file(signature: str) -> str:
     """组合级别每日系统信息文件路径。"""
     return os.path.join(_data_dir(signature), "portfolio_daily_summary.json")
@@ -157,6 +162,42 @@ def _sort_summary_entries(entries: List[dict]) -> None:
     )
 
 
+def refresh_latest_decision_snapshot(signature: str) -> Path:
+    """从完整决策摘要投影出每只股票最新的一条分析结果。"""
+
+    summary_entries = read_json_file(_operation_summary_file(signature))
+    latest_by_stock: dict[str, tuple[tuple[str, str, int], dict]] = {}
+    for index, entry in enumerate(summary_entries):
+        stock_code = _entry_symbol(entry)
+        if not stock_code:
+            continue
+        entry_date = str(entry.get("end_date") or entry.get("start_date") or "")
+        entry_key = (entry_date, str(entry.get("start_date") or ""), index)
+        current = latest_by_stock.get(stock_code)
+        if current is None or entry_key >= current[0]:
+            latest_by_stock[stock_code] = (entry_key, entry)
+
+    latest_entries = [
+        item[1]
+        for _, item in sorted(latest_by_stock.items(), key=lambda item: item[0])
+    ]
+    latest_dates = [
+        str(entry.get("end_date") or entry.get("start_date"))
+        for entry in latest_entries
+        if entry.get("end_date") or entry.get("start_date")
+    ]
+    payload = {
+        "source_file": "decision_summary.json",
+        "latest_analysis_date": max(latest_dates) if latest_dates else None,
+        "stock_count": len(latest_entries),
+        "stocks": latest_entries,
+    }
+    snapshot_path = Path(_latest_decision_snapshot_file(signature))
+    write_json_file(str(snapshot_path), payload)
+    LOGGER.info("更新 latest_decision_snapshot，共 %d 只股票", len(latest_entries))
+    return snapshot_path
+
+
 # --- 2. 辅助函数 ---
 
 
@@ -172,6 +213,17 @@ def initialize_data_files(signature: str):
         if not os.path.exists(file_path):
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump([], f, ensure_ascii=False, indent=2)
+    snapshot_file = _latest_decision_snapshot_file(signature)
+    if not os.path.exists(snapshot_file):
+        write_json_file(
+            snapshot_file,
+            {
+                "source_file": "decision_summary.json",
+                "latest_analysis_date": None,
+                "stock_count": 0,
+                "stocks": [],
+            },
+        )
 
 
 def read_json_file(file_path: str):
@@ -427,8 +479,7 @@ def process_and_merge_operations(
     summary_file = _operation_summary_file(signature)
     if new_operations == [] and read_json_file(summary_file):
         LOGGER.info("没有新的股票操作记录，保留现有 operation_summary")
-        return
-    if new_operations:
+    elif new_operations:
         summary_entries = read_json_file(summary_file)
         if _incremental_update_summary(summary_entries, new_operations):
             _sort_summary_entries(summary_entries)
@@ -437,9 +488,12 @@ def process_and_merge_operations(
             LOGGER.info(
                 "增量更新 operation_summary，新增/合并 %d 条记录", len(new_operations)
             )
-            return
-        LOGGER.info("增量更新 operation_summary 未产生变化，触发全量重建以确保一致性")
-    _rebuild_operation_summary(signature, summary_file)
+        else:
+            LOGGER.info("增量更新 operation_summary 未产生变化，触发全量重建以确保一致性")
+            _rebuild_operation_summary(signature, summary_file)
+    else:
+        _rebuild_operation_summary(signature, summary_file)
+    refresh_latest_decision_snapshot(signature)
 
 
 def get_historical_context(signature: str, stock_code: str, n: int):

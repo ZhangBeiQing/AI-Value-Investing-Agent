@@ -12,12 +12,13 @@
 
 ## 1. 日常主流程（这是「每天真正跑的链路」）
 
-仓库当前的实际日常节奏：早上 7 点起床后，对**昨天收盘**的数据做分析，并为下一交易日生成预案。所有脚本的 `--date` 都指「要分析的交易日」，默认 `today - 1`；周末/节假日如果「昨天」不是交易日，需要手动指定最近一个交易日。`refresh_all_for_date.py` 和 `run_daily_pipeline.py` 都有程序级交易日守卫：误传休市日时以成功状态显示 `SKIPPED`，不刷新数据、不创建该日 `skill_runs`，也不继续打印后续 Skill 清单。
+仓库当前的实际日常节奏：早上 7 点起床后，对**昨天收盘**的数据做分析，并为下一交易日生成预案。所有脚本的 `--date` 默认指「要分析的交易日」，默认 `today - 1`；周末/节假日如果只分析最近一次收盘，应手动指定最近一个交易日。`refresh_all_for_date.py` 和 `run_daily_pipeline.py` 都有程序级交易日守卫：误传休市日时以成功状态显示 `SKIPPED`，不刷新数据、不创建该日 `skill_runs`，也不继续打印后续 Skill 清单。若需要在周末或节假日吸收新增宏观与新闻信息，可以对两个入口显式传入 `--allow-non-trading-date`，按该自然日刷新并生成研究预案；这只放宽实时分析日期，不表示休市日可以成交，也不放宽回测交易日约束。
 
 ### 1.1 一键刷数据 + 量化初筛
 
 ```bash
 python scripts/refresh_all_for_date.py --date 2026-06-11
+python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-date
 ```
 
 由 `services/data_refresh/refresh_orchestrator.py` 编排，按顺序执行：
@@ -56,6 +57,7 @@ python scripts/refresh_all_for_date.py --date 2026-06-11
 
 ```bash
 5. python scripts/run_daily_pipeline.py --date 2026-06-11 --max-workers 6 --all-books
+   # 周末/节假日补充分析时追加 --allow-non-trading-date
 ```
 
 由 `services/pipeline/daily_pipeline.py` 编排。当前 `--all-books` 生成 **fixed_tracked + short_book**；长期候选并入 fixed_tracked，不再单独生成 long_book：
@@ -92,7 +94,7 @@ data/skill_runs/YYYY-MM-DD/
 
 - fixed_tracked 主 agent 不读取所有研究包，而是先根据今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0。用户确认后，每只 P0 使用 Bull、Bear、三名 Juror 和唯一 finalizer；辩论产物写入互不冲突的路径，第二次人工确认后通过 `scripts/merge_subagent_decisions.py --source debate` 生成 `05_decision.json`。
 - short_book 继续使用原单 subagent 流程、上限 7 只、最大持仓 20 个交易日；长期候选由 fixed_tracked 统一分析。
-- fixed_tracked 的买入规则采用“严格准入、分批建仓、有效初仓、证伪退出”：基本面、估值和逻辑先过关；买点不要求完美，时点不确定性通过分批处理；初仓和目标仓位必须按真实总资产计算并具有实际意义；确认后加仓，逻辑证伪后退出。short_book 继续沿用短线催化与量价确认规则。
+- fixed_tracked 的买入规则采用“严格准入、分批建仓、有效初仓、证伪退出”：基本面、估值和逻辑先过关；买点不要求完美，时点不确定性通过分批处理；初仓和目标仓位必须按真实总资产计算并具有实际意义；确认后加仓，逻辑证伪后退出。Bull、Bear、Rebuttal、Juror 和 finalizer 必须利用月度经营公告、产销/交付、订单、价格、排产及产业链数据完成下一报告期盈利推演；财报是最终验证而非默认等待点。产业爆发框架 B 默认禁用，仅当最新财报深研同时确认行业总量爆发、供需错配、最受益环节、龙头地位、公司基本面右侧和折价后估值空间时才能启用；普通科技成长不得自动套用。short_book 继续沿用短线催化与量价确认规则。
 - 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` / `auto-trading-short-book/SKILL.md`。
 
 ### 1.6 人工确认后分别执行后处理
