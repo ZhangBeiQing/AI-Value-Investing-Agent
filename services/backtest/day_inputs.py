@@ -190,6 +190,7 @@ def prepare_backtest_day(
     build_missing_inputs: bool = False,
     force_rebuild_inputs: bool = False,
     max_workers: int = 4,
+    focus_symbols: set[str] | None = None,
 ) -> dict[str, Any]:
     datetime.strptime(run_date, "%Y-%m-%d")
     if run_date < experiment.start_date or run_date > experiment.end_date:
@@ -217,6 +218,14 @@ def prepare_backtest_day(
         symbols=list(experiment.base_universe),
     )
     symbols, universe_metadata = build_daily_universe(experiment, run_date, ledger)
+    research_symbols = symbols
+    if focus_symbols:
+        research_symbols = [
+            s for s in symbols if s in focus_symbols
+        ]
+        for s in focus_symbols:
+            if s not in research_symbols:
+                research_symbols.append(s)
     copied: list[str] = []
     missing: list[str] = []
     source_book = (
@@ -260,19 +269,20 @@ def prepare_backtest_day(
     if build_missing_inputs:
         announcement_preparation = prepare_backtest_announcements(
             experiment,
-            symbols,
+            research_symbols,
             max_workers=max_workers,
         )
         financial_disclosure_preparation = prepare_backtest_financial_disclosures(
             experiment,
-            symbols,
+            research_symbols,
             max_workers=max_workers,
         )
         financial_research = inspect_backtest_financial_research(
             experiment,
             run_date,
-            symbols,
+            research_symbols,
             backtest_context_path=context_md,
+            focus_symbols=focus_symbols,
         )
         if (
             financial_research["status"] == "ready"
@@ -339,7 +349,7 @@ def prepare_backtest_day(
             run_book_pipeline(
                 run_date,
                 output_dir=book_dir,
-                symbols=symbols,
+                symbols=research_symbols,
                 prompt_config=SKILL_FLOW_CONFIG,
                 signature=experiment.signature,
                 book_type="fixed_tracked",

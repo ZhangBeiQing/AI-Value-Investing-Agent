@@ -195,14 +195,21 @@ def inspect_backtest_financial_research(
     symbols: Iterable[str],
     *,
     backtest_context_path: Path,
+    focus_symbols: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Require a registered deep report for each known latest report as of D."""
+    """Require a registered deep report for each known latest report as of D.
+
+    focus_symbols 非空时，只对 focus_symbols 内的股票严格执行财务门禁；
+    其余股票视为放宽（不计入 required_items），用于"单只股票聚焦回测"。
+    """
 
     requested = [
         symbol
         for symbol in dict.fromkeys(str(item).strip() for item in symbols if item)
         if not is_etf_symbol(parse_symbol(symbol))
     ]
+    if focus_symbols:
+        requested = [symbol for symbol in requested if symbol in focus_symbols]
     items = [
         synthesize_manual_item(symbol, final_mandate="backtest_fixed_tracked")
         for symbol in requested
