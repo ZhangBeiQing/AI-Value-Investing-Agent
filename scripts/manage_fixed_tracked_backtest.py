@@ -88,6 +88,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="通过全部门禁后覆盖重建当日 01-04；用于修复旧回测产物。",
     )
     prepare_day.add_argument("--max-workers", type=int, default=4)
+    prepare_day.add_argument(
+        "--focus-symbols",
+        default="",
+        help="逗号分隔的聚焦股票列表（如 300502.SZ,300476.SZ）。"
+        "非空时只对这些股票执行财务门禁，其余股票放宽，用于单只股票聚焦回测。",
+    )
 
     no_trade = subparsers.add_parser(
         "no-trade-day",
@@ -213,6 +219,11 @@ def main() -> int:
         )
         return 0
     if args.command == "prepare-day":
+        focus_symbols = None
+        if args.focus_symbols:
+            focus_symbols = {
+                s.strip() for s in args.focus_symbols.split(",") if s.strip()
+            }
         result = prepare_backtest_day(
             experiment,
             args.date,
@@ -220,6 +231,7 @@ def main() -> int:
             build_missing_inputs=args.build_missing_inputs,
             force_rebuild_inputs=args.force_rebuild_inputs,
             max_workers=args.max_workers,
+            focus_symbols=focus_symbols,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
