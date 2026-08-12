@@ -87,6 +87,8 @@ SUMMARY_DETAIL_FIELDS = [
     "key_risks",
     "next_day_watchlist",
     "confidence_score",
+    "current_position_pct",
+    "sizing_reason",
 ]
 
 
@@ -542,6 +544,8 @@ def _project_decision_memory(entry: dict) -> dict:
         "key_facts": entry.get("key_facts"),
         "inferences": entry.get("inferences"),
         "key_risks": entry.get("key_risks"),
+        "current_position_pct": entry.get("current_position_pct"),
+        "sizing_reason": entry.get("sizing_reason"),
     }
 
     court = entry.get("court")

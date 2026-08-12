@@ -54,7 +54,7 @@ data/agent_data/book-fixed_tracked/
 - `action_type`：`BUY` / `SELL` / `HOLD` / `FLAT`
 - `action_num`：操作数量（整数）
 - `action_price`：操作价格（可选）
-- 决策细节字段。新 fixed_tracked 辩论契约使用 14 字段；`SUMMARY_DETAIL_FIELDS` 仍保留以下部分旧字段，用于历史兼容和完整审计：
+- 决策细节字段。fixed_tracked 保留原 14 个兼容必填字段，并为新决策增加 2 个仓位与数量诊断字段；`SUMMARY_DETAIL_FIELDS` 同时保留以下部分旧字段，用于历史兼容和完整审计：
   - `scan`
   - `analysis_type`
   - `history_anchor`
@@ -75,6 +75,8 @@ data/agent_data/book-fixed_tracked/
   - `key_risks`
   - `next_day_watchlist`
   - `confidence_score`
+  - `current_position_pct`
+  - `sizing_reason`
 
 允许同一天同一只股票有多条记录（追加模式），支持 Force Run 的重新决策。
 
@@ -167,7 +169,7 @@ load_yesterday_daily_summary(signature: str) -> dict | None
 # 加载昨天的 portfolio_daily_summary 条目
 ```
 
-`build_stock_research` 使用 `get_stock_memory_context` 生成 `04_stock_research` 的“持仓与投资逻辑记忆”。完整历史仍保存在 `stock_decisions.json`；下一轮 Agent只看到最后一次投资逻辑总结及其待核验事项，不再注入所有历史 BUY/SELL 全文，也不会读取上一轮完整执行计划。其他历史函数继续服务组合上下文和旧流程。
+`build_stock_research` 使用 `get_stock_memory_context` 生成 `04_stock_research` 的“持仓与投资逻辑记忆”。完整历史仍保存在 `stock_decisions.json`；下一轮 Agent只看到最后一次投资逻辑总结、当前仓位占比、数量判断理由及待核验事项，不再注入所有历史 BUY/SELL 全文，也不会读取上一轮完整执行计划。其他历史函数继续服务组合上下文和旧流程。
 
 ## 5. AI 输出格式（输入 → 系统）
 
@@ -175,7 +177,7 @@ load_yesterday_daily_summary(signature: str) -> dict | None
 
 skill 端要求 entry 字段集见各账本 SKILL.md：
 
-- `configs/prompt_flow/fixed_tracked/stock_decision.schema.json`（fixed_tracked 当前 14 字段）
+- `configs/prompt_flow/fixed_tracked/stock_decision.schema.json`（原 14 个字段保持兼容，新生成决策另含 2 个仓位与数量诊断字段）
 - `.codex/skills/auto-trading-short-book/SKILL.md`
 - `.codex/skills/auto-trading-long-book/SKILL.md`
 

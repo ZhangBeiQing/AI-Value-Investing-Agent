@@ -70,7 +70,7 @@ data/skill_runs/_analysis_index.json
 固定股池辩论必须按以下 OpenCode subagent profile 派发：
 
 - Bull opening、Bear opening，以及复用原会话的 Bull/Bear rebuttal：`fixed-tracked-advocate-luna`（GPT-5.6 Luna）；
-- 三名独立 Juror 与唯一 finalizer：`fixed-tracked-adjudicator-terra`（GPT-5.6 Terra）。
+- 三名独立 Juror 与唯一 finalizer：`fixed-tracked-adjudicator-sol`（GPT-5.6 Sol）。
 - 如果是回测模式为了降低成本，全部使用更便宜的`fixed-tracked-advocate-luna`（GPT-5.6 Luna）
 
 Juror 属于有投票权的裁判角色，不得改用 Luna。除非专用 profile 不可用且用户明确同意降级，否则不得静默回退到通用 Agent 或其他模型。
@@ -168,7 +168,7 @@ debate/{stock_name}_{symbol}/
 - Bull/Bear opening 阶段：各自的 `opening.json`；
 - Bull/Bear rebuttal 阶段：各自的 `rebuttal.json`；
 - Jury 阶段：各 Juror 的 `ballot.json`；
-- `aggregate` 命令：`final/vote_summary.json`；
+- `aggregate` 命令：`final/vote_summary.json`，只负责程序化锁定多数方向、校验持仓语义并原样汇总各 Juror 的数量建议；不替 finalizer 决定最终 `action_num`；
 - finalizer：`final/stock_verdict.json`。
 
 提前创建空目录只是为了让主 Agent 在派单前锁定每个角色的唯一输出位置。每个路径只有一个逻辑写入者，不增加 `{agent_id}` 子目录。
@@ -239,7 +239,7 @@ subagent 返回空结果或未落盘文件时，先检查是否为原会话未�
 
 ### B4. 并行创建三个 Juror
 
-创建三个相互独立的 `fixed-tracked-adjudicator-terra` Agent。每个 Juror 使用相同输入，但写入不同目录：
+创建三个相互独立的 `fixed-tracked-adjudicator-sol` Agent。每个 Juror 使用相同输入，但写入不同目录：
 
 ```text
 你担任 {symbol} {stock_name} 的独立 {juror_id}。
@@ -292,7 +292,17 @@ python scripts/manage_debate.py aggregate \
 
 ### B6. 生成唯一 Stock Verdict
 
-为当前股票创建一个独立 `fixed-tracked-adjudicator-terra` finalizer。不得复用任一 Juror，避免某名 Juror 在整理最终底稿时放大自己的选票。finalizer 不是第四名裁判，无权改变 `vote_summary.resolved_action`。
+为当前股票创建一个独立 `fixed-tracked-adjudicator-sol` finalizer。不得复用任一 Juror，避免某名 Juror 在整理最终底稿时放大自己的选票。finalizer 不是第四名裁判，无权改变 `vote_summary.resolved_action`。
+
+finalizer 只做受多数票约束的总结和数量整理。少数票更有说服力但不存在事实错误时，仍服从多数动作并保留少数异议；只有 ballot 缺少强制审查、依赖明确错误的决定性事实、动作/数量违法或出现全部 Juror 都未审查的新决定性事实时，才停止且不写 verdict，并把问题、证据路径、受影响文件和建议回退阶段返回主 Agent。finalizer 不得自行改票或调用任何 subagent。
+
+主 Agent收到 finalizer 阻塞后负责唯一调度：
+
+1. 若问题源于 Bull/Bear 的事实或推理缺口，复用对应原 Advocate 会话完成定向质询或 rebuttal 修订；
+2. 若出现三名 Juror 都未审查的新决定性事实，主 Agent必须把完全相同的关键信息、证据路径和截止日期同步给三名 Juror，并在同一阶段并发唤醒三名原会话重投；不得只提醒其中一人；
+3. 若仅个别 ballot 存在格式、持仓语义或明显引用错误，只修复受影响的原 Juror；
+4. 任一 ballot 被修订后，重新运行本地 `aggregate`，再重新启动或恢复 finalizer；
+5. 主 Agent只传递可核验事实和文件路径，不替 Juror指定动作或数量。
 
 ```text
 担任 {symbol} {stock_name} 的唯一 finalizer。

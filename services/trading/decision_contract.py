@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -71,6 +72,7 @@ def validate_stock_decision_entry(
         "price_impression",
         "recommended_action",
         "action_type",
+        "sizing_reason",
     ]
     for field in string_fields:
         if field in entry and not isinstance(entry[field], str):
@@ -135,6 +137,16 @@ def validate_stock_decision_entry(
             errors.append("confidence_score 必须是数字")
         elif not 0 <= float(confidence) <= 1:
             errors.append("confidence_score 必须在 0 到 1 之间")
+
+    current_position_pct = entry.get("current_position_pct")
+    if current_position_pct is not None:
+        if not isinstance(current_position_pct, str) or not re.fullmatch(
+            r"^(100(?:\.0+)?|(?:\d|[1-9]\d)(?:\.\d+)?)%$",
+            current_position_pct,
+        ):
+            errors.append(
+                'current_position_pct 必须是 0% 到 100% 的百分比字符串，例如 "3.5%"'
+            )
 
     return errors
 

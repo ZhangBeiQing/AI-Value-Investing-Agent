@@ -171,9 +171,14 @@ def validate_ballot(payload: Any) -> list[str]:
     if not isinstance(payload, dict):
         return ["ballot 必须是 JSON 对象"]
     errors: list[str] = []
-    if set(payload) != {"action_type", "price_impression", "reason"}:
+    allowed_fields = {"action_type", "action_num", "price_impression", "reason"}
+    required_fields = {"action_type", "price_impression", "reason"}
+    if not required_fields.issubset(payload) or not set(payload).issubset(
+        allowed_fields
+    ):
         errors.append(
-            "ballot 只能包含 action_type、price_impression 和 reason"
+            "ballot 必须包含 action_type、price_impression、reason，"
+            "并且只能额外包含 action_num"
         )
     action_type = payload.get("action_type")
     if action_type not in VALID_ACTIONS:
@@ -184,6 +189,14 @@ def validate_ballot(payload: Any) -> list[str]:
     reason = payload.get("reason")
     if not isinstance(reason, str) or not reason.strip():
         errors.append("reason 必须是非空字符串")
+    action_num = payload.get("action_num")
+    if action_num is not None:
+        if not isinstance(action_num, int) or isinstance(action_num, bool):
+            errors.append("action_num 必须是整数")
+        elif action_type in {"BUY", "SELL"} and action_num <= 0:
+            errors.append(f"{action_type} 时 action_num 必须大于 0")
+        elif action_type in {"HOLD", "FLAT"} and action_num != 0:
+            errors.append(f"{action_type} 时 action_num 必须等于 0")
     return errors
 
 
@@ -208,7 +221,7 @@ def aggregate_jury_votes(
     if position_shares < 0:
         raise ValueError("position_shares 不能小于 0")
     symbol_dir = debate_symbol_dir(book_dir, normalized_symbol)
-    votes: list[dict[str, str]] = []
+    votes: list[dict[str, Any]] = []
     price_impression_votes: list[dict[str, str]] = []
     errors: list[str] = []
     for juror_id in JUROR_IDS:
@@ -219,12 +232,13 @@ def aggregate_jury_votes(
         )
         errors.extend(ballot_errors)
         if payload is not None and not ballot_errors:
-            votes.append(
-                {
-                    "juror": juror_id,
-                    "action_type": payload["action_type"],
-                }
-            )
+            vote: dict[str, Any] = {
+                "juror": juror_id,
+                "action_type": payload["action_type"],
+            }
+            if "action_num" in payload:
+                vote["action_num"] = payload["action_num"]
+            votes.append(vote)
             price_impression_votes.append(
                 {
                     "juror": juror_id,
@@ -251,6 +265,23 @@ def aggregate_jury_votes(
         )
         raise ValueError(
             "ballot 动作与当前持仓状态不兼容: "
+            f"position_shares={position_shares}, {details}"
+        )
+
+    invalid_sell_quantities = [
+        vote
+        for vote in votes
+        if vote["action_type"] == "SELL"
+        and vote.get("action_num") is not None
+        and vote["action_num"] > position_shares
+    ]
+    if invalid_sell_quantities:
+        details = ", ".join(
+            f"{vote['juror']}={vote['action_num']}"
+            for vote in invalid_sell_quantities
+        )
+        raise ValueError(
+            "ballot 卖出数量超过当前持仓: "
             f"position_shares={position_shares}, {details}"
         )
 
@@ -343,7 +374,7 @@ def validate_debate_artifacts(
                     f"必须为 {fallback_action}"
                 )
 
-        ballot_votes: list[dict[str, str]] = []
+        ballot_votes: list[dict[str, Any]] = []
         ballot_price_impressions: list[dict[str, str]] = []
         for juror_id in JUROR_IDS:
             ballot_path = symbol_dir / "jury" / juror_id / "ballot.json"
@@ -353,12 +384,13 @@ def validate_debate_artifacts(
                 and not ballot_read_errors
                 and not validate_ballot(ballot)
             ):
-                ballot_votes.append(
-                    {
-                        "juror": juror_id,
-                        "action_type": ballot["action_type"],
-                    }
-                )
+                ballot_vote: dict[str, Any] = {
+                    "juror": juror_id,
+                    "action_type": ballot["action_type"],
+                }
+                if "action_num" in ballot:
+                    ballot_vote["action_num"] = ballot["action_num"]
+                ballot_votes.append(ballot_vote)
                 ballot_price_impressions.append(
                     {
                         "juror": juror_id,

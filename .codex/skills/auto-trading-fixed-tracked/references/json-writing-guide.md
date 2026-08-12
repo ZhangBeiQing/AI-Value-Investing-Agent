@@ -63,9 +63,9 @@ JSON 字符串值里，凡是要写「引号」必须用 **英文双引号 `\"`*
 
 每个输出文件都有严格字段约束，不能自由增删字段：
 
-- `ballot.json` 只允许 `action_type` / `price_impression` / `reason` 三字段；
+- `ballot.json` 新产物只允许 `action_type` / `action_num` / `price_impression` / `reason` 四字段；
 - `rebuttal.json` 的每个 `rebuttals[i]` 只允许 `original_argument` / `rebuttal` 两字段；
-- `stock_verdict.json` 只允许 schema 声明的 14 个字段。
+- `stock_verdict.json` 只允许 schema 声明的字段；当前新 verdict 使用 16 个字段，其中包含 2 个仓位与数量诊断字段。
 
 错误示例（多加了 `is_rebutted`）：
 
@@ -87,7 +87,7 @@ JSON 字符串值里，凡是要写「引号」必须用 **英文双引号 `\"`*
 |---|---|---|
 | `opening.json` | `{ "arguments": [...] }` | **字符串**数组 |
 | `rebuttal.json` | `{ "rebuttals": [...] }` | **对象**数组，每个对象含 `original_argument` + `rebuttal` |
-| `ballot.json` | `{ "action_type", "price_impression", "reason" }` | 纯字段对象 |
+| `ballot.json` | `{ "action_type", "action_num", "price_impression", "reason" }` | 纯字段对象 |
 
 错误（把 opening 的纯字符串数组当成 rebuttal 写，或把对方论点和反驳拼成一条字符串）：
 
@@ -169,6 +169,7 @@ JSON 不允许在最后一个元素后写逗号：
 ```json
 {
   "action_type": "FLAT",
+  "action_num": 0,
   "price_impression": "合理",
   "reason": "支持该动作和价格印象的核心证据权衡，解释两者关系。引用事实时用「中文引号」或转义的英文引号。"
 }
@@ -200,7 +201,7 @@ JSON 不允许在最后一个元素后写逗号：
 
 ### stock_verdict.json
 
-严格按 `configs/prompt_flow/fixed_tracked/stock_decision.schema.json` 的 14 个字段输出，
+严格按 `configs/prompt_flow/fixed_tracked/stock_decision.schema.json` 的当前字段输出，
 参考 `stock_decision.example.json` 的结构，但不复制其中的示例内容。
 
 ## 提交前强制自检（每份文件必做）

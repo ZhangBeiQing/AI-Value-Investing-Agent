@@ -179,6 +179,7 @@ def update_analysis_index(merged: dict, book_type: str, date: str, base_dir: Pat
             "last_deep_analysis_price": today_price_map.get(symbol),
             "price_impression": entry.get("price_impression", ""),
             "confidence_score": entry.get("confidence_score", 0),
+            "sizing_reason": entry.get("sizing_reason", ""),
         }
 
     # 回填历史缺失的 last_deep_analysis_price（按各自分析日快照）

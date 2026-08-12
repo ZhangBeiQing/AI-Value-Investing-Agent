@@ -400,7 +400,7 @@ finalizer 生成 `stock_verdict.json`：
 
 - `action_type` 必须等于本地聚合脚本生成的 `resolved_action`，finalizer 不再自行解释持仓状态或覆盖动作。
 - finalizer 比较三名 Juror 的价格印象及其依据后形成最终 `price_impression`；有分歧时按证据质量处理，不机械按票数或标签顺序聚合。
-- finalizer 可以决定 `action_num`、执行节奏和风险条件，但不能改变上述动作。
+- `vote_summary.json` 只程序化锁定多数方向、校验持仓语义并保留各 Juror 的 `action_num` 建议，不决定最终数量。finalizer 是受多数票约束的总结器和数量整理器：读取三份数量建议后决定最终 `action_num`、执行节奏和风险条件，但不能改变上述动作，也不能因为少数票更有说服力而充当第四名裁判。只有 ballot 存在决定性事实错误、缺少强制审查、动作/数量违法或出现全体 Jury 未审查的新决定性事实时，才停止且不写 verdict，并把问题返回主 Agent。由主 Agent负责唤醒原 Advocate 或 Juror；全体 Jury 漏看同一决定性事实时，必须向三名 Juror同步完全相同的证据后统一重投、重新聚合，再恢复 finalizer。subagent 不递归调用 subagent。
 
 ### Phase 6：组合层复核
 
