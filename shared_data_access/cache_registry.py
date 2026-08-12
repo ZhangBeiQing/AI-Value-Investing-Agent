@@ -1552,6 +1552,7 @@ def update_disclosures_cached(
     base_data_dir: str | Path = 'data',
     logger: logging.Logger | None = None,
     force_refresh: bool = False,
+    as_of_date: str | None = None,
 ) -> None:
     """获取公告列表并缓存csv（使用DISCLOSURES缓存）"""
     if logger is None:
@@ -1569,7 +1570,7 @@ def update_disclosures_cached(
         logger.info(f"{symbolInfo.stock_name} 公告缓存仍在 TTL 内，跳过刷新")
         return
 
-    now = datetime.now()
+    now = pd.Timestamp(as_of_date).to_pydatetime() if as_of_date else datetime.now()
     start_date = (now - timedelta(days=lookback_days)).strftime("%Y%m%d")
     end_date = now.strftime("%Y%m%d")
 
@@ -1721,6 +1722,7 @@ def ensure_symbol_data(
     include_disclosures: bool = False,
     disclosure_lookback_days: int = 900,
     force_refresh_disclosures: bool = False,
+    disclosure_as_of_date: str | None = None,
     include_chip_distribution: bool = False,
     force_refresh_chip_distribution: bool = False,
     chip_adjust: str = "qfq",
@@ -1844,6 +1846,7 @@ def ensure_symbol_data(
             base_data_dir=base_data_dir,
             logger=logger,
             force_refresh=force_refresh or force_refresh_disclosures,
+            as_of_date=disclosure_as_of_date,
         )
 
     if include_chip_distribution and not is_etf and symbolInfo.is_cn_market():

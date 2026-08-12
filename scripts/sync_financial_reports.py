@@ -92,6 +92,7 @@ def main() -> int:
                 symbol_info,
                 lookback_days=args.lookback_days,
                 convert_markdown=args.with_markdown,
+                as_of_date=args.date,
             )
             results.append(
                 {

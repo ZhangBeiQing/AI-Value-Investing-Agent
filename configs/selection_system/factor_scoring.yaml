@@ -24,8 +24,28 @@ factors:
   net_income_growth_yoy: {direction: higher_better}
   deduct_net_income_growth_yoy: {direction: higher_better}
 
-  return_3m: {direction: higher_better}
-  return_6m: {direction: higher_better}
+  # 成长股避免追逐已经大涨的股票，同时不给极端下跌满分；周期股仍保留趋势确认。
+  # 当前 short.trend_score 权重为 0，因此成长股区间只实质影响长期池。
+  return_3m:
+    direction: higher_better
+    type_configs:
+      growth:
+        direction: range_best
+        ranges:
+          - {min: -15, max: 15, score: 1.0}
+          - {min: -30, max: 35, score: 0.75}
+          - {min: -45, max: 70, score: 0.45}
+        default_score: 0.20
+  return_6m:
+    direction: higher_better
+    type_configs:
+      growth:
+        direction: range_best
+        ranges:
+          - {min: -15, max: 35, score: 1.0}
+          - {min: -30, max: 80, score: 0.75}
+          - {min: -45, max: 150, score: 0.45}
+        default_score: 0.20
   return_1y: {direction: higher_better}
   sharpe_3m: {direction: higher_better}
   sharpe_6m: {direction: higher_better}

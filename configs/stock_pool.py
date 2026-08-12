@@ -32,6 +32,8 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("300274.SZ", "阳光电源", "光伏逆变器"),
     StockEntry("600406.SH", "国电南瑞", "智能电网"),
     StockEntry("01810.HK", "小米集团-W", "手机与智能家居与汽车"),
+    StockEntry("09988.HK", "阿里巴巴-W", "电商、云计算与人工智能"),
+    StockEntry("00700.HK", "腾讯控股", "社交、游戏与云服务"),
     StockEntry("002594.SZ", "比亚迪", "汽车电子"),
     StockEntry("300750.SZ", "宁德时代", "新能源电池"),
     StockEntry("600150.SH", "中国船舶", "船舶制造"),
