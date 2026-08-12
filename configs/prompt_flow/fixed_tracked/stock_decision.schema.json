@@ -119,6 +119,14 @@
       "type": "number",
       "minimum": 0,
       "maximum": 1
+    },
+    "current_position_pct": {
+      "type": "string",
+      "pattern": "^(100(?:\\.0+)?|(?:\\d|[1-9]\\d)(?:\\.\\d+)?)%$"
+    },
+    "sizing_reason": {
+      "type": "string",
+      "minLength": 1
     }
   },
   "allOf": [
