@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -173,6 +174,25 @@ def run_enhanced_pe_pb_analysis(symbol: str, today_time: str) -> Dict[str, Any]:
     json_file = analysis_dir / f"{stock_root.name}_{date_suffix}_enhanced_pe_analysis.json"
     md_file = analysis_dir / f"{stock_root.name}_{date_suffix}_enhanced_pe_analysis.md"
 
+    if not json_file.exists() or not md_file.exists():
+        dated_outputs = []
+        for candidate_json in analysis_dir.glob(
+            f"{stock_root.name}_*_enhanced_pe_analysis.json"
+        ):
+            match = re.search(r"_(\d{8})_enhanced_pe_analysis\.json$", candidate_json.name)
+            if not match or match.group(1) > date_suffix:
+                continue
+            candidate_md = candidate_json.with_suffix(".md")
+            if candidate_md.exists():
+                dated_outputs.append((match.group(1), candidate_json, candidate_md))
+        if dated_outputs:
+            _, json_file, md_file = max(dated_outputs, key=lambda item: item[0])
+            logger.info(
+                "增强估值产物按最近可用日期回退: requested=%s actual=%s",
+                date_suffix,
+                json_file.name,
+            )
+
     if not json_file.exists():
         raise FileNotFoundError(f"未找到生成的JSON报告: {json_file}")
     if not md_file.exists():
@@ -181,12 +201,19 @@ def run_enhanced_pe_pb_analysis(symbol: str, today_time: str) -> Dict[str, Any]:
     report_json = json.loads(json_file.read_text(encoding="utf-8"))
     meta = report_json.get("meta", {})
     analysis_date = meta.get("analysis_date") or meta.get("analysis_time")
+    if not analysis_date:
+        matched_date = re.search(r"_(\d{8})_enhanced_pe_analysis\.json$", json_file.name)
+        if matched_date:
+            stamp = matched_date.group(1)
+            analysis_date = f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}"
 
     logger.info("run_enhanced_pe_pb_analysis 完成: json=%s, markdown=%s", json_file, md_file)
     return {
         "target_symbols": symbol_info.symbol,
         "stock_name": stock_name,
         "analysis_date": analysis_date,
+        "analysis_json_path": str(json_file),
+        "analysis_markdown_path": str(md_file),
         "report": report_json,
         "analysis_markdown": md_file.read_text(encoding="utf-8"),
     }
@@ -312,6 +339,8 @@ def analyze_stock_dynamics_and_valuation(symbol: str, today_time: str) -> Dict[s
         "symbol": price_analysis.get("symbol", symbol_info.symbol),
         "stock_name": price_analysis.get("stock_name", stock_name),
         "analysis_date": price_analysis.get("analysis_date"),
+        "price_analysis_date": price_analysis.get("analysis_date"),
+        "valuation_analysis_date": (valuation_analysis or {}).get("analysis_date"),
         "price_report": price_analysis.get("report"),
         "valuation_report": (valuation_analysis or {}).get("analysis_markdown"),
     }

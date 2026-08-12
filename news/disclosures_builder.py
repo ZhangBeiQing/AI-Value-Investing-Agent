@@ -1208,6 +1208,7 @@ def sync_financial_reports_for_stock(
     lookback_days: int = 550,
     convert_markdown: bool = True,
     data_access: Optional[SharedDataAccess] = None,
+    as_of_date: Optional[str] = None,
 ) -> int:
     """同步财报公告到 disclosures 缓存，但不走普通公告摘要流程。"""
     stock_name = symbol_info.stock_name or symbol_info.symbol
@@ -1220,10 +1221,12 @@ def sync_financial_reports_for_stock(
     access = data_access or SharedDataAccess(logger=LOGGER)
     prepared = access.prepare_dataset(
         symbolInfo=symbol_info,
-        as_of_date=datetime.now().strftime("%Y-%m-%d"),
+        as_of_date=as_of_date or datetime.now().strftime("%Y-%m-%d"),
         include_disclosures=True,
         disclosure_lookback_days=lookback_days,
-        force_refresh_disclosures=False,
+        # 财报通常在盘后披露；当天稍早生成的公告缓存不能遮蔽新报告。
+        force_refresh_disclosures=True,
+        disclosure_as_of_date=as_of_date,
         skip_price_refresh=True,
         skip_financial_refresh=True,
     )
