@@ -2,7 +2,7 @@
 
 AI驱动的价值投资。核心思路是先用 Python 准备好当日全部数据和输入产物，再由本地 Agent 按照 `.codex/skills/` 中的 skill 依次执行多 Agent 辩论、生成交易决策。
 
-支持 A 股、港股、ETF/指数等不同标的；固定池、短线池、长期池分别作为独立账本运行。
+支持 A 股、港股、ETF/指数等不同标的；当前日常交易统一使用综合 `fixed_tracked` 账本，短期量化初筛与长期候选都作为其候选来源。
 
 ## 系统架构
 
@@ -22,8 +22,6 @@ AI驱动的价值投资。核心思路是先用 Python 准备好当日全部数�
 │  /gradual-hot-news-summary                       │
 │  /financial-report-summary                       │
 │  /auto-trading-fixed-tracked ← 多 Agent 辩论      │
-│  /auto-trading-short-book                        │
-│  /auto-trading-long-book                         │
 ├─────────────────────────────────────────────────┤
 │  Python 后处理（人工确认后运行）                    │
 │  scripts/run_post_trade.py                       │
@@ -43,16 +41,18 @@ fixed_tracked 账本采用中心化管理 + 逐股多 Agent 辩论：
 - **Juror × 3（陪审员）**：独立投票，给出 action/confidence/price_impression
 - **Finalizer（终审）**：聚合投票结果，生成最终裁决
 
-### 三账本体系
+### 综合 fixed_tracked 体系
 
-| 账本 | 股票来源 | 分析方法 | 持仓周期 |
-| --- | --- | --- | --- |
-| `fixed_tracked` | 静态池（`configs/stock_pool.py`） | 多 Agent 辩论 | 长期跟踪 |
-| `short_book` | 量化初筛 / LLM 选股 | 单 Agent 催化+量价 | ≤20 交易日 |
-| `long_book` | 量化初筛 / LLM 选股 | 单 Agent 质量+增长 | 灵活 |
+| 账本 | 股票来源 | 分析方法 |
+| --- | --- | --- |
+| `fixed_tracked` | 静态池 + 实际持仓 + `12_quant_prefilter_short.csv` + 长期候选 | 主 Agent 筛选 P0 后执行多 Agent 辩论 |
+
+旧 `short_book` / `long_book` 代码与 Skill 暂时保留用于历史兼容，但不再由自动日常流水线生成或调度。
 
 ## 当前日常流程
 
+> **一键入口 / 已定时**：下面的步骤 1-5（数据准备全链路）已封装成 skill `daily-data-preparation`，直接说"开始今天的数据准备"即可。它还已挂到 crontab，**周一至周五 21:03 自动运行**（`scripts/cron_daily_data_prep.sh`，状态见 `logs/cron_daily_prep/latest_status.json`），正常情况下早上起来 01-04 已就绪，直接跑步骤 6 的交易 skill。本节保留完整命令，供排查和单步重跑使用。
+>
 > **运行环境**：建议使用 [opencode](https://github.com/anomalyco/opencode) 运行，它对并发 SubAgent 数量没有限制，且自带搜索工具，无需额外配置。
 > 
 > **运行原则**：以下全部步骤在一个会话里一次性跑完，不需要等待和中断。Agent 应自行处理超时和并发调度。
@@ -61,7 +61,7 @@ fixed_tracked 账本采用中心化管理 + 逐股多 Agent 辩论：
 > 
 > **网络代理**：执行 `git push` 等需要访问 GitHub 的命令前，先执行 `proxy_on`（定义在 `~/.bashrc` 中）。
 > 
-> **日期语义**：所有主脚本的 `--date` 都表示"要分析的交易日"，即收盘数据已产生的那一天。日常节奏是第二天早上分析昨天收盘；周末或节假日请手动指定最近一个交易日。非交易日自动 SKIPPED，不刷新数据。
+> **日期语义**：所有主脚本的 `--date` 都表示"要分析的交易日"，即收盘数据已产生的那一天。日常节奏是**当天晚上 9 点分析当天收盘、为下一交易日出预案，所以默认值就是 `today`**（不做减一）；周末或节假日请手动指定最近一个交易日。非交易日自动 SKIPPED，不刷新数据。
 
 ### 1. 激活虚拟环境 + 一键刷新全部数据
 
@@ -91,9 +91,9 @@ scripts/start_mineru_api.sh
 
 MinerU 用于将财报 PDF 转换为 Agent 更易分析的 Markdown 格式。
 
-### 3. 并发启动 3 个 SubAgent
+### 3. 并发启动 2 个 SubAgent + 后台跑财报 prepare
 
-步骤 1 完成后，**在同一条消息里一次性启动 3 个 SubAgent**，不要逐个串行等待：
+步骤 1 完成后，**在同一条消息里一次性发出三件事**（2 个 SubAgent + 1 个后台命令），不要逐个串行等待：
 
 **SubAgent A — 宏观总结**（约需 5-10 分钟）
 
@@ -113,30 +113,31 @@ MinerU 用于将财报 PDF 转换为 Agent 更易分析的 Markdown 格式。
 > 
 > 注意：需定期清理过期新闻主题，控制文件体积。
 
-**SubAgent C — 财报深研**（约需 10-30 分钟）
+**第三件事 — 财报 prepare 脚本**（主 Agent 自己后台跑，约需 10-30 分钟）
 
-> 先运行准备脚本：
 > ```bash
 > python scripts/prepare_financial_report_skill.py --date cur_date --sync-first --json --include-quant-prefilter
 > ```
 > 
-> 该命令可能需要 10-30 分钟（主要是把新发的财报 PDF 转 Markdown），请设置足够的超时时间。
+> 主要耗时是把新发的财报 PDF 转 Markdown（走 MinerU），请设置足够的超时时间。
 > 
-> 然后按 skill 要求，对需要更新财报的公司逐一执行财报深研。
-> 
-> 触发 skill：`financial-report-summary`
-> 
-> 产出：`data/stock_info/{name}_{symbol}/financial_reports/*.md`
+> 它是纯 Python、不派发任何 SubAgent，所以和 A/B 并行不占并发额度。
 
-### 4. 生成全部 01-04 股票研究包
+### 4. 主 Agent 亲自做逐股财报深研（约需 10-40 分钟）
 
-步骤 3 的三个 SubAgent 全部完成后，运行：
+步骤 3 的三项全部结束后，由**主 Agent 直接执行** `financial-report-summary`，对 prepare 输出里 `ready_items` 的股票逐一深研。产出 `data/stock_info/{name}_{symbol}/financial_reports/*.md` 与 `summary_index.json`。当天没人发新财报时，"零新增"是合法结果。
+
+> **为什么财报不派给 SubAgent**：`financial-report-summary` 自己要为每只股票再派发 Industry Researcher / Expectation Scout / Financial Author / Research Challenger 四个角色，5 只股票就是 20 个。嵌套派发技术上能跑通（已实测，含无头模式），但并发账会算不清，而超过每批上限的失败方式是**静默空返回**——报告"完成"，文件却是空的。所以需要再派发一层的环节只能由主 Agent 做，且必须等 A/B 退出、并发腾空后再开始。每批最多 10 个 SubAgent。
+
+### 5. 生成全部 01-04 股票研究包
+
+步骤 4 完成后，运行：
 
 ```bash
-python scripts/run_daily_pipeline.py --date cur_date --max-workers 6 --all-books
+python scripts/run_daily_pipeline.py --date cur_date --max-workers 6
 ```
 
-产出三账本的完整输入产物：
+产出综合 fixed_tracked 的完整输入产物：
 
 ```text
 data/skill_runs/YYYY-MM-DD/
@@ -146,35 +147,28 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── 02_basic_snapshot_payload.json # 个股快照
 │   ├── 03_agent_input.md             # 投资策略 + P0 筛选输入
 │   ├── 03_stock_analysis_input.md    # 个股辩论研究方法
-│   └── 04_stock_research/            # 逐股研究包 *.md
-├── short_book/
-└── long_book/
+│   └── 04_stock_research/            # 固定池、持仓、短期量化股和长期候选的逐股研究包
 ```
 
 至此，当日全部数据和输入产物准备完毕，后续可按需触发交易 skill。
 
-### 5. 逐账本运行交易 Skill（后续步骤）
+### 6. 运行固定股池交易 Skill（后续步骤）
 
 ```text
 /auto-trading-fixed-tracked     → fixed_tracked/05_decision.json
-/auto-trading-short-book        → short_book/05_decision.json
-/auto-trading-long-book         → long_book/05_decision.json
 ```
 
-- **fixed_tracked**：主 Agent 先读 01-04 和 `_analysis_index.json` 挑出 P0 → 用户确认 → 全量并发启动 Bull/Bear → Rebuttal → 3 名 Juror → Finalizer → 聚合投票 → 用户二次确认 → 生成 `05_decision.json`
-- **short_book**：单 Agent 逐股分析，上限 7 只，最大持仓 20 个交易日
-- **long_book**：单 Agent 逐股分析，当前长期候选并入 fixed_tracked 统一分析
+- **fixed_tracked**：主 Agent 先读 01-04 和 `_analysis_index.json` 挑出 P0 → 用户确认 → Bull/Bear → Rebuttal → 3 名 Juror → Finalizer，各阶段按每批最多 10 个 subagent 调度 → 聚合投票 → 用户二次确认 → 生成 `05_decision.json`
+- `12_quant_prefilter_short.csv` 只扩展 fixed_tracked 的 P0 候选范围，不继承旧 short_book 的 20 个交易日强制退出规则
 
 真实执行前需要人工确认 `05_decision.json`。
 
-### 6. 交易后处理
+### 7. 交易后处理
 
-人工确认后，按账本分别执行：
+人工确认后执行：
 
 ```bash
 python scripts/run_post_trade.py --date cur_date --book-type fixed_tracked --signature book-fixed_tracked
-python scripts/run_post_trade.py --date cur_date --book-type short_book  --signature book-short_book
-python scripts/run_post_trade.py --date cur_date --book-type long_book   --signature book-long_book
 ```
 
 后处理串联 `05 → 06-08`，写入 `data/skill_runs/YYYY-MM-DD/{book_type}/` 和 `data/agent_data/book-{book_type}/`。
@@ -244,7 +238,7 @@ LLM 直接从全宇宙选股的方案，日常默认不跑：
 
 ### 量化因子初筛（默认选股主轴）
 
-日常默认的选股路径是量化因子初筛：`master_universe → factor_store → factor_scoring → quant_prefilter`，直接产出短/长两本候选池进入三账本。评分配置见 `configs/selection_system/factor_scoring.yaml`。
+日常默认的选股路径是量化因子初筛：`master_universe → factor_store → factor_scoring → quant_prefilter`。`12_quant_prefilter_short.csv` 与长期候选随后统一并入 fixed_tracked。评分配置见 `configs/selection_system/factor_scoring.yaml`。
 
 ## 目录结构
 
@@ -285,7 +279,7 @@ configs/
 ├── research/                   财报输出 schema
 └── selection_system/           factor_scoring.yaml
 data/                           运行产物与缓存
-├── skill_runs/YYYY-MM-DD/      三账本 01-08 产物
+├── skill_runs/YYYY-MM-DD/      当前 fixed_tracked 01-08 产物（兼容旧账本目录）
 ├── selection_runs/YYYY-MM-DD/  选股运行产物
 ├── backtest_experiments/       回测实验目录（隔离）
 ├── stock_info/{name}_{symbol}/ 逐股缓存（行情/财报/公告/研究）

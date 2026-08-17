@@ -1,7 +1,7 @@
 """一键刷新每日分析所需数据的编排层。
 
-面向「早上 7 点起床，分析昨天收盘」的日常节奏：
-- `--date` 语义统一为「要分析的交易日」（默认 today - 1 日历日）。
+面向「当天晚上 9 点，分析当天收盘，为下一交易日出预案」的日常节奏：
+- `--date` 语义统一为「要分析的交易日」（默认 `today`，不做减一）。
 - 轻量档（默认）：强刷宏观 panel、行情快照、板块快照、新闻（含渐进式热点总结的输入）等易变数据。
 - 重量档（可选）：在轻量档基础上，额外强刷财报结构化数据等重缓存。
 - 公告 PDF、历史日线、财报 PDF 等重缓存按各自增量逻辑走，不在此处强刷。
@@ -400,18 +400,14 @@ def format_followup_checklist(
             f"  4. python scripts/prepare_financial_report_skill.py --date {run_date} --mandate all --sync-first --json --include-queue",
             "  5. /financial-report-summary         → 各股 financial_reports/*.md",
             "",
-            "【三账本 01-04 产物】",
-            f"  6. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6 --all-books{non_trading_arg}",
+            "【综合 fixed_tracked 01-04 产物】",
+            f"  6. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6{non_trading_arg}",
             "",
-            "【三账本交易 skill（生成 05_decision.json 后人工确认）】",
+            "【固定股池交易 skill（生成 05_decision.json 后人工确认）】",
             "  7. /auto-trading-fixed-tracked",
-            "  8. /auto-trading-short-book",
-            "  9. /auto-trading-long-book",
             "",
-            "【人工确认后分别执行后处理】",
-            f"  10. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
-            f"  11. python scripts/run_post_trade.py --date {run_date} --book-type short_book --signature book-short_book",
-            f"  12. python scripts/run_post_trade.py --date {run_date} --book-type long_book --signature book-long_book",
+            "【人工确认后执行后处理】",
+            f"  8. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
             "=" * 72,
         ]
         return "\n".join(lines)
@@ -435,20 +431,16 @@ def format_followup_checklist(
         f"  3. python scripts/prepare_financial_report_skill.py --date {run_date} --sync-first --json --include-quant-prefilter",
         "  4. /financial-report-summary         → 各股 financial_reports/*.md",
         "",
-        "【三账本 01-04 产物】",
-        f"  5. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6 --all-books{non_trading_arg}",
+        "【综合 fixed_tracked 01-04 产物】",
+        f"  5. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6{non_trading_arg}",
         "",
-        "【三账本交易 skill（生成 05_decision.json 后人工确认）】",
+        "【固定股池交易 skill（生成 05_decision.json 后人工确认）】",
         "  6. /auto-trading-fixed-tracked",
-        "  7. /auto-trading-short-book",
-        "  8. /auto-trading-long-book",
         "",
-        "【人工确认后分别执行后处理】",
-        f"  9. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
-        f"  10. python scripts/run_post_trade.py --date {run_date} --book-type short_book --signature book-short_book",
-        f"  11. python scripts/run_post_trade.py --date {run_date} --book-type long_book --signature book-long_book",
+        "【人工确认后执行后处理】",
+        f"  7. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
         "",
-        "说明：short_book 股票池来自 12_quant_prefilter_short.csv（量化初筛 Top20），long_book 来自 12_quant_prefilter_long.csv。",
+        "说明：12_quant_prefilter_short.csv 的短期量化初筛股票和长期候选均并入 fixed_tracked，不再单独生成 short_book/long_book。",
         "=" * 72,
     ]
     return "\n".join(lines)

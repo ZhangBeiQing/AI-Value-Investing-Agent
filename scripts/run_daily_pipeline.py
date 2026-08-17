@@ -18,7 +18,7 @@ from shared_data_access.market_calendar import NonTradingDayError
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="运行 daily pipeline；默认仅生成综合 fixed_tracked，显式指定时加跑 short_book。")
+    parser = argparse.ArgumentParser(description="运行 daily pipeline；短期量化初筛股票已并入综合 fixed_tracked。")
     parser.add_argument(
         "--date",
         dest="run_date",
@@ -48,7 +48,7 @@ def main() -> int:
     parser.add_argument(
         "--all-books",
         action="store_true",
-        help="启用全部交易账本：生成综合 fixed_tracked + short_book。long_book 只作为 fixed_tracked 的候选来源，不单独生成。",
+        help="兼容参数；自动 manifest 当前只生成综合 fixed_tracked，不再单独生成 short_book/long_book。",
     )
     parser.add_argument(
         "--max-workers",

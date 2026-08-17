@@ -12,7 +12,7 @@
 
 ## 1. 日常主流程（这是「每天真正跑的链路」）
 
-仓库当前的实际日常节奏：早上 7 点起床后，对**昨天收盘**的数据做分析，并为下一交易日生成预案。所有脚本的 `--date` 默认指「要分析的交易日」，默认 `today - 1`；周末/节假日如果只分析最近一次收盘，应手动指定最近一个交易日。`refresh_all_for_date.py` 和 `run_daily_pipeline.py` 都有程序级交易日守卫：误传休市日时以成功状态显示 `SKIPPED`，不刷新数据、不创建该日 `skill_runs`，也不继续打印后续 Skill 清单。若需要在周末或节假日吸收新增宏观与新闻信息，可以对两个入口显式传入 `--allow-non-trading-date`，按该自然日刷新并生成研究预案；这只放宽实时分析日期，不表示休市日可以成交，也不放宽回测交易日约束。
+仓库当前的实际日常节奏：**当天晚上 9 点（A 股 15:00 收盘后）对当天收盘**的数据做分析，并为下一交易日生成预案。所有脚本的 `--date` 默认指「要分析的交易日」，**默认 `today`，不做减一**（旧版「默认 today - 1、第二天早上跑」的口径已废弃）；周末/节假日如果只分析最近一次收盘，应手动指定最近一个交易日。`refresh_all_for_date.py` 和 `run_daily_pipeline.py` 都有程序级交易日守卫：误传休市日时以成功状态显示 `SKIPPED`，不刷新数据、不创建该日 `skill_runs`，也不继续打印后续 Skill 清单。若需要在周末或节假日吸收新增宏观与新闻信息，可以对两个入口显式传入 `--allow-non-trading-date`，按该自然日刷新并生成研究预案；这只放宽实时分析日期，不表示休市日可以成交，也不放宽回测交易日约束。
 
 ### 1.1 一键刷数据 + 量化初筛
 
@@ -53,25 +53,28 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 - 财报前预期严格按公告时点截断；年度同花顺预测不能冒充季度一致预期。外部搜索强制百炼优先，重大数字回到原始来源核验。
 - 详见 `.codex/skills/financial-report-summary/SKILL.md`。
 
-### 1.4 三账本 01-04 产物
+### 1.4 综合 fixed_tracked 01-04 产物
 
 ```bash
-5. python scripts/run_daily_pipeline.py --date 2026-06-11 --max-workers 6 --all-books
+5. python scripts/run_daily_pipeline.py --date 2026-06-11 --max-workers 6
    # 周末/节假日补充分析时追加 --allow-non-trading-date
 ```
 
-由 `services/pipeline/daily_pipeline.py` 编排。当前 `--all-books` 生成 **fixed_tracked + short_book**；长期候选并入 fixed_tracked，不再单独生成 long_book：
+由 `services/pipeline/daily_pipeline.py` 编排。当前自动流水线只生成综合 **fixed_tracked**：
 
 - **fixed_tracked** 取自 `configs/stock_pool.py` 的 `TRACKED_A_STOCKS`
-- **short_book** 优先取 `08_short_book_candidates.json`；若选股 skill 未跑，则回退到 `12_quant_prefilter_short.csv`
+- **实际持仓**来自 `book-fixed_tracked` 的人工持仓覆盖，必须纳入 fixed_tracked
+- **短期量化候选**直接读取 `12_quant_prefilter_short.csv` 并入 fixed_tracked，不再生成独立 short_book
 - **长期候选**优先取 `09_long_book_candidates.json`，缺失时回退 `12_quant_prefilter_long.csv`，随后并入 fixed_tracked
+
+短期量化候选进入 fixed_tracked 后只代表扩大 P0 候选范围，统一使用 fixed-tracked 的投资策略、仓位约束和多 Agent 辩论；不继承旧 short_book 的 20 个交易日强制退出规则。
 
 输出目录：
 
 ```text
 data/skill_runs/YYYY-MM-DD/
-├── run_manifest.json                     # 本日三账本来源、symbols、capital_budget
-├── fixed_tracked/
+├── run_manifest.json                     # 本日 fixed_tracked 来源、symbols、capital_budget
+└── fixed_tracked/
 │   ├── 01_global_context.md              # 宏观/大盘/渐进式新闻总结
 │   ├── 02_basic_snapshot_payload.json    # basic_stock_info 快照（用于定价基准）
 │   ├── 03_agent_input.md                 # 共享投资策略 + fixed 主 Agent组合研判与 P0 输入
@@ -80,28 +83,24 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── 05_decision.json                  # 由 skill agent 在对话中生成
 │   ├── debate/                           # Bull/Bear/Jury/final 单股辩论产物
 │   └── subagent_result/                  # 旧版单 subagent 兼容产物
-└── short_book/                           # 继续使用原 01-04 与 subagent_result 流程
 ```
 
 详见 `.codex/rules/skill-pipeline.md`。
 
-### 1.5 三账本交易 skill（人工触发，生成决策后人工确认）
+### 1.5 固定股池交易 skill（人工触发，生成决策后人工确认）
 
 ```text
 6. /auto-trading-fixed-tracked     → fixed_tracked/05_decision.json
-7. /auto-trading-short-book        → short_book/05_decision.json
 ```
 
 - fixed_tracked 主 agent 不读取所有研究包，而是先根据今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0。用户确认后，每只 P0 使用 Bull、Bear、三名 Juror 和唯一 finalizer；辩论产物写入互不冲突的路径，第二次人工确认后通过 `scripts/merge_subagent_decisions.py --source debate` 生成 `05_decision.json`。
-- short_book 继续使用原单 subagent 流程、上限 7 只、最大持仓 20 个交易日；长期候选由 fixed_tracked 统一分析。
-- fixed_tracked 的买入规则采用“严格准入、分批建仓、有效初仓、证伪退出”：基本面、估值和逻辑先过关；买点不要求完美，时点不确定性通过分批处理；初仓和目标仓位必须按真实总资产计算并具有实际意义；确认后加仓，逻辑证伪后退出。Bull、Bear、Rebuttal、Juror 和 finalizer 必须利用月度经营公告、产销/交付、订单、价格、排产及产业链数据完成下一报告期盈利推演；财报是最终验证而非默认等待点。产业爆发框架 B 默认禁用，仅当最新财报深研同时确认行业总量爆发、供需错配、最受益环节、龙头地位、公司基本面右侧和折价后估值空间时才能启用；普通科技成长不得自动套用。short_book 继续沿用短线催化与量价确认规则。
-- 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` / `auto-trading-short-book/SKILL.md`。
+- fixed_tracked 的买入规则采用“严格准入、分批建仓、有效初仓、证伪退出”：基本面、估值和逻辑先过关；买点不要求完美，时点不确定性通过分批处理；初仓和目标仓位必须按真实总资产计算并具有实际意义；确认后加仓，逻辑证伪后退出。Bull、Bear、Rebuttal、Juror 和 finalizer 必须利用月度经营公告、产销/交付、订单、价格、排产及产业链数据完成下一报告期盈利推演；财报是最终验证而非默认等待点。产业爆发框架 B 默认禁用，仅当最新财报深研同时确认行业总量爆发、供需错配、最受益环节、龙头地位、公司基本面右侧和折价后估值空间时才能启用；普通科技成长不得自动套用。
+- 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md`。
 
-### 1.6 人工确认后分别执行后处理
+### 1.6 人工确认后执行后处理
 
 ```bash
-9.  python scripts/run_post_trade.py --date 2026-06-11 --book-type fixed_tracked --signature book-fixed_tracked
-10. python scripts/run_post_trade.py --date 2026-06-11 --book-type short_book  --signature book-short_book
+7. python scripts/run_post_trade.py --date 2026-06-11 --book-type fixed_tracked --signature book-fixed_tracked
 ```
 
 由 `services/trading/post_trade_pipeline.py` 编排，串联 `05` → `06-08` 后处理：
@@ -210,7 +209,7 @@ data/skill_runs/YYYY-MM-DD/
 - 每只股票一个目录：`data/stock_info/{stock_name}_{symbol}/`，下含 `prices/`、`financials_cache/`、`share_info/`、`disclosures/`、`news/`、`analysis/`、`pe_pb_analysis/`、`chip_distribution/`、`financial_reports/`、`forecast/` 等子目录
 - 全局缓存：`data/global_cache/`（板块、宏观、相似股、symbol 映射等）
 - 选股运行产物：`data/selection_runs/YYYY-MM-DD/`
-- 三账本运行产物：`data/skill_runs/YYYY-MM-DD/{fixed_tracked,short_book,long_book}/`
+- 当前自动运行产物：`data/skill_runs/YYYY-MM-DD/fixed_tracked/`；`short_book`、`long_book` 目录仅保留历史或自定义 manifest 兼容。
 - 交易归档：`data/agent_data/book-{book_type}/`
 
 ---
@@ -231,11 +230,11 @@ data/skill_runs/YYYY-MM-DD/
 6. `build-factor-scores` → `13_factor_scores.{csv,json}`（按 `factor_scoring.yaml` 配置生成 short_score / long_score）
 7. `build-quant-prefilter` → `12_quant_prefilter.csv` + `12_quant_prefilter_short.csv` + `12_quant_prefilter_long.csv`
 
-### 4.2 量化初筛 → 三账本的衔接
+### 4.2 量化初筛 → fixed_tracked 的衔接
 
-`run_daily_pipeline --all-books` 在生成 short_book / long_book 的 01-04 产物时，优先看 `08_short_book_candidates.json` / `09_long_book_candidates.json`；若不存在则回退到 `12_quant_prefilter_short.csv` / `12_quant_prefilter_long.csv`。
+`run_daily_pipeline` 直接把 `12_quant_prefilter_short.csv` 全部并入 fixed_tracked；长期候选优先读取 `09_long_book_candidates.json`，不存在时回退到 `12_quant_prefilter_long.csv`，同样并入 fixed_tracked。
 
-日常默认走「量化初筛 → 直接进三账本」，因此 `08/09` 这两个 LLM 选股产物大多不存在，三账本会自动用 prefilter 结果作为股票池。
+日常默认走「量化初筛 → 综合 fixed_tracked」。短期因子股会出现在 `03_agent_input.md` 的股票池中，并在 `fixed_tracked/04_stock_research/` 生成逐股研究包，供主 Agent 结合当天走势和历史结论筛选 P0。
 
 ### 4.3 设计文档索引
 
