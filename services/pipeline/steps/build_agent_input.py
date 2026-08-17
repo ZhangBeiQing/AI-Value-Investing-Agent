@@ -47,6 +47,8 @@ WEB_RESEARCH_POLICY = (
 
 DEFAULT_ANALYSIS_INDEX_REF = "data/skill_runs/_analysis_index.json"
 
+PRICE_DELTA_REPORT_FILENAME = "price_delta_report.md"
+
 
 def resolve_signature(raw_signature: str) -> str:
     if raw_signature:
@@ -107,6 +109,7 @@ def build_fixed_main_user_query(
         "",
         "- 02_basic_snapshot_payload.json",
         "- 01_global_context.md",
+        f"- price_delta_report.md（当前价 vs 上次深研价变化，选 P0 参考）",
         f"- data/selection_runs/{run_date}/06_hot_news_state.json（可选）",
         f"- data/selection_runs/{run_date}/05_board_heat_digest.json（可选）",
         f"- {analysis_index_ref}（不存在时按冷启动处理）",
@@ -254,6 +257,96 @@ def build_stock_analysis_input(
     return "\n".join(sections)
 
 
+def write_price_delta_report(
+    run_date: str,
+    output_dir: str | Path,
+    snapshot_payload: Dict[str, Any],
+    *,
+    book_type: str = "fixed_tracked",
+    analysis_index_ref: Optional[str] = None,
+) -> Optional[Path]:
+    """生成「当前价 vs 上次深研价」变化报告，供主 Agent 选 P0 参考。
+
+    读取 `_analysis_index.json` 中每只股票的上次深研价与价格印象，结合当日
+    `02_basic_snapshot_payload.json` 的最新价，计算变化百分比，按绝对值降序输出
+    到 `output_dir` 下的 `price_delta_report.md`。
+    """
+    index_path: Optional[Path] = None
+    for candidate in (analysis_index_ref, DEFAULT_ANALYSIS_INDEX_REF):
+        if not candidate:
+            continue
+        p = Path(candidate)
+        if not p.is_absolute():
+            p = PROJECT_ROOT / p
+        if p.exists():
+            index_path = p
+            break
+    if index_path is None:
+        return None
+
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            index = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    book_index = index.get(book_type, {}) or {}
+    stocks = snapshot_payload.get("stocks", {}) or {}
+
+    rows: List[Dict[str, Any]] = []
+    for symbol, entry in book_index.items():
+        if not isinstance(entry, dict):
+            continue
+        last = entry.get("last_deep_analysis_price")
+        if not isinstance(last, (int, float)) or float(last) <= 0:
+            continue
+        cur_fields = stocks.get(symbol, {}) or {}
+        cur_price = cur_fields.get("latest_price")
+        if not isinstance(cur_price, (int, float)):
+            continue
+        last_f = float(last)
+        cur_f = float(cur_price)
+        chg_pct = (cur_f - last_f) / last_f * 100.0
+        rows.append(
+            {
+                "symbol": symbol,
+                "stock_name": cur_fields.get("stock_name") or symbol,
+                "deep_analysis_date": entry.get("deep_analysis_date", ""),
+                "last_price": last_f,
+                "cur_price": cur_f,
+                "chg_pct": chg_pct,
+                "price_impression": entry.get("price_impression", ""),
+            }
+        )
+
+    rows.sort(key=lambda r: abs(r["chg_pct"]), reverse=True)
+
+    lines = [
+        "# 价格变化报告（当前价 vs 上次深研价）",
+        "",
+        f"- 分析日期：{run_date}",
+        "- 数据源：`_analysis_index.json`（上次深研价）＋ `02_basic_snapshot_payload.json`（当日最新价）",
+        "",
+        "按变化绝对值降序排列。主 Agent 选 P0 时应重点复核：变化幅度超过约 4% 的股票、"
+        "上次印象为「合理偏低估 / 偏低估 / 明显低估」的候选，以及持仓股。",
+        "",
+        "| 股票 | 上次日期 | 上次价 | 当前价 | 变化% | 上次印象 |",
+        "| --- | --- | ---: | ---: | ---: | --- |",
+    ]
+    for r in rows:
+        lines.append(
+            f"| {r['stock_name']}（{r['symbol']}） | {r['deep_analysis_date']} | "
+            f"{r['last_price']:.2f} | {r['cur_price']:.2f} | "
+            f"{r['chg_pct']:+.1f}% | {r['price_impression']} |"
+        )
+    if not rows:
+        lines.append("| （无可用上次深研价记录） | - | - | - | - | - |")
+
+    target = Path(output_dir) / PRICE_DELTA_REPORT_FILENAME
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return target
+
+
 def build_snapshot_payload(
     run_date: str,
     symbols: List[str],
@@ -317,6 +410,14 @@ def write_agent_input_bundle(
     (target_dir / "02_basic_snapshot_payload.json").write_text(
         json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
+    )
+
+    write_price_delta_report(
+        run_date,
+        target_dir,
+        snapshot_payload,
+        book_type=book_type,
+        analysis_index_ref=analysis_index_ref,
     )
 
     agent_input = build_agent_input(

@@ -69,11 +69,11 @@ data/skill_runs/_analysis_index.json
 
 固定股池辩论必须按以下 OpenCode subagent profile 派发：
 
-- Bull opening、Bear opening，以及复用原会话的 Bull/Bear rebuttal：`fixed-tracked-advocate-luna`（GPT-5.6 Luna）；
-- 三名独立 Juror 与唯一 finalizer：`fixed-tracked-adjudicator-sol`（GPT-5.6 Sol）。
-- 如果是回测模式为了降低成本，全部使用更便宜的`fixed-tracked-advocate-luna`（GPT-5.6 Luna）
+- Bull opening、Bear opening，以及复用原会话的 Bull/Bear rebuttal：`fixed-tracked-adjudicator-sol`（GPT-5.6 Sol）；
+- 三名独立 Juror 与唯一 finalizer：`fixed-tracked-adjudicator-sol`（GPT-5.6 Sol）；
+- 回测模式的全部角色同样必须使用 `fixed-tracked-adjudicator-sol`（GPT-5.6 Sol），不得因成本原因降级模型。
 
-Juror 属于有投票权的裁判角色，不得改用 Luna。除非专用 profile 不可用且用户明确同意降级，否则不得静默回退到通用 Agent 或其他模型。
+全部辩论与裁决角色都必须使用 Sol。除非专用 profile 不可用且用户明确同意降级，否则不得回退到 Luna、通用 Agent 或其他模型。
 
 **主 Agent 的角色边界：只负责调度与文件路径，不代做任何个股决策，不传递任何客观规则，所有规则都在文件里，主agent只要让subagent看文件就行** 主 Agent 只向 subagent 传递「角色身份、必读文件清单、唯一输出路径」这三类必要信息；所有具体决策——包括价值判断、`action_num` 的数量、分批建仓的规模与条件、价格区间、取整方式、仓位比例——都必须由对应 subagent 在读完其规则与研究包后自行得出。主 Agent 不得在 prompt 中写入任何结论、数字、比例、取整或价格引导或者分析规则、分析方法等，即使是为了「确保结果正确」；正确的产出只能来自 subagent 按规则自主推理，而非主 Agent 的干预。违反时，输出看似正确也属于越界。
 
@@ -81,7 +81,8 @@ Juror 属于有投票权的裁判角色，不得改用 Luna。除非专用 profi
 
 ### A1. 确定日期
 
-用户明确指定 `YYYY-MM-DD` 时使用该日期，否则使用最近一个已经产生收盘数据的交易日。
+用户明确指定 `YYYY-MM-DD` 时使用该日期，否则默认**当天**（`today`）——日常节奏是当天晚上 9 点、A 股 15:00 收盘后分析当天收盘，为下一交易日出预案。**不要减一**，「默认昨天 / `today - 1`」是已废弃的旧口径。若今天是周末或节假日，向前查找最近一个交易日并告知用户。
+
 主agent再给不同subaget比如bull bear juror和finalizer派发任务时，必须显式告诉它当前分析的日期
 
 ### A2. 主 Agent读取
@@ -175,7 +176,7 @@ debate/{stock_name}_{symbol}/
 
 ### B2. 并行创建 Bull 和 Bear
 
-各角色把结果写入现有字段，不增加 JSON 字段。Bull/Bear opening 必须创建为 `fixed-tracked-advocate-luna`。
+各角色把结果写入现有字段，不增加 JSON 字段。Bull/Bear opening 必须创建为 `fixed-tracked-adjudicator-sol`。
 
 Bull 运行时 prompt：
 
