@@ -251,7 +251,7 @@ def inspect_backtest_financial_research(
         "status": "needs_financial_research" if required_items else "ready",
         "run_date": run_date,
         "required_items": required_items,
-        "covered_items": covered_items,
+        "covered_symbol_count": len(covered_items),
         "unavailable_items": unavailable_items,
         "preparation_command": preparation_command,
         "registration_command_template": (

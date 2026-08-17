@@ -396,7 +396,7 @@ def prepare_backtest_day(
         "backtest_context_json": str(context_json),
         "backtest_context_markdown": str(context_md),
         "manifest": str(manifest_path),
-        "symbols": symbols,
+        "symbol_count": len(symbols),
         "universe": universe_metadata,
         "copied_inputs": copied,
         "generated_inputs": generated_inputs,

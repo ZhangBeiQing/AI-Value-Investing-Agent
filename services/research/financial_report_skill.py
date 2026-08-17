@@ -497,6 +497,8 @@ def _normalize_summary_entry(raw: Any) -> Optional[Dict[str, Any]]:
         "announcement_id": announcement_id,
         "report_date": report_date,
         "report_type": raw.get("report_type"),
+        "fiscal_year": raw.get("fiscal_year"),
+        "quarter": raw.get("quarter"),
         "paired_previous_announcement_id": raw.get("paired_previous_announcement_id") or raw.get("previous_announcement_id"),
         "paired_previous_report_date": raw.get("paired_previous_report_date") or raw.get("previous_report_date"),
         "output_path": output_path,
@@ -605,6 +607,8 @@ def update_summary_index(
         "announcement_id": latest_announcement_id,
         "report_date": latest_date,
         "report_type": latest_report_type,
+        "fiscal_year": getattr(latest_report, "fiscal_year", None),
+        "quarter": getattr(latest_report, "quarter", None),
         "paired_previous_announcement_id": prev_announcement_id,
         "paired_previous_report_date": prev_date,
         "output_path": str(output_path),
@@ -827,6 +831,42 @@ def select_latest_two_reports(
     )
 
 
+def _summary_entry_period(entry: Dict[str, Any]) -> Optional[tuple[int, int]]:
+    raw_fiscal_year = entry.get("fiscal_year")
+    raw_quarter = entry.get("quarter")
+    try:
+        if raw_fiscal_year and raw_quarter:
+            return int(raw_fiscal_year), int(raw_quarter)
+    except (TypeError, ValueError):
+        pass
+
+    raw_report_type = str(entry.get("report_type") or "").strip().lower()
+    normalized_types = {
+        "q1": ("q1", 1),
+        "interim": ("interim", 2),
+        "q2": ("interim", 2),
+        "q3": ("q3", 3),
+        "annual": ("annual", 4),
+        "q4": ("annual", 4),
+    }
+    report_type, quarter = normalized_types.get(
+        raw_report_type,
+        _resolve_report_type(raw_report_type),
+    )
+    report_date = str(entry.get("report_date") or "")
+    if not report_type or not quarter or not re.match(r"^20\d{2}", report_date):
+        return None
+    announcement_year = int(report_date[:4])
+    fiscal_year = announcement_year - 1 if report_type == "annual" else announcement_year
+    return fiscal_year, quarter
+
+
+def _summary_entry_covers_report(entry: Dict[str, Any], latest: FinancialReportMeta) -> bool:
+    if str(entry.get("announcement_id") or "") == latest.announcement_id:
+        return True
+    return _summary_entry_period(entry) == (latest.fiscal_year, latest.quarter)
+
+
 def _should_skip(symbol: str, latest: FinancialReportMeta) -> bool:
     summary_index = load_summary_index(symbol)
     completed = [summary_index.get("latest_completed_report") or {}]
@@ -834,7 +874,7 @@ def _should_skip(symbol: str, latest: FinancialReportMeta) -> bool:
     for entry in completed:
         if not isinstance(entry, dict):
             continue
-        if entry.get("announcement_id") != latest.announcement_id:
+        if not _summary_entry_covers_report(entry, latest):
             continue
         raw_path = entry.get("output_path")
         if not raw_path:
