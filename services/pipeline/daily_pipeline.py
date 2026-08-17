@@ -33,7 +33,6 @@ SKILL_FLOW_CONFIG = (
     / "fixed_tracked"
     / "main_policy.md"
 )
-SHORT_BOOK_FLOW_CONFIG = PROJECT_ROOT / "configs" / "prompt_flow" / "skill_flow_short_book.json"
 LONG_BOOK_FLOW_CONFIG = PROJECT_ROOT / "configs" / "prompt_flow" / "skill_flow_long_book.json"
 LOGGER = init_component_logger(
     "DailyPipeline",
@@ -208,25 +207,16 @@ def _exclude_known_not_listed(
 def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, Any]:
     base_path = Path(base_dir)
     selection_dir = base_path / "selection_runs" / run_date
-    short_candidates = selection_dir / "08_short_book_candidates.json"
     long_candidates = selection_dir / "09_long_book_candidates.json"
-    # 量化初筛产物，作为选股候选池缺失时的回退来源
+    # 短期量化初筛直接并入 fixed_tracked；长期候选仍优先使用选股结果。
     short_prefilter = selection_dir / "12_quant_prefilter_short.csv"
     long_prefilter = selection_dir / "12_quant_prefilter_long.csv"
 
     tracked_symbols = [entry.symbol for entry in TRACKED_A_STOCKS]
     manual_position_symbols = _load_manual_position_symbols(base_dir)
-    short_symbols = _load_selection_symbols(short_candidates) if short_candidates.exists() else []
+    short_prefilter_symbols = _load_prefilter_symbols(short_prefilter)
     long_symbols = _load_selection_symbols(long_candidates) if long_candidates.exists() else []
 
-    # 选股候选池不存在时，回退到量化初筛产物
-    short_source_type = "selection_candidates"
-    short_source_path = str(short_candidates)
-    if not short_symbols:
-        short_symbols = _load_prefilter_symbols(short_prefilter)
-        if short_symbols:
-            short_source_type = "quant_prefilter"
-            short_source_path = str(short_prefilter)
     long_source_type = "selection_candidates"
     long_source_path = str(long_candidates)
     if not long_symbols:
@@ -244,8 +234,8 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
         run_date,
         base_dir=base_path,
     )
-    short_symbols, short_not_listed = _exclude_known_not_listed(
-        short_symbols,
+    short_prefilter_symbols, short_prefilter_not_listed = _exclude_known_not_listed(
+        short_prefilter_symbols,
         run_date,
         base_dir=base_path,
     )
@@ -253,14 +243,15 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
         tracked_symbols,
         manual_position_symbols,
         long_symbols,
+        short_prefilter_symbols,
     )
 
     fixed_book = {
         "book_type": "fixed_tracked",
         "signature": _book_signature("fixed_tracked"),
         "prompt_config": str(SKILL_FLOW_CONFIG),
-        "source_type": "unified_long_pool",
-        "source_path": "configs/stock_pool.py + manual_position_override.json + long_book_candidates",
+        "source_type": "unified_fixed_pool",
+        "source_path": "configs/stock_pool.py + manual_position_override.json + long_book_candidates + 12_quant_prefilter_short.csv",
         "capital_budget": 0,
         "symbols": fixed_symbols,
         "symbol_sources": {
@@ -269,24 +260,17 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
             "long_book_candidates": long_symbols,
             "long_book_source_type": long_source_type,
             "long_book_source_path": long_source_path,
+            "short_quant_prefilter": short_prefilter_symbols,
+            "short_quant_prefilter_path": str(short_prefilter),
             "not_listed_as_of_date": [
                 *tracked_not_listed,
                 *long_not_listed,
+                *short_prefilter_not_listed,
             ],
         },
     }
     books = [
         fixed_book,
-        {
-            "book_type": "short_book",
-            "signature": _book_signature("short_book"),
-            "prompt_config": str(SHORT_BOOK_FLOW_CONFIG),
-            "source_type": short_source_type,
-            "source_path": short_source_path,
-            "capital_budget": 200000,
-            "symbols": short_symbols,
-            "not_listed_as_of_date": short_not_listed,
-        },
         {
             "book_type": "long_book",
             "signature": _book_signature("long_book"),
@@ -302,7 +286,7 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
         "run_date": run_date,
         "books": books,
         "default_books": ["fixed_tracked"],
-        "all_books": ["fixed_tracked", "short_book"],
+        "all_books": ["fixed_tracked"],
     }
 
 
@@ -552,7 +536,7 @@ def run_daily_pipeline(
         manifest = build_run_manifest(run_date, base_dir=base_dir)
     if prompt_config or signature:
         # 默认日常调用：只跑 fixed_tracked 单账本。
-        # 只有显式传入 manifest 且不再提供 prompt_config 时，才进入三账本模式。
+        # 只有显式传入 manifest 且不再提供 prompt_config 时，才进入 manifest 调度模式。
         fixed_book = next(
             (book for book in manifest.get("books", []) if book.get("book_type") == "fixed_tracked"),
             {},

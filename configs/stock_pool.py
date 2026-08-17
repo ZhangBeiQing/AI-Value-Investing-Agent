@@ -25,7 +25,7 @@ class ForcedShortBookEntry:
 
 TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("300476.SZ", "胜宏科技", "GB300 HDI板独家份额50%"),
-    # StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
+    StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
     StockEntry("002714.SZ", "牧原股份", "生猪养殖"),
     StockEntry("603501.SH", "豪威集团", "半导体设计"),
     StockEntry("600276.SH", "恒瑞医药", "创新医药"),
@@ -40,14 +40,22 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("518800.SH", "黄金基金ETF", "黄金"),
     StockEntry("688213.SH", "思特威-W", "sensor传感器"),
     StockEntry("002415.SZ", "海康威视", "安防监控"),
-   #  StockEntry("02513.HK", "智谱", "人工智能大模型"),
+    StockEntry("02513.HK", "智谱", "人工智能大模型"),
     StockEntry("603283.SH", "赛腾股份", "消费电子自动化设备"),
     StockEntry("301536.SZ", "星宸科技", "AI视觉芯片"),
     StockEntry("688235.SH", "百济神州-U", "创新药"),
     StockEntry("600036.SH", "招商银行", "零售银行"),
     StockEntry("601398.SH", "工商银行", "国有大行"),
     StockEntry("603195.SH", "公牛集团", "民用电工"),
-    StockEntry("603288.SH", "海天味业", "调味品龙头")
+    StockEntry("603288.SH", "海天味业", "调味品龙头"),
+    StockEntry("300014.SZ", "亿纬锂能", "锂电池"),
+    StockEntry("002463.SZ", "沪电股份", "PCB"),
+    StockEntry("002466.SZ", "天齐锂业", "锂矿"),
+    StockEntry("600584.SH", "长电科技", "半导体封测"),
+    StockEntry("600183.SH", "生益科技", "覆铜板CCL"),
+    StockEntry("300458.SZ", "全志科技", "芯片设计"),
+    StockEntry("300394.SZ", "天孚通信", "光通信器件"),
+    StockEntry("300613.SZ", "富瀚微", "视频监控芯片")
 ]
 
 

@@ -34,7 +34,7 @@ python scripts/refresh_all_for_date.py --date 2026-06-11 --include-selection-uni
 python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-date
 ```
 
-`--date` 默认指「要分析的交易日」（即最近一个已收盘的交易日），默认 `today - 1`。周末或节假日只需要最近一次收盘数据时，要手动指定最近一个交易日；确需按休市自然日吸收新增宏观与新闻时，必须显式传入 `--allow-non-trading-date`。该参数不会改变价格数据的最后交易日，也不会放宽回测或真实交易执行的交易日约束。
+`--date` 默认指「要分析的交易日」（即最近一个已收盘的交易日），**默认 `today`**——日常节奏是当天晚上 9 点分析当天收盘，不做减一。周末或节假日只需要最近一次收盘数据时，要手动指定最近一个交易日；确需按休市自然日吸收新增宏观与新闻时，必须显式传入 `--allow-non-trading-date`。该参数不会改变价格数据的最后交易日，也不会放宽回测或真实交易执行的交易日约束。
 
 ## 3. 编排顺序
 
@@ -57,7 +57,7 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 - `selection.build-shared-context` → 共享上下文
 - `selection.build-candidate-pools` → AI 选股候选池 08/09 文件
 
-跑完后脚本会打印「后续 skill 清单」（宏观总结、新闻总结、财报准备与总结、三账本 01-04、三账本交易、三账本后处理），人工按顺序触发。
+跑完后脚本会打印「后续 skill 清单」（宏观总结、新闻总结、财报准备与总结、综合 fixed_tracked 01-04、固定股池交易与后处理），人工按顺序触发。
 
 ## 4. 每日刷新策略细则
 
@@ -88,7 +88,7 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 ### 4.5 量化初筛
 
-由 `selection.build-factor-store` → `build-factor-scores` → `build-quant-prefilter` 三步负责，输出 `12_quant_prefilter_short.csv` 与 `12_quant_prefilter_long.csv` 直接作为下游 `run_daily_pipeline --all-books` 的 short_book / long_book 输入。
+由 `selection.build-factor-store` → `build-factor-scores` → `build-quant-prefilter` 三步负责，输出 `12_quant_prefilter_short.csv` 与 `12_quant_prefilter_long.csv`。其中短期量化初筛股票直接并入 fixed_tracked；长期候选也按现有规则并入 fixed_tracked，不再自动生成独立 short_book/long_book。
 
 `--no-generate-prefilter` 可跳过。
 
