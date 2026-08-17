@@ -786,6 +786,8 @@ class EnhancedPEPBAnalyzer:
             if pd.isna(report_date) or report_date < window_start:
                 continue
             ttm_profit = float(row.get("TTM_NET_PROFIT_RAW") or 0)
+            if ttm_profit == 0:
+                continue
             price = self._get_price_at(price_series, report_date.to_pydatetime())
             if price is None or price <= 0:
                 continue
