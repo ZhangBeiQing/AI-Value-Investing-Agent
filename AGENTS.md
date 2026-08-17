@@ -48,7 +48,7 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # 日常入口：一键刷新「要分析的交易日」所需的全部 Python 链路数据，并打印后续 skill 清单
-# --date 语义统一为「要分析的交易日」（默认 today-1）；周末/节假日请手动指定最近一个交易日
+# --date 语义统一为「要分析的交易日」（默认 today）；周末/节假日请手动指定最近一个交易日
 python scripts/refresh_all_for_date.py
 python scripts/refresh_all_for_date.py --date 2026-04-21
 python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-date  # 休市日补充宏观/新闻分析
@@ -63,10 +63,12 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 ## 日期语义（统一口径）
 
 - `--date` 在本项目主脚本中默认指「要分析的交易日」，即**收盘数据已经产生的那一天**。
-- 日常节奏：第二天早上 7 点起床后，对昨日收盘数据做分析与次日预案，所以默认值为 `today - 1`。
-- 周末或节假日「昨天」不是交易日时，需要手动指定最近一个交易日，例如周一早上传 `--date <上周五>`。
+- **日常节奏：当天晚上 9 点（A 股 15:00 收盘后）分析当天收盘，为下一交易日出预案。所以默认值就是 `today`。**
+- **不要再出现 `today - 1` / 「默认昨天」这种口径，那是已废弃的旧设计。** 看到任何地方还写着减一，按本节口径改掉，不要照着它推导日期。
+- 周末或节假日「今天」不是交易日时，需要手动指定最近一个交易日，例如周六补跑时传 `--date <上周五>`。
 - 若确需在周末或节假日吸收休市期间新增的宏观与新闻信息，`refresh_all_for_date.py` 和 `run_daily_pipeline.py` 可显式传 `--allow-non-trading-date`，按该自然日生成研究与下一交易日预案；该参数不表示休市日可以成交，也不得用于放宽回测交易日约束。
-- 不要再出现「传明天的日期」这种用法；若夜盘 7 点临时跑一轮，请改成第二天早上再跑，以保证 akshare 当日行情/新闻已刷齐。
+- 不要出现「传明天的日期」这种用法。
+- 因为是当天夜间运行，`akshare` 的当日行情/新闻偶有延迟：每轮必须校验该 `--date` 对应的产物真的落盘，**不得拿前一交易日的数据顶替**，否则次日预案会建立在过期收盘价上。
 
 ## Boundaries
 
@@ -103,6 +105,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 | 任务 | 首选参考 |
 | --- | --- |
 | 开始今天股票交易 | `data/skill_runs/YYYY-MM-DD/`, `.codex/skills/auto-trading-daily-pipeline/SKILL.md` |
+| 交易前准备当日全部数据 | `.codex/skills/daily-data-preparation/SKILL.md` |
 | 早上一键刷数据 | `scripts/refresh_all_for_date.py`, `services/data_refresh/refresh_orchestrator.py` |
 | 刷新每日数据（单步） | `scripts/manage_daily_data.py`, `services/data_refresh/`, `.codex/skills/extend-shared-data-access/SKILL.md` |
 | 调整 `01-04` 产物 | `scripts/run_daily_pipeline.py`, `services/pipeline/`, `.codex/rules/skill-pipeline.md`, `.codex/skills/add-skill-pipeline-step/SKILL.md` |
@@ -144,6 +147,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 ## Skills
 
+- `daily-data-preparation`：交易 skill 之前的每日数据准备总调度，串联 `refresh_all_for_date` → MinerU 就绪 → 并发 2 个 subagent（宏观 / 新闻）与财报 prepare → 主 agent 亲自做逐股财报研究 → `run_daily_pipeline`，一次性产出 `01-04` 研究包。**已挂 crontab，周一至周五 21:03 自动运行**（`scripts/cron_daily_data_prep.sh`）
 - `auto-trading-daily-pipeline`：三账本交易公共模板与调度说明，负责定义 fixed_tracked / short_book / long_book 的共用流程与串行执行原则
 - `auto-trading-fixed-tracked`：固定股票池 `fixed_tracked` 的单账本交易分析与后处理 skill
 - `auto-trading-short-book`：短期股票池 `short_book` 的单账本交易分析与后处理 skill

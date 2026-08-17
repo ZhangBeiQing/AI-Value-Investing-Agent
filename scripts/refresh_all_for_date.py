@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """一键刷新某个交易日的固定股票池 Python 链路数据，并打印后续 skill 清单。
 
-典型用法（早上 7 点起床，分析昨天收盘）：
+典型用法（当天晚上 9 点，分析当天收盘，为下一交易日出预案）：
 
-    python scripts/refresh_all_for_date.py                # --date 默认昨天
+    python scripts/refresh_all_for_date.py                # --date 默认今天
     python scripts/refresh_all_for_date.py --date 2026-04-22
     python scripts/refresh_all_for_date.py --fresh-heavy  # 连财报结构化数据一起强刷
     python scripts/refresh_all_for_date.py --include-selection-universe
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 
@@ -38,7 +38,12 @@ LOGGER = init_component_logger(
 
 
 def _default_date() -> str:
-    return (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+    """默认分析日 = 今天。
+
+    日常节奏是当天 21:00（A 股 15:00 收盘后）分析当天收盘、为下一交易日出预案，
+    所以默认值就是 `today`，不做任何减一。
+    """
+    return date.today().strftime("%Y-%m-%d")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--date",
         default=_default_date(),
         help=(
-            "要分析的日期 YYYY-MM-DD（默认为昨天）。默认要求交易日；"
+            "要分析的日期 YYYY-MM-DD（默认为今天）。默认要求交易日；"
             "周末或节假日补充分析需同时传 --allow-non-trading-date。"
         ),
     )
