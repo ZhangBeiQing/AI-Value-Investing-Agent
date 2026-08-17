@@ -1248,8 +1248,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--today-time",
-        default=(datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
-        help="估值基准时间，例如 2024-12-31 或 2024-12-31 15:00:00，默认为昨天",
+        default=datetime.now().strftime("%Y-%m-%d"),
+        help="估值基准时间，例如 2024-12-31 或 2024-12-31 15:00:00，默认为今天",
     )
     parser.add_argument(
         "--get-look-back-days",
