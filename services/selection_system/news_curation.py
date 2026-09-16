@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -42,6 +43,9 @@ SOURCE_ID_PREFIX = {
 }
 THS_MAX_PAGES = 40
 FUTU_MAX_PAGES = 24
+# 财联社电报：旧的 /nodeapi/telegraphList 已下线，改用需要签名的 v1 接口。
+CLS_ROLL_LIST_URL = "https://www.cls.cn/v1/roll/get_roll_list"
+CLS_FALLBACK_TITLE_MAX_CHARS = 80
 MERGE_LLM_MAX_ITEMS = 80
 DEDUPE_SYSTEM_PROMPT = """你是一个严谨的财经新闻去重与筛噪助手。
 
@@ -618,11 +622,55 @@ def _fetch_cjzc_rows(window_start: datetime, run_end: datetime) -> Tuple[List[Di
     return rows, {"pages_scanned": 2}
 
 
+def _shorten_text(text: str, max_chars: int) -> str:
+    """把长文本压成适合当标题的短句，超长时截断并加省略号。"""
+    collapsed = re.sub(r"\s+", " ", text).strip()
+    if len(collapsed) <= max_chars:
+        return collapsed
+    return collapsed[: max_chars - 1].rstrip() + "…"
+
+
+def _build_cls_signed_url(params: Dict[str, str]) -> str:
+    """给财联社 v1 接口生成带签名的 URL。
+
+    签名算法：把除 `sign` 以外的全部查询参数按 key 排序、拼成 query string，
+    先 sha1 取十六进制，再对该十六进制字符串 md5 取十六进制。
+
+    这是逆向出来的私有接口协议，财联社改版时会失效（表现为
+    `{"errno":"10012","msg":"签名错误"}`）。届时对照社区维护的
+    RSSHub `lib/routes/cls` 更新参数与签名方式即可。
+    """
+    query = urllib.parse.urlencode(sorted(params.items()))
+    digest = hashlib.sha1(query.encode("utf-8")).hexdigest()
+    sign = hashlib.md5(digest.encode("utf-8")).hexdigest()
+    return f"{CLS_ROLL_LIST_URL}?{query}&sign={sign}"
+
+
 def _fetch_cls_key_rows(window_start: datetime, run_end: datetime) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    url = "https://www.cls.cn/nodeapi/telegraphList"
-    response = requests.get(url, params={"rn": "50"}, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+    # 旧接口 https://www.cls.cn/nodeapi/telegraphList 已被财联社下线（长期 404），
+    # akshare 的 stock_info_global_cls 打的也是这个死地址且带 10 次重试，换过去只会更慢。
+    # 现改用带签名的 v1 接口。它单次返回约 50 条（最近约 1 小时），
+    # `rn` 生效但 `last_time` 分页无效，因此覆盖范围与旧实现一致：只取最近一批，不回溯全天。
+    params = {
+        "app": "CailianpressWeb",
+        "category": "",
+        "last_time": "",
+        "os": "web",
+        "rn": str(SOURCE_BATCH_LIMITS.get("cls_key", 50)),
+        "subscribe": "0",
+        "sv": "7.7.5",
+    }
+    response = requests.get(
+        _build_cls_signed_url(params),
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.cls.cn/telegraph"},
+        timeout=20,
+    )
     response.raise_for_status()
     payload = response.json()
+    if str(payload.get("errno") or "0") != "0":
+        raise RuntimeError(
+            f"财联社电报接口返回业务错误: errno={payload.get('errno')} msg={payload.get('msg')}"
+        )
     rows: List[Dict[str, Any]] = []
     for item in payload.get("data", {}).get("roll_data", []) or []:
         if int(item.get("is_ad") or 0):
@@ -631,11 +679,18 @@ def _fetch_cls_key_rows(window_start: datetime, run_end: datetime) -> Tuple[List
         published_dt = _parse_iso_datetime(published_at)
         if published_dt is None or not _is_within_window(published_dt, window_start, run_end):
             continue
+        content = str(item.get("content") or "").strip()
+        # 约四分之一的电报是没有标题的短快讯（整条就是正文）。下游去重只看 title，
+        # 空标题会让 LLM 判不出重复，所以从 brief / content 合成一个短标题。
+        title = str(item.get("title") or "").strip()
+        if not title:
+            fallback = str(item.get("brief") or "").strip() or content
+            title = _shorten_text(fallback, CLS_FALLBACK_TITLE_MAX_CHARS)
         rows.append(
             {
-                "title": str(item.get("title") or "").strip(),
+                "title": title,
                 "published_at": published_at,
-                "preview": str(item.get("content") or item.get("title") or "").strip(),
+                "preview": content or title,
                 "url": "",
                 "needs_fetch": False,
                 "level": str(item.get("level") or ""),
