@@ -124,6 +124,16 @@ def _read_json_object(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
     return payload, []
 
 
+def _reference_errors(path: Path, payload: Any) -> list[str]:
+    rendered = json.dumps(payload, ensure_ascii=False)
+    errors: list[str] = []
+    if re.search(r"https?://|www\.", rendered, re.IGNORECASE):
+        errors.append(f"{path}: 最终辩论产物禁止包含原始 URL")
+    if re.search(r"\[[^\]]+\]\([^\)]+\)", rendered):
+        errors.append(f"{path}: 最终辩论产物禁止包含 Markdown 链接")
+    return errors
+
+
 def validate_opening(payload: Any) -> list[str]:
     if not isinstance(payload, dict):
         return ["opening 必须是 JSON 对象"]
@@ -338,13 +348,16 @@ def validate_debate_artifacts(
     }
     errors: list[str] = []
     for path, validator in validators.items():
-        _, artifact_errors = _role_payload_errors(path, validator)
+        payload, artifact_errors = _role_payload_errors(path, validator)
         errors.extend(artifact_errors)
+        if payload is not None:
+            errors.extend(_reference_errors(path, payload))
 
     vote_summary_path = symbol_dir / "final" / "vote_summary.json"
     vote_summary, vote_errors = _read_json_object(vote_summary_path)
     errors.extend(vote_errors)
     if vote_summary is not None:
+        errors.extend(_reference_errors(vote_summary_path, vote_summary))
         if vote_summary.get("symbol") != normalized_symbol:
             errors.append(f"{vote_summary_path}: symbol 不匹配")
         if vote_summary.get("status") not in {"majority", "no_majority"}:
@@ -458,6 +471,7 @@ def validate_debate_artifacts(
         verdict, verdict_read_errors = _read_json_object(verdict_path)
         errors.extend(verdict_read_errors)
         if verdict is not None:
+            errors.extend(_reference_errors(verdict_path, verdict))
             errors.extend(
                 f"{verdict_path}: {error}"
                 for error in validate_stock_decision_entry(

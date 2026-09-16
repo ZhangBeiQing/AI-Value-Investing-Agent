@@ -131,6 +131,13 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - Logger 名称必须是业务语义明确的 PascalCase，如 `ManageDailyData`、`DailyPipeline`、`TradeSummary`
 - 详细规范见 `.codex/rules/code-style.md`
 
+## 最终产物引用规则
+
+- 所有 Agent、Subagent 和 Skill 的最终交付文件禁止包含原始 URL、Markdown 链接、脚注引用、括号来源引用或独立来源清单。
+- 高可信和一般可信资料直接吸收为结论；最终文件只保留结果，不展示常规引用。
+- 只有雪球、股吧、社交媒体传闻等低可信信息确实影响判断时，才标注“低可信来源”或“未经证实”，说明不确定性及其对结论的影响；仍不得写来源名称、帖子标题或 URL。
+- 过程研究文件、抓取缓存、证据索引和审计日志可保留来源元数据供内部核验，但发布到 `financial_reports/`、`05_decision.json`、交易总结、行业研究最终报告及其他用户直接消费的最终产物前必须移除引用。
+
 ## Rules
 
 - `pre_commit_rule.md`：git 提交规则
@@ -147,7 +154,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 ## Skills
 
-- `daily-data-preparation`：交易 skill 之前的每日数据准备总调度，串联 `refresh_all_for_date` → MinerU 就绪 → 并发 2 个 subagent（宏观 / 新闻）与财报 prepare → 主 agent 亲自做逐股财报研究 → `run_daily_pipeline`，一次性产出 `01-04` 研究包。**已挂 crontab，周一至周五 21:03 自动运行**（`scripts/cron_daily_data_prep.sh`）
+- `daily-data-preparation`：交易 skill 之前的每日数据准备总调度，串联 `refresh_all_for_date` → PDF 转 Markdown 依赖就绪（`pymupdf4llm`） → 并发 2 个 subagent（宏观 / 新闻）与财报 prepare → 主 agent 亲自做逐股财报研究 → `run_daily_pipeline`，一次性产出 `01-04` 研究包。**已挂 crontab，周一至周五 21:03 自动运行**（`scripts/cron_daily_data_prep.sh`）
 - `auto-trading-daily-pipeline`：三账本交易公共模板与调度说明，负责定义 fixed_tracked / short_book / long_book 的共用流程与串行执行原则
 - `auto-trading-fixed-tracked`：固定股票池 `fixed_tracked` 的单账本交易分析与后处理 skill
 - `auto-trading-short-book`：短期股票池 `short_book` 的单账本交易分析与后处理 skill

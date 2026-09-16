@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -265,6 +266,12 @@ def validate_decision_json(
     errors: List[str] = []
     if not isinstance(decision, dict):
         return ["decision 不是有效的 JSON 对象"]
+
+    rendered_decision = json.dumps(decision, ensure_ascii=False)
+    if re.search(r"https?://|www\.", rendered_decision, re.IGNORECASE):
+        errors.append("05_decision.json 禁止包含原始 URL")
+    if re.search(r"\[[^\]]+\]\([^\)]+\)", rendered_decision):
+        errors.append("05_decision.json 禁止包含 Markdown 链接")
 
     required_top = ["summary_date", "system_risk_notes", "system_focus_items"]
     for key in required_top:

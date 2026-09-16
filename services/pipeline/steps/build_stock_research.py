@@ -62,7 +62,19 @@ def _format_news_item(item: dict) -> List[str]:
     header_suffix = (" [" + " / ".join(header_parts) + "]") if header_parts else ""
 
     lines = [f"- **{title}** ({dt}){header_suffix}"]
-    used = {"title", "datetime", "category", "impact_level", "sentiment"}
+    hidden_reference_fields = {
+        key
+        for key in item
+        if any(token in key.lower() for token in ("source", "url", "link", "citation", "reference"))
+    }
+    used = {
+        "title",
+        "datetime",
+        "category",
+        "impact_level",
+        "sentiment",
+        *hidden_reference_fields,
+    }
     preferred_order = [
         "summary",
         "validity_period",
@@ -70,9 +82,6 @@ def _format_news_item(item: dict) -> List[str]:
         "financial_implication",
         "price_driver",
         "risk_warning",
-        "source",
-        "url",
-        "link",
     ]
     for key in preferred_order:
         if key in item and item.get(key) not in (None, ""):
