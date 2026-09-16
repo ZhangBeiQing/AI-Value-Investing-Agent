@@ -31,6 +31,7 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("600276.SH", "恒瑞医药", "创新医药"),
     StockEntry("300274.SZ", "阳光电源", "光伏逆变器"),
     StockEntry("600406.SH", "国电南瑞", "智能电网"),
+    StockEntry("601877.SH", "正泰电器", "低压电器与户用光伏"),
     StockEntry("01810.HK", "小米集团-W", "手机与智能家居与汽车"),
     StockEntry("09988.HK", "阿里巴巴-W", "电商、云计算与人工智能"),
     StockEntry("00700.HK", "腾讯控股", "社交、游戏与云服务"),
@@ -55,7 +56,19 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("600183.SH", "生益科技", "覆铜板CCL"),
     StockEntry("300458.SZ", "全志科技", "芯片设计"),
     StockEntry("300394.SZ", "天孚通信", "光通信器件"),
-    StockEntry("300613.SZ", "富瀚微", "视频监控芯片")
+    StockEntry("300613.SZ", "富瀚微", "视频监控芯片"),
+    StockEntry("002851.SZ", "麦格米特", "电力电子与电气自动化"),
+    StockEntry("00175.HK", "吉利汽车", "汽车制造"),
+    StockEntry("300760.SZ", "迈瑞医疗", "医疗器械"),
+    StockEntry("600362.SH", "江西铜业", "铜矿采选与冶炼"),
+    StockEntry("000969.SZ", "安泰科技", "钨铜偏滤器、第一壁、屏蔽材料"),
+    StockEntry("688122.SH", "西部超导", "NbTi / Nb3Sn低温超导线材、磁体"),
+    StockEntry("601399.SH", "国机重装", "TF线圈盒、大型结构件"),
+    StockEntry("600363.SH", "联创光电", "高温超导磁体"),
+    StockEntry("688776.SH", "国光电气", "真空泵、阀门、氚系统相关设备"),
+    StockEntry("603011.SH", "合锻智能", "真空室/大型结构件"),
+    StockEntry("600105.SH", "永鼎股份", "REBCO高温超导带材"),
+    StockEntry("002318.SZ", "久立特材", "特种合金管材/核能材料"),
 ]
 
 
