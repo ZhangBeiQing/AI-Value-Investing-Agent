@@ -125,8 +125,11 @@ HK_CASHFLOW_ALIASES: Dict[str, str] = {
     "出售附属公司": "SUBSIDIARY_ACCEPT_INVEST",
 }
 
-CNINFO_QUERY_URL = "https://www.cninfo.com.cn/new/hisAnnouncement/query"
-CNINFO_HK_STOCK_LIST_URL = "https://www.cninfo.com.cn/new/data/hke_stock.json"
+CNINFO_QUERY_URL = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
+CNINFO_FULLTEXT_SEARCH_URL = "http://www.cninfo.com.cn/new/fulltextSearch/full"
+CNINFO_HK_STOCK_LIST_URL = "http://www.cninfo.com.cn/new/data/hke_stock.json"
+CNINFO_CN_STOCK_LIST_URL = "http://www.cninfo.com.cn/new/data/szse_stock.json"
+CNINFO_HOME_URL = "http://www.cninfo.com.cn/new/index"
 CNINFO_JSON_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -135,12 +138,79 @@ CNINFO_JSON_HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     "X-Requested-With": "XMLHttpRequest",
-    "Origin": "https://www.cninfo.com.cn",
-    "Referer": "https://www.cninfo.com.cn/new/disclosure/list/notice",
+    "Origin": "http://www.cninfo.com.cn",
+    "Referer": "http://www.cninfo.com.cn/new/disclosure/list/notice",
 }
+CNINFO_HOME_HEADERS = {
+    "User-Agent": CNINFO_JSON_HEADERS["User-Agent"],
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+# 巨潮资讯在 2026 年起对无会话的裸请求返回 403（WAF），需先访问首页拿到
+# SF_cookie_4 / JSESSIONID 再复用同一 Session 发起 JSON 请求。
+_CNINFO_SESSION: Optional["requests.Session"] = None
+
 HK_STOCK_MAP_CACHE: Dict[str, Dict[str, str]] = {}
 HK_STOCK_MAP_LOADED_AT: Optional[datetime] = None
 HK_STOCK_MAP_TTL = timedelta(hours=12)
+CN_STOCK_MAP_CACHE: Dict[str, str] = {}
+CN_STOCK_MAP_LOADED_AT: Optional[datetime] = None
+CN_STOCK_MAP_TTL = timedelta(hours=12)
+
+
+def _get_cninfo_session(logger: logging.Logger | None = None) -> "requests.Session":
+    """返回带巨潮首页 Cookie 的共享 Session，规避 WAF 的 403 拦截。"""
+    global _CNINFO_SESSION
+    if _CNINFO_SESSION is not None:
+        return _CNINFO_SESSION
+    session = requests.Session()
+    session.headers.update(CNINFO_JSON_HEADERS)
+    try:
+        session.get(CNINFO_HOME_URL, headers=CNINFO_HOME_HEADERS, timeout=30)
+    except Exception as exc:  # pragma: no cover - network defensive
+        if logger:
+            logger.warning("访问巨潮首页获取 Cookie 失败: %s", exc)
+    _CNINFO_SESSION = session
+    return session
+
+
+def _load_cninfo_cn_stock_map(
+    *,
+    force_refresh: bool = False,
+    logger: logging.Logger | None = None,
+) -> Dict[str, str]:
+    """加载巨潮沪深京股票 orgId 映射表（code -> orgId）。"""
+    global CN_STOCK_MAP_CACHE, CN_STOCK_MAP_LOADED_AT
+    if (
+        not force_refresh
+        and CN_STOCK_MAP_CACHE
+        and CN_STOCK_MAP_LOADED_AT
+        and datetime.now() - CN_STOCK_MAP_LOADED_AT < CN_STOCK_MAP_TTL
+    ):
+        return CN_STOCK_MAP_CACHE
+
+    try:
+        resp = _get_cninfo_session(logger).get(
+            CNINFO_CN_STOCK_LIST_URL,
+            headers=CNINFO_JSON_HEADERS,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        mapping: Dict[str, str] = {}
+        for item in payload.get("stockList", []):
+            code = str(item.get("code") or "").strip()
+            if not code:
+                continue
+            mapping[code] = str(item.get("orgId") or "").strip()
+        if mapping:
+            CN_STOCK_MAP_CACHE = mapping
+            CN_STOCK_MAP_LOADED_AT = datetime.now()
+            if logger:
+                logger.info("已刷新巨潮沪深京 orgId 映射，共 %d 条", len(mapping))
+    except Exception as exc:
+        if logger:
+            logger.warning("获取巨潮沪深京 orgId 映射失败: %s", exc)
+    return CN_STOCK_MAP_CACHE
 
 
 def _normalize_hk_financial_report(
@@ -1209,7 +1279,7 @@ def _load_cninfo_hk_stock_map(
         return HK_STOCK_MAP_CACHE
 
     try:
-        resp = requests.get(
+        resp = _get_cninfo_session(logger).get(
             CNINFO_HK_STOCK_LIST_URL,
             headers=CNINFO_JSON_HEADERS,
             timeout=30,
@@ -1276,7 +1346,7 @@ def _fetch_cninfo_hk_announcements(
             "isHLtitle": "true",
         }
         try:
-            resp = requests.post(
+            resp = _get_cninfo_session(logger).post(
                 CNINFO_QUERY_URL,
                 data=payload,
                 headers=CNINFO_JSON_HEADERS,
@@ -1366,6 +1436,107 @@ def _extract_org_id_from_cached_disclosures(csv_path: Path) -> str | None:
     return None
 
 
+def _fetch_cninfo_cn_announcements(
+    symbolInfo,
+    start_date: str,
+    end_date: str,
+    logger: logging.Logger | None = None,
+    cached_csv_path: Path | None = None,
+):
+    """使用带 Cookie 的共享 Session 直连 cninfo 抓取沪深京公告列表。
+
+    2026 年起巨潮 WAF 会拦截无会话的裸请求（403），且 `column=szse_latest`
+    会触发 500「系统异常」，必须改用带首页 Cookie 的 Session 与 `column=szse`。
+    """
+    import time as _time
+
+    org_id = _load_cninfo_cn_stock_map(logger=logger).get(symbolInfo.code)
+    if not org_id and cached_csv_path is not None:
+        org_id = _extract_org_id_from_cached_disclosures(cached_csv_path)
+    if not org_id:
+        if logger:
+            logger.warning("%s 未能获取巨潮 orgId", symbolInfo.symbol)
+        return None
+
+    se_date = (
+        f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
+        f"~{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
+    )
+    all_rows = []
+    page = 1
+    total_pages = None
+
+    while True:
+        payload = {
+            "pageNum": page,
+            "pageSize": 30,
+            "column": "szse",
+            "tabName": "fulltext",
+            "plate": "",
+            "stock": f"{symbolInfo.code},{org_id}",
+            "searchkey": "",
+            "secid": "",
+            "category": "",
+            "trade": "",
+            "seDate": se_date,
+            "sortName": "",
+            "sortType": "",
+            "isHLtitle": "true",
+        }
+        try:
+            resp = _get_cninfo_session(logger).post(
+                CNINFO_QUERY_URL,
+                data=payload,
+                headers=CNINFO_JSON_HEADERS,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            if logger:
+                logger.warning("cninfo 沪深京公告请求失败 (page=%s): %s", page, exc)
+            break
+
+        announcements = data.get("announcements") or []
+        if not announcements:
+            break
+
+        for item in announcements:
+            title = item.get("announcementTitle", "")
+            ann_id = item.get("announcementId", "")
+            ann_time = item.get("announcementTime", 0)
+            if isinstance(ann_time, (int, float)) and ann_time > 1e10:
+                ann_time_str = _time.strftime(
+                    "%Y-%m-%d %H:%M:%S", _time.localtime(ann_time / 1000)
+                )
+            else:
+                ann_time_str = str(ann_time)
+            detail_url = (
+                "https://www.cninfo.com.cn/new/disclosure/detail"
+                f"?stockCode={symbolInfo.code}&announcementId={ann_id}"
+                f"&orgId={org_id}&announcementTime={ann_time_str}"
+            )
+            all_rows.append({
+                "代码": symbolInfo.code,
+                "简称": symbolInfo.stock_name,
+                "公告标题": title,
+                "公告时间": ann_time_str,
+                "announcementId": ann_id,
+                "orgId": org_id,
+                "公告链接": detail_url,
+            })
+
+        total_pages = data.get("totalPages", 1) or 1
+        page += 1
+        if page > total_pages:
+            break
+        _time.sleep(0.3)
+
+    if not all_rows:
+        return None
+    return pd.DataFrame(all_rows)
+
+
 def _fetch_cninfo_disclosures_via_cached_org_id(
     symbolInfo,
     start_date: str,
@@ -1380,17 +1551,8 @@ def _fetch_cninfo_disclosures_via_cached_org_id(
         return None
 
     import time as _time
-    url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
-        "Origin": "https://www.cninfo.com.cn",
-        "Referer": "https://www.cninfo.com.cn/",
-    }
+    url = CNINFO_QUERY_URL
+    headers = CNINFO_JSON_HEADERS
     se_date = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}~{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
     stock_param = f"{symbolInfo.code},{org_id}"
     page = 1
@@ -1401,7 +1563,7 @@ def _fetch_cninfo_disclosures_via_cached_org_id(
         payload = {
             "pageNum": page,
             "pageSize": 30,
-            "column": "szse_latest",
+            "column": "szse",
             "tabName": "fulltext",
             "plate": "",
             "stock": stock_param,
@@ -1415,7 +1577,7 @@ def _fetch_cninfo_disclosures_via_cached_org_id(
             "isHLtitle": "true",
         }
         try:
-            resp = requests.post(url, data=payload, headers=headers, timeout=30)
+            resp = _get_cninfo_session(logger).post(url, data=payload, headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
@@ -1467,17 +1629,8 @@ def _fetch_cninfo_disclosures_via_fulltext_search(
 ):
     """通过 cninfo 全文检索接口拉取公告列表（hisAnnouncement/query 回退方案）。"""
     import time as _time
-    url = "https://www.cninfo.com.cn/new/fulltextSearch/full"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
-        "Origin": "https://www.cninfo.com.cn",
-        "Referer": "https://www.cninfo.com.cn/",
-    }
+    url = CNINFO_FULLTEXT_SEARCH_URL
+    headers = CNINFO_JSON_HEADERS
     sdate = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
     edate = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
     all_rows = []
@@ -1495,7 +1648,7 @@ def _fetch_cninfo_disclosures_via_fulltext_search(
             "pageSize": 30,
         }
         try:
-            resp = requests.post(url, data=payload, headers=headers, timeout=30)
+            resp = _get_cninfo_session(logger).post(url, data=payload, headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
@@ -1508,7 +1661,9 @@ def _fetch_cninfo_disclosures_via_fulltext_search(
             break
 
         for item in announcements:
-            sec_code = item.get("secCode", "")
+            sec_code = str(item.get("secCode", "") or "").strip()
+            if sec_code and sec_code.lstrip("0") != symbolInfo.code.lstrip("0"):
+                continue
             org_id = item.get("orgId", "")
             title = item.get("announcementTitle", "")
             ann_id = item.get("announcementId", "")
@@ -1575,33 +1730,38 @@ def update_disclosures_cached(
     end_date = now.strftime("%Y%m%d")
 
     if symbolInfo.is_cn_market():
-        try:
-            logger.info(f"正在获取{symbolInfo.stock_name} {symbolInfo.symbol}公告列表...")
-            fetched = api_call_with_delay(
-                ak.stock_zh_a_disclosure_report_cninfo,
-                symbol=symbolInfo.code,
-                market="沪深京",
-                start_date=start_date,
-                end_date=end_date,
-                logger=logger,
-            )
-        except Exception as exc:
-            logger.warning(
-                "akshare 公告接口失败 (%s)，尝试从本地缓存提取 orgId 直连: %s",
-                symbolInfo.symbol,
-                exc,
-            )
+        logger.info(f"正在获取{symbolInfo.stock_name} {symbolInfo.symbol}公告列表...")
+        # 优先使用带 Cookie 的 Session 直连 cninfo；akshare 的裸请求会被 WAF 403 拦截。
+        fetched = _fetch_cninfo_cn_announcements(
+            symbolInfo, start_date, end_date, logger, csv_path
+        )
+        if fetched is None or fetched.empty:
+            try:
+                logger.info("直连 cninfo 未取得公告，回退 akshare 接口")
+                fetched = api_call_with_delay(
+                    ak.stock_zh_a_disclosure_report_cninfo,
+                    symbol=symbolInfo.code,
+                    market="沪深京",
+                    start_date=start_date,
+                    end_date=end_date,
+                    logger=logger,
+                )
+            except Exception as exc:
+                logger.warning("akshare 公告接口失败 (%s)", exc)
+                fetched = None
+        if fetched is None or fetched.empty:
+            logger.info("尝试从本地缓存提取 orgId 直连")
             fetched = _fetch_cninfo_disclosures_via_cached_org_id(
                 symbolInfo, start_date, end_date, csv_path, logger
             )
-            if fetched is None:
-                logger.info("orgId 直连失败，尝试 cninfo 全文检索接口")
-                fetched = _fetch_cninfo_disclosures_via_fulltext_search(
-                    symbolInfo, start_date, end_date, logger
-                )
-            if fetched is None:
-                logger.error(f"获取{symbolInfo.stock_name}公告列表失败（含直连+全文检索回退）: {exc}")
-                return
+        if fetched is None or fetched.empty:
+            logger.info("尝试 cninfo 全文检索接口")
+            fetched = _fetch_cninfo_disclosures_via_fulltext_search(
+                symbolInfo, start_date, end_date, logger
+            )
+        if fetched is None or fetched.empty:
+            logger.error(f"获取{symbolInfo.stock_name}公告列表失败（含直连+akshare+全文检索回退）")
+            return
     elif symbolInfo.is_hk_market():
         logger.info(f"正在获取{symbolInfo.stock_name} {symbolInfo.symbol}港股公告列表...")
         fetched = _fetch_cninfo_hk_announcements(
@@ -1784,7 +1944,9 @@ def ensure_symbol_data(
                 symbolInfo,
                 base_data_dir,
                 force_refresh=force_refresh,
-                force_refresh_financials=force_refresh_financials or not financial_cache_ready,
+                force_refresh_financials=(
+                    force_refresh_financials or not financial_cache_ready or financial_behind
+                ),
                 logger=logger,
             )
 
