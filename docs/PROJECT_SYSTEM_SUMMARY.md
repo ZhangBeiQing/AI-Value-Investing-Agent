@@ -62,6 +62,8 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 由 `services/pipeline/daily_pipeline.py` 编排。当前自动流水线只生成综合 **fixed_tracked**：
 
+`run_daily_pipeline.py` 默认跳过公告刷新：公告的全市场刷新归属于前一步 `refresh_all_for_date.py`。因此该入口只消费已准备缓存并生成 01-04；仅排障或独立维护公告时才显式传入 `--refresh-disclosures`。
+
 - **fixed_tracked** 取自 `configs/stock_pool.py` 的 `TRACKED_A_STOCKS`
 - **实际持仓**来自 `book-fixed_tracked` 的人工持仓覆盖，必须纳入 fixed_tracked
 - **短期量化候选**直接读取 `12_quant_prefilter_short.csv` 并入 fixed_tracked，不再生成独立 short_book
@@ -330,6 +332,7 @@ data/skill_runs/YYYY-MM-DD/
 | 路径 | 用途 |
 | --- | --- |
 | `docs/PROJECT_SYSTEM_SUMMARY.md` | **当前文档**，项目入口总览 |
+| `docs/IMPROVEMENT_ROADMAP.md` | 待设计落地的重点改进方向 TODO（回测提速、benchmark 固化、跨越式回测、选股系统、记忆系统、数据存储迁移、界面） |
 | `docs/cache/cache_registry_design.md` | 缓存注册表机制与所有 `CacheKind` 说明 |
 | `docs/share_data_access/README.md` | `SharedDataAccess.prepare_dataset()` 调用姿势与策略归属 |
 | `docs/manage_data/data_refresh_plan.md` | 一键刷数据流水线设计（`refresh_all_for_date.py` + `refresh_orchestrator.py`） |

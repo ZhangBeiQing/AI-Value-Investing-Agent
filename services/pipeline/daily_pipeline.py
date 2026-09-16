@@ -316,6 +316,7 @@ def run_book_pipeline(
     research_cache_root: str | Path | None = None,
     agent_data_root: str | Path | None = None,
     prompt_context_override: Dict[str, str] | None = None,
+    allow_news_refresh: bool = False,
 ) -> tuple[Path, Dict[str, Any]]:
     target_symbols = [symbol for symbol in symbols if symbol]
     target_dir = Path(output_dir)
@@ -351,7 +352,7 @@ def run_book_pipeline(
         research_cache_root=research_cache_root,
         agent_data_root=agent_data_root,
         report_release_slack_days=0 if backtest_read_only else 1,
-        allow_news_refresh=not backtest_read_only,
+        allow_news_refresh=allow_news_refresh and not backtest_read_only,
         backtest_read_only=backtest_read_only,
         source_data_root=source_data_root,
     )
@@ -509,7 +510,7 @@ def run_daily_pipeline(
     signature: str = "",
     manifest_path: str | Path | None = None,
     max_workers: int = 4,
-    skip_disclosures: bool = False,
+    skip_disclosures: bool = True,
     all_books: bool = False,
     allow_non_trading_date: bool = False,
 ) -> Path:

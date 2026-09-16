@@ -74,7 +74,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 | 阶段 | 内容 | 约耗时 | 阻塞关系 |
 | --- | --- | --- | --- |
 | Step 1 | `refresh_all_for_date.py` | ~15 min | 全流程根依赖 |
-| Step 2 | MinerU `/health` 就绪 | 0-5 min | 可与 Step 1 **并行**；Step 4 的硬前置 |
+| Step 2 | `pymupdf4llm` 依赖就绪 | <1 min | 可与 Step 1 **并行**；Step 3 的硬前置 |
 | Step 3 | 并发 2 个 subagent（宏观 / 新闻）**+** 后台跑财报 prepare 脚本 | 10-30 min | 必须等 Step 1 成功 |
 | Step 4 | **主 agent 亲自**做逐股财报研究 | 10-40 min | 必须等 Step 3 三项全部结束 |
 | Step 5 | `run_daily_pipeline.py` | 5-15 min | 必须等 Step 4 完成 |
@@ -120,27 +120,19 @@ data/selection_runs/<cur_date>/12_quant_prefilter_short.csv
 
 > 校验用 `find` / `ls`，**不要用 Glob 搜 `data/`**（`data/` 下有 `.git` 子目录，Glob 会整体返回空）。
 
-## 二、Step 2：MinerU 就绪（与 Step 1 并行）
+## 二、Step 2：确认 PDF 转 Markdown 依赖就绪（与 Step 1 并行）
 
-MinerU 负责把财报 PDF 转成 Markdown，是 Step 3 里 prepare 脚本的硬前置。
+财报 PDF 转 Markdown 由 `pymupdf4llm` 在**本项目虚拟环境内本地**完成，不需要任何常驻服务、健康检查或 GPU。
 
-先检查健康状态：
-
-```bash
-curl -s -m 5 http://127.0.0.1:8000/health
-```
-
-- 返回 `"status": "healthy"` 且 `protocol_version >= 2` → 已就绪，跳过启动。
-- 否则按「超时铁律」的**长命令方式**启动，并把输出重定向到日志（MinerU 是常驻进程，opencode 下要放在后台，不能占死会话）：
+在项目虚拟环境下执行：
 
 ```bash
-scripts/start_mineru_api.sh >> logs/mineru_start.log 2>&1
+python -c "import pymupdf4llm; print(pymupdf4llm.VERSION)"
 ```
 
-- 启动后每 30-60 秒 `curl` 一次 `/health` 直到 `healthy`。首次加载 VLM 模型可能要几分钟，属正常。
-- 启动脚本是 `exec` 前台常驻进程，**必须**后台启动，否则会占死会话。
-- 若脚本自身报错退出（`mineru-api` 不存在、CUDA 13 缺失），读 `logs/mineru_start.log` 拿到原文，报告给用户并询问怎么办。**不要**因此跳过财报链路，也不要自己改 venv / CUDA 路径。
-- 也可用 `ps aux | grep mineru-api` 辅助确认进程，但**以 `/health` 为准**。
+- 能打印版本号 → 已就绪，直接进入 Step 3。
+- 报 `ModuleNotFoundError` → 先 `pip install pymupdf4llm`（已列入 `requirements.txt`），装完再验一次。
+- 这一步通常几秒结束，**不需要**后台运行，也不要去 curl 任何 `/health`。
 
 ## 三、Step 3：2 个 subagent + 并行跑财报 prepare
 
@@ -163,7 +155,7 @@ python scripts/prepare_financial_report_skill.py \
   --date <cur_date> --sync-first --json --include-quant-prefilter
 ```
 
-- 约 10-30 分钟，主要耗时是把新发布的财报 PDF 转 Markdown（走 MinerU，所以 Step 2 必须已就绪）。
+- 约 10-30 分钟，主要耗时是把新发布的财报 PDF 转 Markdown（本地 `pymupdf4llm`，数百页年报约 1-2 分钟，所以 Step 2 必须已就绪）。
 - 它是纯 Python，**不派发任何 subagent**，所以和 A/B 并行不占并发额度。
 - 组件日志：`logs/research/PrepareFinancialReportSkill/`。
 - 正式研究**不得**加 `--skip-market-context`。
@@ -174,7 +166,7 @@ python scripts/prepare_financial_report_skill.py \
 
 - A/B 有任一路失败 → 重新派发那一路（两个任务彼此独立且幂等）。
 - 重试仍失败 → 报告失败现场，并说明"若带着这个缺口继续，`01_global_context.md` 会缺哪一块"。
-- prepare 脚本失败 → 读组件日志定位；若是 MinerU 连不上，先 `curl /health` 确认，不要重启正在转换的 MinerU。
+- prepare 脚本失败 → 读组件日志定位；若是 PDF 转换报错，先看是不是 PDF 无文本层或已损坏（缺文本层时 `pymupdf4llm` 提不出内容），把该文件记为数据缺口。
 
 三项齐了才进入 Step 4。此时 A/B 的 subagent 已经退出，subagent 并发额度腾空，才能开始派发财报角色。
 
@@ -206,6 +198,7 @@ python scripts/run_daily_pipeline.py --date <cur_date> --max-workers 6 --all-boo
 - 按「超时铁律」的**长命令方式**启动。
 - `--date` 必传：虽然该脚本默认值也是 `today`，但显式传 `cur_date` 才能保证与 Step 1/Step 3 用的是同一天（尤其是跨过午夜的长任务）。
 - `--all-books` 是**兼容参数**（自动 manifest 当前只生成综合 `fixed_tracked`），保留传入以对齐历史命令，不影响结果。
+- 此入口默认跳过公告刷新：公告已由 Step 1 的 `refresh_all_for_date.py` 负责；不要额外传 `--refresh-disclosures`，否则会重复扫描公告缓存并延迟 01-04 产物。
 - 休市日补充分析时追加 `--allow-non-trading-date`。
 
 期望产出：
@@ -245,11 +238,31 @@ data/skill_runs/<cur_date>/
 3 21 * * 1-5 /home/zhangbeiqing/programer/AI-Value-Investing-Agent/scripts/cron_daily_data_prep.sh
 ```
 
-- 包装脚本：`scripts/cron_daily_data_prep.sh`，用 `claude -p --dangerously-skip-permissions` 无头运行。
+- 包装脚本：`scripts/cron_daily_data_prep.sh`，默认用 `opencode run --auto --model deepseek/deepseek-v4-flash` 无头运行（换回 Claude：`RUNTIME=claude`；换模型：`OPENCODE_MODEL=openai/gpt-5.6`）。
+  - **不要把默认模型换成 `openai/gpt-5.6`。** 它在无头模式下有 50% 概率把首条回复发到 final 频道、导致 turn 立刻结束零产物（见下），不适合无人值守主路径。要用就手动指定。
 - 脚本内有**交易日历门禁**：非交易日（含节假日）直接 SKIP，不会拉起 agent 空跑，所以 crontab 的 `1-5` 只是少几次无用唤醒。
-- 运行状态：`logs/cron_daily_prep/latest_status.json`（`success` / `skipped` / `timeout` / `failed`）。
+- 还有**收盘门禁**：`RUN_DATE` 是当天且当前不到 16:00 时直接 SKIP，避免基于还没产生的收盘数据跑一轮垃圾。
+- 运行状态：`logs/cron_daily_prep/latest_status.json`（`running` / `success` / `skipped` / `timeout` / `failed`）。整轮开始时就会写 `running`，所以看到 `running` 说明正在跑，不是"没触发"。
 - 当轮完整日志：`logs/cron_daily_prep/<cur_date>.log`。
 - 整体上限 9000 秒（2.5 小时），超时会被 `timeout` 终止并记 `timeout` 状态。
+
+### 退出码 0 不等于跑完（产物验收）
+
+脚本在写 `success` 之前会先做一遍产物验收，**验收不过就写 `failed` 并以 exit 2 结束**，理由是 2026-08-21 与 2026-08-24 的真实事故：
+
+> gpt-5.6 把首条状态更新错发到 **final 频道**，turn 被提前结束，之后所有工具调用被静默丢弃。整轮 13-38 秒结束、`opencode` 正常 exit 0，wrapper 于是写了 `success`——而当天一个产物都没生成。
+
+这种「秒退」会被自动重试一次：`exit 0` + 产物为空 + 耗时 < `FAST_FAIL_SECONDS`（默认 300 秒）时，换 `FALLBACK_MODEL`（默认 `openai/gpt-5.6`，与主模型不同 provider）重跑。**只对秒退重试**——跑了半小时才失败的是真实链路问题（数据源、PDF 转换、余额），从头重来又慢又贵，按「失败与重跑」补那一段更合适。
+
+验收内容 = 「验收清单」里可机器判定的那几项（Step 1 门禁两项 + 宏观 + 新闻 + `run_manifest.json` + `01/02/03/03_stock_analysis_input` + `04_stock_research/` 非空）。额外还检查 `run_manifest.json` 与 `01_global_context.md` 的 **mtime 晚于本轮启动时间**——否则幂等重跑时，上一轮留下的旧文件会让一个空转轮蒙混过关。
+
+排查某一天到底缺什么，不必重跑整轮：
+
+```bash
+VERIFY_ONLY=1 START_EPOCH_OVERRIDE=0 scripts/cron_daily_data_prep.sh 2026-08-21
+```
+
+（`START_EPOCH_OVERRIDE=0` 关掉新鲜度检查，回放历史日期时必须加，否则一定误报。）
 
 无人值守运行时**没有人能实时回答提问**：遇到需要确认的地方按默认路径继续，把待确认事项写进最终报告，不要停下来等人。仍然不得触发交易 skill、不得生成或修改 `05_decision.json`。
 

@@ -13,8 +13,14 @@ def run_refresh_data(
     *,
     symbols: Iterable[str] | None = None,
     max_workers: int = 4,
-    skip_disclosures: bool = False,
+    skip_disclosures: bool = True,
 ) -> None:
+    """Refresh prerequisite caches for the 01-04 pipeline.
+
+    Announcement collection is owned by ``refresh_all_for_date``.  Keeping it
+    out of this stage avoids replaying the full disclosures backlog after the
+    daily refresh has already completed.
+    """
     run_manage_daily_data(
         run_date,
         signature=signature,

@@ -56,10 +56,18 @@ def main() -> int:
         default=4,
         help="Max concurrent workers for snapshot/research generation.",
     )
-    parser.add_argument(
+    disclosures_group = parser.add_mutually_exclusive_group()
+    disclosures_group.add_argument(
         "--skip-disclosures",
         action="store_true",
-        help="跳过公告（disclosures）刷新阶段，加速 pipeline。",
+        default=True,
+        help="跳过公告（disclosures）刷新阶段；这是 01-04 研究包生成的默认行为。",
+    )
+    disclosures_group.add_argument(
+        "--refresh-disclosures",
+        dest="skip_disclosures",
+        action="store_false",
+        help="显式在此入口刷新公告；日常数据准备已运行 refresh_all_for_date 时不应使用。",
     )
     parser.add_argument(
         "--allow-non-trading-date",

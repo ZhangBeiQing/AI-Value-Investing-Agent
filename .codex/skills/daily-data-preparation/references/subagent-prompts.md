@@ -68,7 +68,7 @@ python scripts/prepare_financial_report_skill.py \
 ```
 
 - 约 10-30 分钟，主要耗时是把新发布的财报 PDF 转 Markdown。**不能天真地前台跑**：opencode 下要把 `timeout` 设到 ≥ 3600000ms，Claude Code 下要用 `run_in_background: true`。
-- 硬前置：MinerU `/health` 已 `healthy`（Step 2）。中途若报连不上，先 `curl /health` 确认，**不要**重启正在转换的 MinerU。
+- 硬前置：`pymupdf4llm` 已就绪（Step 2）。转换在本地进程内完成，不存在服务连不上的情况。
 - 组件日志：`logs/research/PrepareFinancialReportSkill/`，看进度时 `tail` 最新一份。
 - 正式研究**不得**加 `--skip-market-context`。
 - 它是纯 Python，不派发任何 subagent，所以和 A/B 并行不占并发额度。
