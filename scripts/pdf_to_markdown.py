@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert a local PDF file to Markdown through the configured MinerU API."""
+"""Convert a local PDF file to Markdown with the local pymupdf4llm converter."""
 
 from __future__ import annotations
 

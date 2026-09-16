@@ -518,7 +518,7 @@ report_release_slack_days = 0
 
 不能沿用 fixed_tracked 日常研究包当前的一天宽限。
 
-财报 PDF 到 Markdown 的 MinerU 转换是内容格式转换，可以跨实验复用，不需要每个交易日重复转换。
+财报 PDF 到 Markdown 的 pymupdf4llm 转换是内容格式转换，可以跨实验复用，不需要每个交易日重复转换。
 
 回测 `prepare-day` 必须在构建04以前执行财报门禁：
 

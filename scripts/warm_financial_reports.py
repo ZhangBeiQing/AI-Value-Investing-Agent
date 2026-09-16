@@ -68,7 +68,7 @@ def _get_pdf_converter():
     if _PDF_CONVERTER is None:
         from services.document_conversion import PDFMarkdownConverter
 
-        LOGGER.info("首次创建 MinerU API 客户端，后续财报转换将复用当前连接配置")
+        LOGGER.info("首次创建 PDF 转换器（pymupdf4llm），后续财报转换将复用当前配置")
         _PDF_CONVERTER = PDFMarkdownConverter()
     return _PDF_CONVERTER
 

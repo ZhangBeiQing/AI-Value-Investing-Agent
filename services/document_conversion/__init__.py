@@ -1,9 +1,10 @@
 """Document conversion services."""
 
-from services.document_conversion.mineru import (
+from services.document_conversion.pdf_markdown import (
     DEFAULT_PDF_CONVERSION_PROFILE,
     PDF_MARKDOWN_CONVERTER_VERSION,
     SUPPORTED_PDF_CONVERSION_PROFILES,
+    PDFConversionError,
     PDFConversionResult,
     PDFMarkdownConverter,
     basic_convert,
@@ -16,6 +17,7 @@ __all__ = [
     "DEFAULT_PDF_CONVERSION_PROFILE",
     "PDF_MARKDOWN_CONVERTER_VERSION",
     "SUPPORTED_PDF_CONVERSION_PROFILES",
+    "PDFConversionError",
     "PDFConversionResult",
     "PDFMarkdownConverter",
     "basic_convert",

@@ -1,4 +1,4 @@
-"""Backward-compatible imports for the MinerU document conversion service."""
+"""Backward-compatible imports for the PDF to Markdown document conversion service."""
 
 from services.document_conversion import (
     DEFAULT_PDF_CONVERSION_PROFILE,

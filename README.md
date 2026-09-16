@@ -81,15 +81,15 @@ python scripts/refresh_all_for_date.py --date cur_date
 
 该命令约需 **15 分钟**，Agent 请设置足够的超时时间，避免中途中断。
 
-### 2. 启动 MinerU（财报 PDF 转 Markdown）
+### 2. 确认 PDF 转 Markdown 依赖（pymupdf4llm）
+
+财报 PDF 转 Markdown 由 `pymupdf4llm` 在项目虚拟环境内直接完成，不需要启动任何常驻服务：
 
 ```bash
-scripts/start_mineru_api.sh
+python -c "import pymupdf4llm; print(pymupdf4llm.VERSION)"
 ```
 
-> 先检查 MinerU 是否已经启动（如 `ps aux | grep mineru`），若已运行则跳过此步。
-
-MinerU 用于将财报 PDF 转换为 Agent 更易分析的 Markdown 格式。
+能打印版本号即就绪；未安装则执行 `pip install pymupdf4llm`（已列入 `requirements.txt`）。
 
 ### 3. 并发启动 2 个 SubAgent + 后台跑财报 prepare
 
@@ -119,7 +119,7 @@ MinerU 用于将财报 PDF 转换为 Agent 更易分析的 Markdown 格式。
 > python scripts/prepare_financial_report_skill.py --date cur_date --sync-first --json --include-quant-prefilter
 > ```
 > 
-> 主要耗时是把新发的财报 PDF 转 Markdown（走 MinerU），请设置足够的超时时间。
+> 主要耗时是把新发的财报 PDF 转 Markdown（本地 pymupdf4llm 转换，数百页年报约 1-2 分钟），请设置足够的超时时间。
 > 
 > 它是纯 Python、不派发任何 SubAgent，所以和 A/B 并行不占并发额度。
 
@@ -344,21 +344,19 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### MinerU（财报 PDF 转 Markdown）
+### PDF 转 Markdown（pymupdf4llm）
 
-本项目使用 [MinerU](https://github.com/opendatalab/MinerU) 将财报 PDF 转为 Markdown，需单独安装：
-
-```bash
-git clone https://github.com/opendatalab/MinerU.git
-cd MinerU
-pip install -e .
-```
-
-MinerU 启动方式：
+本项目使用 [pymupdf4llm](https://pypi.org/project/pymupdf4llm/) 将财报 PDF 转为 Markdown，已列入 `requirements.txt`：
 
 ```bash
-scripts/start_mineru_api.sh
+pip install pymupdf4llm
 ```
+
+转换在项目虚拟环境内本地完成，不需要额外服务或 GPU；实现见 `services/document_conversion/pdf_markdown.py`。
+
+调用方只管用：转换结果会连同源 PDF 的 size/mtime 一起缓存（`.md` + `.md.meta.json`），同一份 PDF 不会重复转换。
+
+> 扫描件（无文本层）需要本机安装 OCR 后端（Tesseract tessdata 或 RapidOCR）后 `pymupdf4llm` 才会自动 OCR；没装时这类 PDF 会直接报错并记为数据缺口，不会产出空文件。
 
 主要配置文件：
 

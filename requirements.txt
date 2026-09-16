@@ -25,6 +25,9 @@ google-genai==1.67.0
 beautifulsoup4==4.14.3
 lxml==6.0.2
 
+# PDF 解析（财报 PDF -> Markdown）
+pymupdf4llm==1.28.2
+
 # 配置与校验
 pydantic==2.12.5
 PyYAML==6.0.3

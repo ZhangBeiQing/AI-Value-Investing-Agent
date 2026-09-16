@@ -37,7 +37,7 @@ def _get_pdf_converter() -> Any:
     if _PDF_CONVERTER is None:
         from services.document_conversion import PDFMarkdownConverter
 
-        LOGGER.info("首次创建 MinerU API 客户端，后续财报转换将复用当前连接配置")
+        LOGGER.info("首次创建 PDF 转换器（pymupdf4llm），后续财报转换将复用当前配置")
         _PDF_CONVERTER = PDFMarkdownConverter()
     return _PDF_CONVERTER
 
@@ -65,7 +65,20 @@ def _convert_pdf_to_markdown(pdf_path: Path, md_path: Path | None = None) -> Pat
     return md_path
 
 
-def _ensure_markdown_path(md_path: Path | None, pdf_path: Path | None) -> Path | None:
+def _ensure_markdown_path(
+    md_path: Path | None,
+    pdf_path: Path | None,
+    *,
+    allow_conversion: bool = False,
+) -> Path | None:
+    if pdf_path:
+        inferred_path = _default_markdown_path_for_pdf(pdf_path)
+        if inferred_path.exists():
+            md_path = inferred_path
+    if md_path and md_path.exists() and not allow_conversion:
+        return md_path
+    if not allow_conversion:
+        return None
     if md_path and pdf_path and pdf_path.exists():
         from services.document_conversion import is_pdf_markdown_cache_current
 
@@ -134,6 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--force-reprepare",
         action="store_true",
         help="即使最新财报已登记，也只重建 workdir 供调试/评审；不覆盖最终财报，不修改 summary_index。",
+    )
+    parser.add_argument(
+        "--convert-missing-markdown",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="是否通过 pymupdf4llm 转换缺失或过期的财报 Markdown；默认启用，历史批量重做可用 --no-convert-missing-markdown 禁用。",
     )
     parser.add_argument(
         "--backtest-context",
@@ -276,17 +295,25 @@ def main() -> int:
                 }
             )
             continue
-        latest_path = _ensure_markdown_path(bundle.latest_report.md_path, bundle.latest_report.pdf_path)
+        latest_path = _ensure_markdown_path(
+            bundle.latest_report.md_path,
+            bundle.latest_report.pdf_path,
+            allow_conversion=args.convert_missing_markdown,
+        )
         previous_path = None
         if bundle.previous_report:
-            previous_path = _ensure_markdown_path(bundle.previous_report.md_path, bundle.previous_report.pdf_path)
+            previous_path = _ensure_markdown_path(
+                bundle.previous_report.md_path,
+                bundle.previous_report.pdf_path,
+                allow_conversion=args.convert_missing_markdown,
+            )
         if latest_path is None or not latest_path.exists():
             skipped.append(
                 {
                     "symbol": bundle.symbol,
                     "stock_name": bundle.stock_name,
                     "final_mandate": bundle.final_mandate,
-                    "skip_reason": "latest_report_markdown_missing_after_prepare",
+                    "skip_reason": "latest_report_markdown_missing_conversion_disabled",
                 }
             )
             continue
