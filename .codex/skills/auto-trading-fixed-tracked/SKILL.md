@@ -67,13 +67,13 @@ data/skill_runs/_analysis_index.json
 
 ## 3.1 模型角色路由
 
-固定股池辩论必须按以下 OpenCode subagent profile 派发：
+固定股池辩论默认全部使用运行时的通用 subagent 类型 `general` 派发（不指定 `fixed-tracked-*` 专用 profile）：
 
-- Bull opening、Bear opening，以及复用原会话的 Bull/Bear rebuttal：`fixed-tracked-adjudicator-sol`（GPT-5.6 Sol）；
-- 三名独立 Juror 与唯一 finalizer：`fixed-tracked-adjudicator-sol`（GPT-5.6 Sol）；
-- 回测模式的全部角色同样必须使用 `fixed-tracked-adjudicator-sol`（GPT-5.6 Sol），不得因成本原因降级模型。
+- Bull opening、Bear opening，以及复用原会话的 Bull/Bear rebuttal：`general`；
+- 三名独立 Juror 与唯一 finalizer：`general`；
+- 回测模式的全部角色同样使用 `general`，不得因成本原因降级模型。
 
-全部辩论与裁决角色都必须使用 Sol。除非专用 profile 不可用且用户明确同意降级，否则不得回退到 Luna、通用 Agent 或其他模型。
+背景：原专用 profile `fixed-tracked-adjudicator-sol`（GPT-5.6 Sol）与 `fixed-tracked-advocate-luna`（GPT-5.6 Luna）依赖的模型资源组曾长期不可用（报「请先兑换该资源组的邀请码」），因此日常与回测一律改用 `general`，避免无人值守或正常交易流程被模型路由阻塞。若日后专用 profile 恢复可用且用户明确要求换回 Sol/Luna，再按用户指示切回；未指示前保持 `general`。
 
 **主 Agent 的角色边界：只负责调度与文件路径，不代做任何个股决策，不传递任何客观规则，所有规则都在文件里，主agent只要让subagent看文件就行** 主 Agent 只向 subagent 传递「角色身份、必读文件清单、唯一输出路径」这三类必要信息；所有具体决策——包括价值判断、`action_num` 的数量、分批建仓的规模与条件、价格区间、取整方式、仓位比例——都必须由对应 subagent 在读完其规则与研究包后自行得出。主 Agent 不得在 prompt 中写入任何结论、数字、比例、取整或价格引导或者分析规则、分析方法等，即使是为了「确保结果正确」；正确的产出只能来自 subagent 按规则自主推理，而非主 Agent 的干预。违反时，输出看似正确也属于越界。
 
@@ -176,7 +176,7 @@ debate/{stock_name}_{symbol}/
 
 ### B2. 并行创建 Bull 和 Bear
 
-各角色把结果写入现有字段，不增加 JSON 字段。Bull/Bear opening 必须创建为 `fixed-tracked-adjudicator-sol`。
+各角色把结果写入现有字段，不增加 JSON 字段。Bull/Bear opening 用 `general` subagent 派发。
 
 Bull 运行时 prompt：
 
@@ -240,7 +240,7 @@ subagent 返回空结果或未落盘文件时，先检查是否为原会话未�
 
 ### B4. 并行创建三个 Juror
 
-创建三个相互独立的 `fixed-tracked-adjudicator-sol` Agent。每个 Juror 使用相同输入，但写入不同目录：
+创建三个相互独立的 `general` Agent。每个 Juror 使用相同输入，但写入不同目录：
 
 ```text
 你担任 {symbol} {stock_name} 的独立 {juror_id}。
@@ -293,7 +293,7 @@ python scripts/manage_debate.py aggregate \
 
 ### B6. 生成唯一 Stock Verdict
 
-为当前股票创建一个独立 `fixed-tracked-adjudicator-sol` finalizer。不得复用任一 Juror，避免某名 Juror 在整理最终底稿时放大自己的选票。finalizer 不是第四名裁判，无权改变 `vote_summary.resolved_action`。
+为当前股票创建一个独立 `general` finalizer。不得复用任一 Juror，避免某名 Juror 在整理最终底稿时放大自己的选票。finalizer 不是第四名裁判，无权改变 `vote_summary.resolved_action`。
 
 finalizer 只做受多数票约束的总结和数量整理。少数票更有说服力但不存在事实错误时，仍服从多数动作并保留少数异议；只有 ballot 缺少强制审查、依赖明确错误的决定性事实、动作/数量违法或出现全部 Juror 都未审查的新决定性事实时，才停止且不写 verdict，并把问题、证据路径、受影响文件和建议回退阶段返回主 Agent。finalizer 不得自行改票或调用任何 subagent。
 
