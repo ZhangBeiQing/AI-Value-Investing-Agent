@@ -442,7 +442,7 @@ financial_report_workdir/
 - `manifest.json` 暂时保留兼容，但 Agent 不应依赖其中的 `industry_name` 下结论；
 - `prior_fundamental_memory.md` 只保存上期基本面假设、管理层指引兑现和未解决问题，不包含旧交易动作；
 - `existing_industry_research.md` 是旧卡片的高密度摘要，不是本季度结论。
-- `05_agent_input.md` 声明当前公司的 `disclosures/md/` 和 `disclosures/pdfs/` 只读历史原文目录；只有明确历史缺口时才按 Markdown 优先、单份 PDF 兜底的顺序回溯，不批量读取多年报告，也不自动调用 MinerU。
+- `05_agent_input.md` 声明当前公司的 `disclosures/md/` 和 `disclosures/pdfs/` 只读历史原文目录；只有明确历史缺口时才按 Markdown 优先、单份 PDF 兜底的顺序回溯，不批量读取多年报告，也不自动调用 PDF 转换（pymupdf4llm）。
 
 ## 9. 财报前与当前市场上下文
 
@@ -545,7 +545,7 @@ Expectation Scout 分开研究：
 写入：
 
 ```text
-research_outputs/expectation_snapshot.md
+research_outputs/pre_announcement_expectations.md
 ```
 
 至少回答：
@@ -725,7 +725,7 @@ Financial Author 读取：
 - `current_market_context.md`
 - `valuation_framework.md`
 - `prior_fundamental_memory.md`
-- `research_outputs/expectation_snapshot.md`
+- `research_outputs/pre_announcement_expectations.md`
 - `research_outputs/industry_chain_research.md`
 - 相关固定研究政策。
 
@@ -1188,7 +1188,7 @@ Codex 存在并发限制时，只限制同时运行数量，不改变角色和�
 | --- | --- |
 | Python 准备层 | workdir 输入文件 |
 | Industry Researcher | `industry_chain_research.md` |
-| Expectation Scout | `expectation_snapshot.md` |
+| Expectation Scout | `pre_announcement_expectations.md` |
 | Financial Author 初稿 | `draft_v1.md` |
 | Research Challenger | `challenge_round_01.md` |
 | Financial Author 修订 | 最终财报 Markdown |
@@ -1312,7 +1312,7 @@ services/pipeline/daily_pipeline.py
 ### 阶段二：Expectation Scout
 
 - 增加财报前信息隔离；
-- 生成 `expectation_snapshot.md`；
+- 生成 `pre_announcement_expectations.md`；
 - 年度预期与季度预期分开；
 - 加入股价与估值隐含预期；
 - 新增时间截断测试。

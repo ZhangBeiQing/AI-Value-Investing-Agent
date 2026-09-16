@@ -64,7 +64,7 @@ manifest.json
 research_outputs/
 ```
 
-`05_agent_input.md` 同时声明当前公司的 `disclosures/md/` 与 `disclosures/pdfs/` 只读目录。正常研究不批量加载多年报告；只有最近两年趋势缺少可比期、口径变化、重大异常追溯或 Challenger 明确提出历史缺口时才回溯。先用 `find`/`rg` 在 Markdown 中定位，目标报告没有 Markdown 时再读取对应 PDF；本流程不会为历史回溯自动调用 MinerU。
+`05_agent_input.md` 同时声明当前公司的 `disclosures/md/` 与 `disclosures/pdfs/` 只读目录。正常研究不批量加载多年报告；只有最近两年趋势缺少可比期、口径变化、重大异常追溯或 Challenger 明确提出历史缺口时才回溯。先用 `find`/`rg` 在 Markdown 中定位，目标报告没有 Markdown 时再读取对应 PDF；本流程不会为历史回溯自动调用 PDF 转换（pymupdf4llm）。
 
 ## 3. 两个时间切面
 
@@ -114,7 +114,7 @@ configs/research/
 ```text
 research_outputs/
 ├── industry_chain_research.md
-├── expectation_snapshot.md
+├── pre_announcement_expectations.md
 ├── draft_v1.md
 └── challenge_round_01.md
 ```

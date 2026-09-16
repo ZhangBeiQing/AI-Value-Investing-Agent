@@ -51,6 +51,9 @@
 
 ### 任务
 
+- 必须执行百炼联网搜索，并严格按来源发布时间过滤；研究发生在财报发布后不构成跳过历史搜索的理由；
+- 搜索摘要混入实际财报数字时，丢弃该条并改用限定日期、机构名、`业绩前瞻`、`盈利预测`、`一致预期` 等查询继续搜索；禁止把整个搜索阶段标记为 `not_performed_time_contamination_risk`；
+- 先读取准备层提供的 AkShare/经济通/同花顺年度预测，再搜索公告前机构报告补充和交叉验证；缓存缺失不等于市场没有预期；
 - 严格按财报公告时点重建公司指引、年度卖方预期、季度卖方预期、产业隐含预期和股价/估值隐含预期；
 - 在看到实际结果前定义超预期、符合预期和不及预期阈值；
 - 区分高可信正式预期与 Agent 推断；
@@ -60,7 +63,7 @@
 
 ### 唯一写入
 
-`research_outputs/expectation_snapshot.md`
+`research_outputs/pre_announcement_expectations.md`
 
 ### 完成条件
 
@@ -82,7 +85,7 @@
 10. `pre_announcement_market_context.md`
 11. `current_market_context.md`
 12. `valuation_framework.md`
-13. `research_outputs/expectation_snapshot.md`
+13. `research_outputs/pre_announcement_expectations.md`
 14. `research_outputs/industry_chain_research.md` 或主 Agent 指定的共享产业研究
 
 第一遍不得读取 `prior_fundamental_memory.md`。先独立建立本期事实、异常、经营质量、预期差和未来驱动。
@@ -97,7 +100,7 @@
 - 同时解释同比、环比和季节性；
 - 对重大变化给出主要与次要原因及大致贡献；
 - 检查利润、现金流、应收、存货、合同负债、产能与资本开支；
-- 将 Expectation Scout 的冻结预期与实际财报组成预期差矩阵；
+- 将 Expectation Scout 按公告截止时间重建的预期与实际财报组成预期差矩阵；
 - 计算全年一致预期的剩余期间业绩要求；
 - 核对增强估值财务基准期，按本期财报重算 pro-forma TTM 与适用 Forward 估值；
 - 按公司类型构造未来驱动情景；
@@ -225,7 +228,8 @@
 - 不接受的质询必须用证据解释；
 - 无法由公开信息解决但仍影响判断的问题，按性质融入最终报告 §16“风险、替代解释
   与证伪条件”或 §17“下一季度验证清单”，不得单列“未解决问题与披露限制”；
-- 来源贴近对应事实和判断标注，不得在最终报告单列“证据与来源”；
+- 最终报告不写任何 URL、Markdown 链接、脚注、括号来源引用或独立来源清单；常规来源直接吸收为结论；
+- 只有低可信信息确实影响判断时，才标注“低可信来源”或“未经证实”及其影响，仍不得写来源名称、标题或 URL；
 - 按 `financial_report_output_schema.md` 直接生成吸收质询后的完整最终报告；
 - 最终报告不得包含真实交易动作。
 

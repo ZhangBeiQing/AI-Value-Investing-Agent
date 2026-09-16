@@ -163,7 +163,7 @@ def _clear_stale_research_outputs(
     for filename in (
         "industry_scope.json",
         "industry_chain_research.md",
-        "expectation_snapshot.md",
+        "pre_announcement_expectations.md",
         "draft_v1.md",
         "challenge_round_01.md",
         "draft_v2.md",  # 仅清理旧流程遗留文件；新流程不再生成。
@@ -274,7 +274,7 @@ def prepare_financial_report_workdir(
 
     outputs = {
         "industry_chain_research": research_outputs_dir / "industry_chain_research.md",
-        "expectation_snapshot": research_outputs_dir / "expectation_snapshot.md",
+        "pre_announcement_expectations": research_outputs_dir / "pre_announcement_expectations.md",
         "draft_v1": research_outputs_dir / "draft_v1.md",
         "challenge_round_01": research_outputs_dir / "challenge_round_01.md",
         "final_report": bundle.output_path,
@@ -314,14 +314,14 @@ def prepare_financial_report_workdir(
         f"- 当前市场上下文：`{context.current_context_path}`",
         f"- 上期基本面记忆：`{context.prior_memory_path}`",
         f"- 既有产业研究候选：`{context.existing_industry_research_path}`",
-        f"- 冻结研究包来源：`{context.frozen_research_path}`" if context.frozen_research_path else "- 冻结研究包来源：未找到",
+        f"- 可选历史研究包：`{context.historical_research_path}`" if context.historical_research_path else "- 可选历史研究包：未找到；不影响按公告截止时间重建预期",
         "",
         "## 历史披露按需回溯（只读）",
         "",
         f"- Markdown 原文目录：`{disclosures_md_dir}`",
         f"- PDF 原文目录：`{disclosures_pdf_dir}`",
         "- 正常研究不批量读取多年财报。只有固定基本面规则定义的明确历史缺口出现时，才先在 Markdown 目录按文件名、报告期和关键词定位；目标报告没有 Markdown 时再读取对应 PDF。",
-        "- 不得修改披露缓存，不得批量转换 PDF，不得因本轮研究自动调用 MinerU。找不到或无法可靠提取时，记录数据缺口及其影响。",
+        "- 不得修改披露缓存，不得批量转换 PDF，不得因本轮研究自动调用 PDF 转换（pymupdf4llm）。找不到或无法可靠提取时，记录数据缺口及其影响。",
         "- 所有角色继续服从各自时间边界和禁读规则；目录中存在文件不代表该角色有权读取。",
         "",
         "## 角色读取边界",
@@ -334,7 +334,7 @@ def prepare_financial_report_workdir(
         "## 单写者输出",
         "",
         f"- Industry Researcher：`{outputs['industry_chain_research']}`",
-        f"- Expectation Scout：`{outputs['expectation_snapshot']}`",
+        f"- Expectation Scout：`{outputs['pre_announcement_expectations']}`",
         f"- Financial Author 初稿：`{outputs['draft_v1']}`",
         f"- Research Challenger：`{outputs['challenge_round_01']}`",
         f"- Financial Author 修订并发布：`{outputs['final_report']}`",
@@ -358,7 +358,7 @@ def prepare_financial_report_workdir(
         "latest_report_date": bundle.latest_report.date,
         "latest_announcement_datetime": bundle.latest_report.announcement_datetime,
         "pre_announcement_market_date": context.pre_announcement_market_date,
-        "frozen_research_path": str(context.frozen_research_path) if context.frozen_research_path else None,
+        "historical_research_path": str(context.historical_research_path) if context.historical_research_path else None,
         "latest_report_path": str(latest_target),
         "previous_announcement_id": bundle.previous_report.announcement_id if bundle.previous_report else None,
         "previous_report_date": bundle.previous_report.date if bundle.previous_report else None,
@@ -410,6 +410,7 @@ def validate_deep_research_artifacts(
 
     output_paths = manifest.get("research_output_paths") or {}
     required = {
+        "pre_announcement_expectations": output_paths.get("pre_announcement_expectations"),
         "draft_v1": output_paths.get("draft_v1"),
         "challenge_round_01": output_paths.get("challenge_round_01"),
     }
@@ -426,6 +427,22 @@ def validate_deep_research_artifacts(
         contents[name] = content
         if len("".join(content.split())) < 80:
             errors.append(f"研究过程文件为空或疑似占位: {target}")
+
+    expectation = contents.get("pre_announcement_expectations") or ""
+    if re.search(r"not_performed_time_contamination_risk", expectation, re.IGNORECASE):
+        errors.append("预期研究以时间污染为由跳过了联网搜索")
+    pre_context_path = manifest_path.parent / "pre_announcement_market_context.md"
+    pre_context = (
+        pre_context_path.read_text(encoding="utf-8", errors="ignore")
+        if pre_context_path.exists()
+        else ""
+    )
+    has_broker_consensus = "证券商" in pre_context and "更新日期" in pre_context
+    denies_annual_consensus = bool(
+        re.search(r"未取得.{0,12}(?:年度一致预期|年度机构预测)", expectation)
+    )
+    if has_broker_consensus and denies_annual_consensus:
+        errors.append("截止日前上下文已有多家机构预测，但预期研究错误声称未取得年度一致预期")
 
     if not final_report_path.exists():
         errors.append(f"缺少最终财报报告: {final_report_path}")
@@ -444,6 +461,11 @@ def validate_deep_research_artifacts(
     present_forbidden = [field for field in forbidden_fields if field in final_content]
     if present_forbidden:
         errors.append(f"最终财报报告包含交易字段: {present_forbidden}")
+
+    if re.search(r"https?://|www\.", final_content, re.IGNORECASE):
+        errors.append("最终财报报告包含原始 URL")
+    if re.search(r"\[[^\]]+\]\([^\)]+\)", final_content):
+        errors.append("最终财报报告包含 Markdown 链接")
 
     forbidden_section_pattern = re.compile(
         r"^#{1,6}\s*(?:\d+\s*[.、．]?\s*)?"
@@ -684,7 +706,11 @@ def _classify_report_title(symbol: str, title: str) -> Tuple[Optional[str], Opti
 
 
 def _resolve_fiscal_year(title: str, report_date: str) -> int:
-    year_match = re.search(r"(20\d{2}|\d{2})年", title)
+    year_match = re.search(
+        r"(20\d{2}|\d{2})(?:\s*年|\s*(?:财务|财政)年度)",
+        title,
+        re.IGNORECASE,
+    )
     if year_match:
         raw = year_match.group(1)
         return int(raw) if len(raw) == 4 else 2000 + int(raw)
@@ -815,8 +841,16 @@ def _select_latest_two_reports(
         ),
         None,
     )
-    if previous is None and len(reports) > 1:
-        previous = reports[1]
+    if previous is None:
+        previous = next(
+            (
+                report
+                for report in reports[1:]
+                if (report.fiscal_year, report.quarter)
+                != (latest.fiscal_year, latest.quarter)
+            ),
+            None,
+        )
     return latest, previous
 
 

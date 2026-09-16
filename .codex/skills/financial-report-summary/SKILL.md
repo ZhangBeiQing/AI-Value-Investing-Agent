@@ -50,7 +50,7 @@ data/stock_info/{stock_name}_{symbol}/disclosures/md/
 data/stock_info/{stock_name}_{symbol}/disclosures/pdfs/
 ```
 
-仅在固定基本面规则定义的明确历史缺口出现时按需读取：先 Markdown，缺失时再定位单份 PDF。不要批量读取多年报告，也不要因本轮研究自动调用 MinerU。
+仅在固定基本面规则定义的明确历史缺口出现时按需读取：先 Markdown，缺失时再定位单份 PDF。不要批量读取多年报告，也不要因本轮研究自动调用 PDF 转换（pymupdf4llm）。
 
 仅处理 `ready_items`。`skipped_items` 中已总结或缺财报的股票不启动角色。正式研究不得使用 `--skip-market-context`。
 
@@ -87,7 +87,7 @@ terminal_theme → subchain → value_chain_node → company_exposure
 
 1. 每个细分产业链启动一个 Industry Researcher；
 2. 每股启动一个 Expectation Scout；
-3. 等产业链研究与预期快照完成后，每股启动一个 Financial Author 写 `draft_v1.md`；
+3. 等产业链研究与公告前预期研究完成后，每股启动一个 Financial Author 写 `draft_v1.md`；
 4. 每股启动一个 Research Challenger 写 `challenge_round_01.md`；
 5. 复用原 Financial Author 会话，读取质询并直接写最终报告；
 6. 主 Agent 通过质量门禁后逐股注册。
@@ -167,7 +167,7 @@ Financial Author 不得自行写 `summary_index.json`。注册失败时保留研
   （`YYYYMMDD.md`，文件内容非占位、长度足够）。若存在，直接用该文件注册：
   `python scripts/register_financial_report_summary.py --symbol {symbol} --path {现有文件} --as-of-date {decision_date}`
   （不要加 `--require-deep-research`，因为该文件并非本轮 workdir 深研产物，其
-  manifest 不存在）。注册后该股票门禁即通过，不需要启动任何角色，也不调用 MinerU。
+  manifest 不存在）。注册后该股票门禁即通过，不需要启动任何角色，也不调用 PDF 转换。
   A 股与港股对同一份定期报告可能有两个渠道公告（港股海外监管公告 vs A 股年报），
   公告日相邻时视为同一份报告，可安全复用；
 - 找不到相邻已注册总结时，才使用回测状态返回的 `preparation_command` 正常启动

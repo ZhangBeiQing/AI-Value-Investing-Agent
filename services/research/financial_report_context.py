@@ -12,6 +12,7 @@ from typing import Any, Optional
 import pandas as pd
 
 from core.logging import get_logger
+from shared_data_access import update_hk_profit_forecast_cached
 from utlity import get_latest_trading_day, parse_symbol
 
 
@@ -26,8 +27,8 @@ VALUATION_DATE_PATTERN = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
 
 
 @dataclass(frozen=True)
-class FrozenResearchPackage:
-    """A dated 04_stock_research package that existed before the announcement."""
+class HistoricalResearchPackage:
+    """Optional dated research material available before the announcement."""
 
     snapshot_date: str
     book_type: str
@@ -42,7 +43,7 @@ class FinancialReportContextResult:
     announcement_date: str
     announcement_datetime: Optional[str]
     pre_announcement_market_date: str
-    frozen_research_path: Optional[Path]
+    historical_research_path: Optional[Path]
     pre_context_path: Path
     current_context_path: Path
     prior_memory_path: Path
@@ -109,17 +110,35 @@ def extract_markdown_section(markdown: str, heading: str) -> str:
     return markdown[heading_match.start() : end].strip()
 
 
+def extract_markdown_section_by_prefix(markdown: str, heading_prefix: str) -> str:
+    """Extract a heading whose text starts with a stable prefix."""
+
+    heading_match = re.search(
+        rf"(?m)^(?P<marks>#+)\s+{re.escape(heading_prefix.strip())}.*$",
+        markdown,
+    )
+    if heading_match is None:
+        return ""
+    level = len(heading_match.group("marks"))
+    next_heading = re.search(
+        rf"(?m)^#{{1,{level}}}\s+.+$",
+        markdown[heading_match.end() :],
+    )
+    end = heading_match.end() + next_heading.start() if next_heading else len(markdown)
+    return markdown[heading_match.start() : end].strip()
+
+
 def extract_pre_announcement_research_sections(markdown: str) -> dict[str, str]:
     """Extract only market/valuation/consensus inputs, excluding trade memory."""
 
     market = extract_markdown_section(markdown, "1. 股票指标与估值")
     news = extract_markdown_section(markdown, "2. 新闻与公告")
     consensus = ""
-    for heading in (
-        "A股机构一致预期（同花顺汇总）",
-        "港股机构一致预期（经济通）",
+    for heading_prefix in (
+        "A股机构一致预期（同花顺汇总",
+        "港股机构一致预期（经济通",
     ):
-        section = extract_markdown_section(markdown, heading)
+        section = extract_markdown_section_by_prefix(markdown, heading_prefix)
         if section:
             consensus = "\n\n".join(part for part in (consensus, section) if part)
     return {
@@ -129,13 +148,118 @@ def extract_pre_announcement_research_sections(markdown: str) -> dict[str, str]:
     }
 
 
-def find_frozen_research_package(
+def _render_hk_pre_announcement_consensus(
+    symbol: str,
+    announcement_date: str,
+    *,
+    historical_mode: bool,
+) -> tuple[str, Optional[Path]]:
+    """Load HK broker forecasts and remove records updated after the cutoff."""
+
+    symbol_info = parse_symbol(symbol)
+    if not symbol_info.is_hk_market():
+        return "", None
+
+    stock_root = DATA_ROOT / "stock_info" / f"{symbol_info.stock_name}_{symbol_info.symbol}"
+    forecast_dir = stock_root / "profit_forecast"
+    prior_calendar_date = (_parse_iso_date(announcement_date) - timedelta(days=1)).isoformat()
+    cutoff_snapshot = forecast_dir / "snapshots" / f"{prior_calendar_date.replace('-', '')}.csv"
+    current_path = forecast_dir / "profit_forecast.csv"
+
+    if historical_mode:
+        source_path = cutoff_snapshot if cutoff_snapshot.exists() else None
+        frame = pd.read_csv(source_path) if source_path else pd.DataFrame()
+    else:
+        frame = update_hk_profit_forecast_cached(
+            symbol_info,
+            base_data_dir=DATA_ROOT,
+            force_refresh=False,
+            logger=LOGGER,
+        )
+        source_path = current_path if current_path.exists() else None
+
+    if frame is None or frame.empty or "更新日期" not in frame.columns:
+        return "", source_path
+
+    work = frame.copy()
+    work["更新日期"] = pd.to_datetime(work["更新日期"], errors="coerce")
+    # AkShare only supplies a date, not an intraday timestamp. Same-day rows
+    # cannot be proven to predate the announcement, so require date < announcement date.
+    cutoff = pd.Timestamp(announcement_date)
+    work = work.loc[work["更新日期"].notna() & (work["更新日期"] < cutoff)].copy()
+    if work.empty:
+        return "", source_path
+
+    work["更新日期"] = work["更新日期"].dt.strftime("%Y-%m-%d")
+    preferred = [
+        "财政年度",
+        "纯利/亏损",
+        "每股盈利",
+        "每股派息",
+        "证券商",
+        "评级",
+        "目标价",
+        "更新日期",
+    ]
+    columns = [column for column in preferred if column in work.columns]
+    work = work.sort_values(["财政年度", "更新日期"], ascending=[True, False])
+    return work[columns].to_markdown(index=False), source_path
+
+
+def _render_pre_announcement_price_context(
+    symbol: str,
+    cutoff_date: str,
+) -> tuple[str, Optional[Path]]:
+    """Build point-in-time price context directly from cached daily prices."""
+
+    symbol_info = parse_symbol(symbol)
+    stock_root = DATA_ROOT / "stock_info" / f"{symbol_info.stock_name}_{symbol_info.symbol}"
+    price_path = stock_root / "prices" / "price.csv"
+    if not price_path.exists():
+        return "", None
+    try:
+        frame = pd.read_csv(price_path)
+    except Exception as exc:
+        LOGGER.warning("读取财报前价格缓存失败: path=%s error=%s", price_path, exc)
+        return "", price_path
+    date_column = next((column for column in ("日期", "date", "Date") if column in frame.columns), None)
+    close_column = next((column for column in ("收盘", "收盘价", "close", "Close") if column in frame.columns), None)
+    if not date_column or not close_column:
+        return "", price_path
+    work = frame[[date_column, close_column]].copy()
+    work[date_column] = pd.to_datetime(work[date_column], errors="coerce")
+    work[close_column] = pd.to_numeric(work[close_column], errors="coerce")
+    work = work.dropna().loc[lambda value: value[date_column] <= pd.Timestamp(cutoff_date)]
+    work = work.sort_values(date_column)
+    if work.empty:
+        return "", price_path
+    latest = work.iloc[-1]
+    latest_price = float(latest[close_column])
+
+    def _return_for_sessions(sessions: int) -> str:
+        if len(work) <= sessions:
+            return "样本不足"
+        base = float(work.iloc[-sessions - 1][close_column])
+        return f"{(latest_price / base - 1) * 100:.2f}%" if base else "无法计算"
+
+    trailing_252 = work.tail(252)
+    lines = [
+        f"- 截止日收盘：{latest_price:.3f}（{latest[date_column].date().isoformat()}）",
+        f"- 近 5 个交易日收益：{_return_for_sessions(5)}",
+        f"- 近 20 个交易日收益：{_return_for_sessions(20)}",
+        f"- 近 60 个交易日收益：{_return_for_sessions(60)}",
+        f"- 近 252 个交易日收盘区间：{float(trailing_252[close_column].min()):.3f} - {float(trailing_252[close_column].max()):.3f}",
+    ]
+    return "\n".join(lines), price_path
+
+
+def find_historical_research_package(
     symbol: str,
     cutoff_date: str,
     *,
     skill_runs_root: Path = SKILL_RUNS_ROOT,
-) -> Optional[FrozenResearchPackage]:
-    """Find the nearest immutable research package not later than cutoff_date."""
+) -> Optional[HistoricalResearchPackage]:
+    """Find the nearest optional research package not later than cutoff_date."""
 
     if not skill_runs_root.exists():
         return None
@@ -163,7 +287,7 @@ def find_frozen_research_package(
                 and symbol in path.name
             )
             if matches:
-                return FrozenResearchPackage(
+                return HistoricalResearchPackage(
                     snapshot_date=dated_dir.name,
                     book_type=book_type,
                     path=matches[0],
@@ -227,7 +351,12 @@ def _render_pre_context(
     announcement_date: str,
     announcement_datetime: Optional[str],
     requested_pre_date: str,
-    frozen: Optional[FrozenResearchPackage],
+    evidence_cutoff: str = "",
+    historical_research: Optional[HistoricalResearchPackage],
+    hk_consensus: str = "",
+    hk_consensus_path: Optional[Path] = None,
+    price_context: str = "",
+    price_context_path: Optional[Path] = None,
 ) -> str:
     lines = [
         f"# {stock_name} ({symbol}) 财报前市场上下文",
@@ -237,39 +366,66 @@ def _render_pre_context(
         f"- 财报公告日期：{announcement_date}",
         f"- 财报公告时间：{announcement_datetime or '未取得；按保守规则处理'}",
         f"- 请求的财报前市场日：{requested_pre_date}",
+        f"- 公告前证据截止：{evidence_cutoff or announcement_datetime or announcement_date}",
     ]
-    if frozen is None:
+    if historical_research is None:
         lines.extend(
             [
-                "- 实际冻结快照：未找到",
+                "- 历史 04 研究包：未找到（可选资料，不影响本次重建）",
                 "",
-                "> 缺少不晚于财报前市场日的冻结研究包。不得使用财报后价格、评论或预测反推财报前预期；季度预期与计价程度均需降级为无法可靠判断。",
+                "> 本上下文按证据截止时间重建。不得使用财报公告后的机构预测、价格反应或评论形成本次公告前预期；研究发生在公告后不影响回溯检索公告前资料。",
             ]
         )
+        if price_context:
+            lines.extend(
+                [
+                    "",
+                    "## 财报前价格表现",
+                    "",
+                    f"- 数据来源：`{price_context_path}`" if price_context_path else "- 数据来源：历史行情缓存",
+                    f"- 强制时间截断：不晚于 {requested_pre_date}",
+                    "",
+                    price_context,
+                ]
+            )
+        if hk_consensus:
+            lines.extend(
+                [
+                    "",
+                    "## 财报前年度一致预期",
+                    "",
+                    f"- 缓存来源：`{hk_consensus_path}`" if hk_consensus_path else "- 缓存来源：AkShare 港股盈利预测",
+                    f"- 时间准入：AkShare 记录只有日期，故要求更新日期早于 {announcement_date}；有可核验时分的外部资料可使用至公告时刻前",
+                    "",
+                    hk_consensus,
+                    "",
+                    "> 该表为机构年度预测，不是季度一致预期。Expectation Scout 仍须联网搜索公告前的季度预测、公司指引和产业隐含预期。",
+                ]
+            )
         return "\n".join(lines).strip() + "\n"
 
     sections = extract_pre_announcement_research_sections(
-        frozen.path.read_text(encoding="utf-8", errors="ignore")
+        historical_research.path.read_text(encoding="utf-8", errors="ignore")
     )
     lines.extend(
         [
-            f"- 实际冻结快照日期：{frozen.snapshot_date}",
-            f"- 账本来源：{frozen.book_type}",
-            f"- 原始研究包：`{frozen.path}`",
+            f"- 可选历史研究资料日期：{historical_research.snapshot_date}",
+            f"- 可选资料账本来源：{historical_research.book_type}",
+            f"- 可选历史研究包：`{historical_research.path}`",
             "",
-            "> 本文件只从冻结研究包提取价格、估值、公告与年度一致预期，不含持仓、交易记忆、历史裁决或任何旧买卖计划。",
+            "> 历史研究包只作补充资料；本次公告前预期仍须按证据截止时间独立重建，不得继承旧结论或交易计划。",
             "",
             "## 财报前价格与估值",
             "",
-            sections["market_and_valuation"] or "> 冻结研究包缺少价格或估值模块。",
+            price_context or sections["market_and_valuation"] or "> 未取得截止日前价格或估值资料。",
             "",
             "## 财报前公告、经营数据与正式指引",
             "",
-            sections["news_and_guidance"] or "> 冻结研究包缺少新闻与公告模块。",
+            sections["news_and_guidance"] or "> 历史研究包未提供公告前新闻；Expectation Scout 必须联网回溯检索。",
             "",
             "## 财报前年度一致预期",
             "",
-            sections["annual_consensus"] or "> 未取得冻结的年度一致预期。",
+            hk_consensus or sections["annual_consensus"] or "> 本地未取得年度机构预测；Expectation Scout 必须联网回溯检索。",
             "",
             "> 上述同花顺预测是年度锚，不是季度一致预期。没有高可信财报前季度预测时，不得据此计算精确的季度 surprise。",
         ]
@@ -528,7 +684,16 @@ def build_financial_report_context(
             pre_market_date,
             exc,
         )
-    frozen = find_frozen_research_package(symbol, pre_market_date)
+    historical_research = find_historical_research_package(symbol, pre_market_date)
+    hk_consensus, hk_consensus_path = _render_hk_pre_announcement_consensus(
+        symbol,
+        announcement_date,
+        historical_mode=historical_mode,
+    )
+    price_context, price_context_path = _render_pre_announcement_price_context(
+        symbol,
+        pre_market_date,
+    )
     pre_path = workdir / "pre_announcement_market_context.md"
     current_path = workdir / "current_market_context.md"
     prior_path = workdir / "prior_fundamental_memory.md"
@@ -541,7 +706,12 @@ def build_financial_report_context(
             announcement_date=announcement_date,
             announcement_datetime=announcement_datetime,
             requested_pre_date=pre_market_date,
-            frozen=frozen,
+            evidence_cutoff=announcement_datetime or announcement_date,
+            historical_research=historical_research,
+            hk_consensus=hk_consensus,
+            hk_consensus_path=hk_consensus_path,
+            price_context=price_context,
+            price_context_path=price_context_path,
         ),
         encoding="utf-8",
     )
@@ -595,7 +765,9 @@ def build_financial_report_context(
         announcement_date=announcement_date,
         announcement_datetime=announcement_datetime,
         pre_announcement_market_date=pre_market_date,
-        frozen_research_path=frozen.path if frozen else None,
+        historical_research_path=(
+            historical_research.path if historical_research else None
+        ),
         pre_context_path=pre_path,
         current_context_path=current_path,
         prior_memory_path=prior_path,
@@ -605,12 +777,13 @@ def build_financial_report_context(
 
 __all__ = [
     "FinancialReportContextResult",
-    "FrozenResearchPackage",
+    "HistoricalResearchPackage",
     "build_financial_report_context",
     "calculate_pro_forma_ttm",
     "detect_valuation_basis_dates",
     "extract_markdown_section",
+    "extract_markdown_section_by_prefix",
     "extract_pre_announcement_research_sections",
-    "find_frozen_research_package",
+    "find_historical_research_package",
     "resolve_pre_announcement_market_date",
 ]

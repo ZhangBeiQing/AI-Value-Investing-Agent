@@ -43,7 +43,7 @@ Financial Author 第一遍只读本期财报、上期原始财报和当期结构
 1. 先检查 workdir 已提供的 `01_latest_report.md` 和 `02_previous_report.md`，避免重复读取同一报告；
 2. 再到 `disclosures/md/` 用文件名、报告期和关键词定位 Markdown 原文，优先使用 Markdown，因为可以用 `find` 和 `rg` 快速定位相关章节；
 3. 只有目标报告没有 Markdown 时，才到 `disclosures/pdfs/` 按文件名和报告期定位 PDF 原文，只读取解决当前缺口所需的报告和相关页；
-4. 不批量读取整个目录，不批量把 PDF 转成 Markdown，不因本轮研究自动调用 MinerU；
+4. 不批量读取整个目录，不批量把 PDF 转成 Markdown，不因本轮研究自动调用 PDF 转换（pymupdf4llm）；
 5. PDF 无文本层、表格无法可靠提取或目标报告不存在时，把问题保留为数据缺口并说明影响，不猜测数字。
 
 同一报告的 Markdown 转换稿和 PDF 原文属于同一个来源，不能算独立交叉验证。Expectation Scout 使用历史披露时仍必须遵守财报公告前时间边界；任何角色都不得因为目录中存在未来文件而越过本次研究截止时间。
