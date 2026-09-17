@@ -7,8 +7,10 @@ import argparse
 import concurrent.futures
 import json
 import os
+import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from basic_stock_info import DEFAULT_PRICE_LOOKBACK_DAYS  # type: ignore
 from configs.stock_pool import TRACKED_A_STOCKS  # type: ignore
 from core.logging import init_component_logger  # type: ignore
+from core.network import install_network_timeouts  # type: ignore
 from shared_data_access.data_access import SharedDataAccess  # type: ignore
 from shared_data_access.exceptions import SymbolNotListedAsOfDateError  # type: ignore
 from utlity import ensure_stock_subdir, parse_symbol  # type: ignore
@@ -30,6 +33,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOGGER = init_component_logger("ManageDailyData", group="main_scripts", filename_prefix="manage_daily_data")
 
 DEFAULT_INDEX_SYMBOL = os.getenv("PRICE_DYNAMICS_INDEX", "000001.IDX")
+STEP_TIMEOUT_SECONDS = float(os.getenv("MANAGE_DAILY_DATA_STEP_TIMEOUT_SECONDS", "3600"))
 
 
 def _load_symbols_from_file(path: Path) -> List[str]:
@@ -166,13 +170,21 @@ def ensure_manual_research_dirs(symbols: Sequence[str]) -> None:
         ensure_stock_subdir(info, "forecast")
 
 
-def run_subprocess(step_name: str, cmd: Sequence[str], log_file: Path) -> Dict[str, object]:
+def run_subprocess(
+    step_name: str,
+    cmd: Sequence[str],
+    log_file: Path,
+    timeout_seconds: float | None = None,
+) -> Dict[str, object]:
     start = time.time()
+    timeout = float(timeout_seconds) if timeout_seconds is not None else None
+    if timeout is not None and timeout <= 0:
+        raise ValueError(f"步骤超时必须为正数，收到 {timeout}")
     # Popen usage to stream output
     with log_file.open("a", encoding="utf-8") as log:
         log.write(f"[{step_name}] CMD: {' '.join(cmd)}\n")
         log.flush()
-        
+
         process = subprocess.Popen(
             cmd,
             cwd=str(PROJECT_ROOT),
@@ -180,19 +192,53 @@ def run_subprocess(step_name: str, cmd: Sequence[str], log_file: Path) -> Dict[s
             stderr=subprocess.STDOUT,  # Merge stderr into stdout
             text=True,
             bufsize=1,  # Line buffered
+            start_new_session=os.name == "posix",
         )
-        
-        # Read lines as they come
-        if process.stdout:
-            for line in process.stdout:
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                log.write(line)
-                log.flush()
-        
-        ret = process.wait()
+
+        timed_out = threading.Event()
+
+        def _kill_on_timeout() -> None:
+            if process.poll() is not None:
+                return
+            timed_out.set()
+            LOGGER.error(
+                "[%s] 超过 %.0f 秒仍未结束，强制终止子进程", step_name, timeout
+            )
+            try:
+                if os.name == "posix":
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+
+        # 子进程若在数据源上无限等待，for line in stdout 会永久阻塞，这里用看门狗兜底。
+        watchdog = None
+        if timeout is not None:
+            watchdog = threading.Timer(timeout, _kill_on_timeout)
+            watchdog.daemon = True
+            watchdog.start()
+        try:
+            # Read lines as they come
+            if process.stdout:
+                for line in process.stdout:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    log.write(line)
+                    log.flush()
+
+            ret = process.wait()
+        finally:
+            if watchdog is not None:
+                watchdog.cancel()
+
+        if timed_out.is_set():
+            log.write(f"[{step_name}] timeout after {timeout:.0f}s\n")
+            log.flush()
+            raise subprocess.TimeoutExpired(cmd, timeout)
+
         log.write(f"[{step_name}] done with return code {ret}\n")
-        
+
         if ret != 0:
             raise subprocess.CalledProcessError(ret, cmd)
 
@@ -257,7 +303,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
                 len(active_symbols),
                 len(skipped_not_listed),
             )
-            steps.append(run_subprocess("basic_stock_info", basic_cmd, log_file))
+            steps.append(run_subprocess("basic_stock_info", basic_cmd, log_file, timeout_seconds=STEP_TIMEOUT_SECONDS))
             LOGGER.info("basic_stock_info 完成")
         else:
             steps.append(
@@ -367,6 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    install_network_timeouts()
     parser = build_parser()
     args = parser.parse_args()
     raise SystemExit(manage_daily_data(args))

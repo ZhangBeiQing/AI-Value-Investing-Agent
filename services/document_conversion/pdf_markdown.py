@@ -8,11 +8,13 @@
 from __future__ import annotations
 
 import json
+import os
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from core.logging import get_logger
 
@@ -22,6 +24,16 @@ LOGGER = get_logger("DocumentConversion")
 PDF_MARKDOWN_CONVERTER_VERSION = 5
 DEFAULT_PDF_CONVERSION_PROFILE = "financial_report"
 SUPPORTED_PDF_CONVERSION_PROFILES = {"financial_report", "general"}
+
+
+def default_conversion_workers() -> int:
+    """并发转换的默认进程数。
+
+    pymupdf4llm 单进程转换本身会吃满约 2 个核，所以按 CPU 数的一半取并发，
+    上限 6，避免把机器压到过载反而拖慢整体吞吐。
+    """
+    cpu = os.cpu_count() or 4
+    return max(1, min(6, cpu // 2))
 
 
 class PDFConversionError(RuntimeError):
@@ -206,3 +218,95 @@ def basic_convert(
         output_dir=output_dir,
         profile=profile,
     )
+
+
+@dataclass
+class ParallelConversionOutcome:
+    """并发转换中单个 job 的结果。status ∈ {'cached', 'converted', 'error'}。"""
+
+    pdf_path: str
+    markdown_path: str
+    status: str
+    detail: str
+    elapsed_seconds: float
+
+
+def _convert_job(job: tuple[str, str, str]) -> ParallelConversionOutcome:
+    pdf_str, md_str, profile = job
+    pdf_path = Path(pdf_str)
+    md_path = Path(md_str)
+    start = time.monotonic()
+    try:
+        if is_pdf_markdown_cache_current(md_path, pdf_path, profile=profile):
+            return ParallelConversionOutcome(pdf_str, md_str, "cached", "", 0.0)
+        result = PDFMarkdownConverter().convert_with_details(
+            str(pdf_path), output_dir=None, profile=profile
+        )
+        write_pdf_conversion_artifacts(md_path, result, pdf_path)
+        return ParallelConversionOutcome(
+            pdf_str,
+            md_str,
+            "converted",
+            f"chars={result.metrics['char_count']}",
+            time.monotonic() - start,
+        )
+    except Exception as exc:  # noqa: BLE001 - 单个文件失败不应中断整批
+        return ParallelConversionOutcome(
+            pdf_str,
+            md_str,
+            "error",
+            f"{type(exc).__name__}: {exc}",
+            time.monotonic() - start,
+        )
+
+
+def convert_pdfs_in_parallel(
+    jobs: Iterable[tuple[str | Path, str | Path]],
+    *,
+    workers: int | None = None,
+    profile: str = DEFAULT_PDF_CONVERSION_PROFILE,
+) -> list[ParallelConversionOutcome]:
+    """并发把 ``(pdf_path, markdown_path)`` 批量转成 Markdown。
+
+    - 命中缓存的 job 在主进程直接判定，不会占用子进程。
+    - 返回列表与输入顺序一一对应。
+    - 单个文件失败只在该项标记 ``error``，不影响其余文件。
+    """
+    normalized = [(str(Path(pdf)), str(Path(md))) for pdf, md in jobs]
+    if not normalized:
+        return []
+
+    if workers is None or workers < 1:
+        workers = default_conversion_workers()
+    workers = max(1, min(int(workers), len(normalized)))
+
+    outcomes: list[ParallelConversionOutcome | None] = [None] * len(normalized)
+    pending: list[tuple[int, tuple[str, str, str]]] = []
+    for idx, (pdf_str, md_str) in enumerate(normalized):
+        if is_pdf_markdown_cache_current(Path(md_str), Path(pdf_str), profile=profile):
+            outcomes[idx] = ParallelConversionOutcome(pdf_str, md_str, "cached", "", 0.0)
+        else:
+            pending.append((idx, (pdf_str, md_str, profile)))
+
+    if pending:
+        LOGGER.info(
+            "并发转换 PDF: 待转=%d 已缓存=%d workers=%d",
+            len(pending),
+            len(normalized) - len(pending),
+            workers,
+        )
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            future_to_idx = {
+                pool.submit(_convert_job, job): idx for idx, job in pending
+            }
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                try:
+                    outcomes[idx] = future.result()
+                except Exception as exc:  # noqa: BLE001 - 子进程崩溃时兜底
+                    pdf_str, md_str = normalized[idx]
+                    outcomes[idx] = ParallelConversionOutcome(
+                        pdf_str, md_str, "error", f"{type(exc).__name__}: {exc}", 0.0
+                    )
+
+    return [outcome for outcome in outcomes if outcome is not None]

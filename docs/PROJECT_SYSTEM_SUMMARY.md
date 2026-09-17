@@ -24,10 +24,13 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 由 `services/data_refresh/refresh_orchestrator.py` 编排，按顺序执行：
 
 1. `manage_daily_data` — 刷新宏观面板、价格、财报、`basic_stock_info` 等基础缓存（`TRACKED_A_STOCKS ∪ master_universe`，约 100+ 只）
+
 2. `selection.run-news` — 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json`
 3. `selection.build-board-heat-state` — 板块热度分析 → `05_board_heat_state.json` / `05_board_heat_digest.json`
 4. `selection.build-factor-store` → `selection.build-factor-scores` → `selection.build-quant-prefilter` — 生成因子宽表、评分与短/长两本候选 → `12_factor_snapshot.*` / `13_factor_scores.*` / `12_quant_prefilter*.csv`
 5. 清理 `data/research_artifact_cache/{run_date}/` — 让下一次 `run_daily_pipeline` 必然基于最新数据重建 04 产物
+
+网络请求在相关脚本入口默认设 60 秒单次网络等待上限（可通过 `NETWORK_SOCKET_TIMEOUT_SECONDS` 调整，并非整次请求的总耗时上限）；`manage_daily_data` 的 `basic_stock_info` 子进程另有默认 3600 秒的整步上限（可通过 `MANAGE_DAILY_DATA_STEP_TIMEOUT_SECONDS` 调整）。超时会作为失败记录，不以旧数据冒充当日结果；其他子步骤不共用该整步上限。
 
 跑完后脚本会打印「后续 skill 清单」，下面 1.2~1.6 就是按这份清单逐条往下走。
 

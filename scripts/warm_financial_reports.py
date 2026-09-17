@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.logging import init_component_logger
+from core.network import install_network_timeouts
 from news.disclosures_builder import (
     AnnouncementMeta,
     _hash_key,
@@ -60,44 +61,12 @@ MAX_REPORTS_PER_STOCK = 2
 DISCLOSURE_LOOKBACK_DAYS = 400
 SYNC_WORKERS = 8
 
-_PDF_CONVERTER = None
-
-
-def _get_pdf_converter():
-    global _PDF_CONVERTER
-    if _PDF_CONVERTER is None:
-        from services.document_conversion import PDFMarkdownConverter
-
-        LOGGER.info("首次创建 PDF 转换器（pymupdf4llm），后续财报转换将复用当前配置")
-        _PDF_CONVERTER = PDFMarkdownConverter()
-    return _PDF_CONVERTER
-
 
 def _default_markdown_path_for_pdf(pdf_path: Path) -> Path:
     """复用 prepare_financial_report_skill 里同名逻辑：disclosures/pdfs/*.pdf -> disclosures/md/*.md。"""
     if pdf_path.parent.name == "pdfs" and pdf_path.parent.parent.exists():
         return pdf_path.parent.parent / "md" / f"{pdf_path.stem}.md"
     return pdf_path.with_suffix(".md")
-
-
-def _convert_one(pdf_path: Path, md_path: Path) -> Tuple[str, str]:
-    """Returns (status, detail). status ∈ {'cached', 'converted', 'error'}."""
-    from services.document_conversion import (
-        is_pdf_markdown_cache_current,
-        write_pdf_conversion_artifacts,
-    )
-
-    if is_pdf_markdown_cache_current(md_path, pdf_path, profile="financial_report"):
-        return "cached", ""
-    try:
-        converter = _get_pdf_converter()
-        result = converter.convert_with_details(
-            str(pdf_path), output_dir=None, profile="financial_report"
-        )
-        write_pdf_conversion_artifacts(md_path, result, pdf_path)
-        return "converted", ""
-    except Exception as exc:  # pragma: no cover - defensive
-        return "error", str(exc)
 
 
 def _sync_one_symbol(symbol: str) -> Tuple[str, int, str]:
@@ -228,14 +197,18 @@ def _run_sync_phase(symbols: List[str]) -> Tuple[int, int]:
     return synced_total, error_count
 
 
-def _run_convert_phase(symbols: List[str]) -> Tuple[int, int, int, int, int]:
-    """阶段 2：顺序遍历转 Markdown。返回 (含财报股票数, PDF 检查数, 已缓存数, 转换数, 失败数)."""
+def _run_convert_phase(
+    symbols: List[str], workers: Optional[int] = None
+) -> Tuple[int, int, int, int, int]:
+    """阶段 2：并发把财报 PDF 转 Markdown。返回 (含财报股票数, PDF 检查数, 已缓存数, 转换数, 失败数)."""
+    from services.document_conversion import (
+        convert_pdfs_in_parallel,
+        default_conversion_workers,
+    )
+
     total = len(symbols)
     stocks_with_reports = 0
-    total_pdfs_checked = 0
-    total_cached = 0
-    total_converted = 0
-    total_errors = 0
+    jobs: List[Tuple[str, Path, Path]] = []
     tic = time.time()
     for idx, symbol in enumerate(symbols, 1):
         try:
@@ -258,18 +231,37 @@ def _run_convert_phase(symbols: List[str]) -> Tuple[int, int, int, int, int]:
         )
         for entry in valid_entries:
             md_path = entry.md_path if entry.md_path else _default_markdown_path_for_pdf(entry.pdf_path)
-            total_pdfs_checked += 1
-            ctic = time.time()
-            status, detail = _convert_one(entry.pdf_path, md_path)
-            elapsed = time.time() - ctic
-            if status == "cached":
-                total_cached += 1
-            elif status == "converted":
-                total_converted += 1
-                LOGGER.info("  ✓ %s (%.1fs) -> %s", entry.pdf_path.name, elapsed, md_path.name)
-            else:
-                total_errors += 1
-                LOGGER.error("  ✗ %s: %s", entry.pdf_path.name, detail)
+            jobs.append((symbol, entry.pdf_path, md_path))
+
+    resolved_workers = workers or default_conversion_workers()
+    LOGGER.info(
+        "开始并发转换: PDF=%d workers=%d（已缓存的会自动跳过）", len(jobs), resolved_workers
+    )
+    outcomes = convert_pdfs_in_parallel(
+        [(pdf_path, md_path) for _symbol, pdf_path, md_path in jobs],
+        workers=resolved_workers,
+    )
+
+    total_pdfs_checked = 0
+    total_cached = 0
+    total_converted = 0
+    total_errors = 0
+    for (symbol, pdf_path, md_path), outcome in zip(jobs, outcomes):
+        total_pdfs_checked += 1
+        if outcome.status == "cached":
+            total_cached += 1
+        elif outcome.status == "converted":
+            total_converted += 1
+            LOGGER.info(
+                "  ✓ %s %s (%.1fs) -> %s",
+                symbol,
+                pdf_path.name,
+                outcome.elapsed_seconds,
+                md_path.name,
+            )
+        else:
+            total_errors += 1
+            LOGGER.error("  ✗ %s %s: %s", symbol, pdf_path.name, outcome.detail)
     LOGGER.info(
         "转换阶段完成: 含财报股票=%d, PDF 检查=%d, 已缓存=%d, 本轮转换=%d, 失败=%d, 耗时=%.1fs",
         stocks_with_reports,
@@ -282,11 +274,11 @@ def _run_convert_phase(symbols: List[str]) -> Tuple[int, int, int, int, int]:
     return stocks_with_reports, total_pdfs_checked, total_cached, total_converted, total_errors
 
 
-def run(symbols: List[str]) -> int:
+def run(symbols: List[str], workers: Optional[int] = None) -> int:
     wall_start = time.time()
     sync_synced, sync_errors = _run_sync_phase(symbols)
     stocks_with_reports, total_pdfs_checked, total_cached, total_converted, total_errors = (
-        _run_convert_phase(symbols)
+        _run_convert_phase(symbols, workers=workers)
     )
     LOGGER.info(
         "汇总: 股票=%d, 新下载财报=%d (同步失败股票=%d), 含财报股票=%d, "
@@ -317,17 +309,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="仅处理指定 symbol（可多次传），用于调试单只股票",
     )
+    parser.add_argument(
+        "--convert-workers",
+        type=int,
+        default=None,
+        help="并行 PDF 转换的进程数；默认按 CPU 数自动取值（上限 6）。设为 1 则退化为顺序转换。",
+    )
     return parser
 
 
 def main() -> int:
+    install_network_timeouts()
     args = build_parser().parse_args()
     if args.symbol:
         symbols = [s.strip() for s in args.symbol if s.strip()]
     else:
         symbols = _load_daily_refresh_symbols(base_dir="data")
     LOGGER.info("开始预热财报缓存: symbols=%d", len(symbols))
-    return run(symbols)
+    return run(symbols, workers=args.convert_workers)
 
 
 if __name__ == "__main__":

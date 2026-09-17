@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from core.network import install_network_timeouts
 from news.disclosures_builder import sync_financial_reports_for_stock
 from services.research.financial_report_skill import (
     load_deep_research_items,
@@ -79,6 +80,7 @@ def _build_items(args) -> list:
 
 
 def main() -> int:
+    install_network_timeouts()
     args = build_parser().parse_args()
     items = _build_items(args)
     results = []

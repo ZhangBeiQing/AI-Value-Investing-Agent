@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.logging import init_component_logger
+from core.network import install_network_timeouts
 from services.selection_system import (
     SelectionSystemPaths,
     initialize_selection_system,
@@ -808,6 +809,7 @@ def _handle_backtest_turnover(
 
 
 def main() -> int:
+    install_network_timeouts()
     parser = _build_parser()
     args = parser.parse_args()
 

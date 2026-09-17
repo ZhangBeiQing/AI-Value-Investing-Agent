@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.logging import init_component_logger
+from core.network import install_network_timeouts
 from services.research.financial_report_skill import (
     build_stock_report_bundles,
     load_tracked_items,
@@ -92,6 +93,45 @@ def _ensure_markdown_path(
     return None
 
 
+def _collect_pdf_conversion_jobs(
+    bundles: List[Any],
+    *,
+    force_reprepare: bool,
+) -> List[tuple[Path, Path]]:
+    """收集本轮需要转换的 (pdf_path, markdown_path)，供并行预转换使用。"""
+    from services.document_conversion import is_pdf_markdown_cache_current
+
+    jobs: List[tuple[Path, Path]] = []
+    seen: set[str] = set()
+    for bundle in bundles:
+        forced_reprepare = bool(
+            force_reprepare
+            and bundle.skipped
+            and bundle.skip_reason == "already_summarized_latest_report"
+        )
+        if bundle.skipped and not forced_reprepare:
+            continue
+        for report in (bundle.latest_report, bundle.previous_report):
+            if report is None or getattr(report, "pdf_path", None) is None:
+                continue
+            pdf_path = Path(report.pdf_path)
+            md_path = (
+                Path(report.md_path)
+                if getattr(report, "md_path", None)
+                else _default_markdown_path_for_pdf(pdf_path)
+            )
+            key = str(md_path)
+            if key in seen:
+                continue
+            seen.add(key)
+            if not pdf_path.exists():
+                continue
+            if is_pdf_markdown_cache_current(md_path, pdf_path, profile="financial_report"):
+                continue
+            jobs.append((pdf_path, md_path))
+    return jobs
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="为财报总结 skill 准备固定股票池或深研队列股票的财报输入。")
     parser.add_argument(
@@ -153,6 +193,12 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="是否通过 pymupdf4llm 转换缺失或过期的财报 Markdown；默认启用，历史批量重做可用 --no-convert-missing-markdown 禁用。",
+    )
+    parser.add_argument(
+        "--convert-workers",
+        type=int,
+        default=None,
+        help="并行 PDF 转换的进程数；默认按 CPU 数自动取值（上限 6）。设为 1 则退化为顺序转换。",
     )
     parser.add_argument(
         "--backtest-context",
@@ -238,6 +284,7 @@ def _collect_extra_items(args: argparse.Namespace) -> List[dict]:
 
 
 def main() -> int:
+    install_network_timeouts()
     args = build_parser().parse_args()
     analysis_date = args.date or datetime.now().date().isoformat()
     extra_symbols = _apply_explicit_symbol_scope(args)
@@ -277,6 +324,31 @@ def main() -> int:
         extra_items=extra_items or None,
         skip_queue=not args.include_queue,
     )
+    if args.convert_missing_markdown:
+        conversion_jobs = _collect_pdf_conversion_jobs(
+            bundles, force_reprepare=args.force_reprepare
+        )
+        if conversion_jobs:
+            from services.document_conversion import (
+                convert_pdfs_in_parallel,
+                default_conversion_workers,
+            )
+
+            workers = args.convert_workers or default_conversion_workers()
+            LOGGER.info(
+                "并行预转换财报 PDF: 待转=%d workers=%d", len(conversion_jobs), workers
+            )
+            outcomes = convert_pdfs_in_parallel(conversion_jobs, workers=workers)
+            for (pdf_path, _md_path), outcome in zip(conversion_jobs, outcomes):
+                if outcome.status == "converted":
+                    LOGGER.info(
+                        "PDF 转换完成: %s (%s, %.1fs)",
+                        pdf_path,
+                        outcome.detail,
+                        outcome.elapsed_seconds,
+                    )
+                elif outcome.status == "error":
+                    LOGGER.warning("PDF 转换失败: %s (%s)", pdf_path, outcome.detail)
     ready = []
     skipped = []
     for bundle in bundles:

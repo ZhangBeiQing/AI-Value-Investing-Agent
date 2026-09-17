@@ -13,11 +13,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from core.network import install_network_timeouts
 from services.pipeline.daily_pipeline import SKILL_FLOW_CONFIG, run_daily_pipeline
 from shared_data_access.market_calendar import NonTradingDayError
 
 
 def main() -> int:
+    install_network_timeouts()
     parser = argparse.ArgumentParser(description="运行 daily pipeline；短期量化初筛股票已并入综合 fixed_tracked。")
     parser.add_argument(
         "--date",

@@ -23,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.logging import init_component_logger  # noqa: E402
+from core.network import install_network_timeouts  # noqa: E402
 from services.data_refresh.refresh_orchestrator import (  # noqa: E402
     format_followup_checklist,
     run_refresh_pipeline,
@@ -117,6 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    install_network_timeouts()
     args = build_parser().parse_args()
     run_date: str = args.date
 
