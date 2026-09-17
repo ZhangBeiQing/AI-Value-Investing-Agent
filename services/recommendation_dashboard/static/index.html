@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AI BUY 建议效果 · 固定跟踪池</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="brand"><span class="brand-mark">A</span><span>AI 投研观察</span></div>
+      <nav aria-label="主导航"><button class="active" data-view="analysis" type="button">BUY 建议效果</button><button data-view="holdings" type="button">实际持仓</button></nav>
+      <div class="header-meta" id="asOf">正在读取数据…</div>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <div id="analysisView">
+    <section class="intro">
+      <div>
+        <div class="eyebrow">FIXED TRACKED · 历史信号追踪</div>
+        <h1>AI 的买入判断，后来怎么样了？</h1>
+        <p>逐只跟踪固定股票池中曾出现 BUY 的建议，同时保留所有已分析股票及其最新判断。</p>
+      </div>
+      <button id="refreshBtn" class="refresh-button" type="button">刷新数据 <span aria-hidden="true">↗</span></button>
+    </section>
+
+    <section class="metric-grid" aria-label="BUY 建议汇总">
+      <article class="metric primary"><div class="metric-label">BUY 股票等权平均涨跌</div><div class="metric-value" id="totalReturn">—</div><div class="metric-note">每只股票从首次 BUY 当日收盘算起</div></article>
+      <article class="metric"><div class="metric-label">已分析股票</div><div class="metric-value" id="analyzedCount">—</div><div class="metric-note">历史决策覆盖的股票</div></article>
+      <article class="metric"><div class="metric-label">曾出现 BUY</div><div class="metric-value" id="buyCount">—</div><div class="metric-note" id="buyEvents">—</div></article>
+      <article class="metric"><div class="metric-label">上涨 / 下跌</div><div class="metric-value small" id="winLoss">—</div><div class="metric-note" id="priceCoverage">—</div></article>
+    </section>
+
+    <div class="method-note"><span class="note-icon">i</span><span>这里衡量建议后的价格表现，不是账户实际盈亏。收益使用共享缓存中的前复权收盘价，未另计现金分红、交易费用与汇率变化；每行均显示对应价格日期。价格落后于同市场最新缓存的股票暂不计入顶部汇总，重复 BUY 的单次结果可在详情中查看。</span></div>
+
+    <section class="list-section">
+      <div class="section-top">
+        <div><div class="eyebrow">STOCK UNIVERSE</div><h2>全部已分析股票</h2><p id="resultCount">正在加载…</p></div>
+        <div class="section-controls">
+          <label class="search-box"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="搜索名称或代码" aria-label="搜索股票"></label>
+          <label class="sort-box">排序 <select id="sortSelect"><option value="impression">价格印象：低估优先</option><option value="buy">曾 BUY 优先</option><option value="return_desc">收益从高到低</option><option value="return_asc">收益从低到高</option><option value="analysis">最近分析</option><option value="name">股票代码</option></select></label>
+        </div>
+      </div>
+      <div class="filter-row" role="group" aria-label="股票筛选"><button class="filter active" data-filter="all" type="button">全部</button><button class="filter" data-filter="buy" type="button">曾 BUY</button><button class="filter" data-filter="other" type="button">未 BUY</button></div>
+      <div class="table-wrap"><table><thead><tr><th>股票</th><th>最新判断</th><th>最近分析日</th><th>价格印象</th><th>首次 BUY</th><th>BUY 次数</th><th class="number">BUY 日收盘</th><th class="number">最新收盘</th><th class="number">至今涨跌</th><th>价格日期</th><th class="detail-col">详情</th></tr></thead><tbody id="stocksBody"><tr><td colspan="11" class="empty-cell">正在读取历史决策和行情…</td></tr></tbody></table></div>
+    </section>
+    </div>
+
+    <div id="holdingsView" hidden>
+      <section class="intro holdings-intro">
+        <div><div class="eyebrow">REAL PORTFOLIO · 人工持仓快照</div><h1>我的实际持仓</h1><p>按人工维护的股数与成本，结合共享行情缓存展示持仓市值和浮动盈亏。</p></div>
+        <button id="refreshHoldingsBtn" class="refresh-button" type="button">刷新数据 <span aria-hidden="true">↗</span></button>
+      </section>
+      <div class="holdings-status" id="holdingsStatus">正在读取持仓…</div>
+      <section class="metric-grid holdings-grid" aria-label="实际持仓汇总">
+        <article class="metric primary"><div class="metric-label">A股与ETF市值 · CNY</div><div class="metric-value" id="cnMarketValue">—</div><div class="metric-note">人民币计价，不含现金</div></article>
+        <article class="metric"><div class="metric-label">A股与ETF浮盈亏 · CNY</div><div class="metric-value small" id="cnPnl">—</div><div class="metric-note">现价减平均成本</div></article>
+        <article class="metric"><div class="metric-label">港股持仓市值 · HKD</div><div class="metric-value" id="hkMarketValue">—</div><div class="metric-note">港元计价</div></article>
+        <article class="metric"><div class="metric-label">港股浮动盈亏 · HKD</div><div class="metric-value small" id="hkPnl">—</div><div class="metric-note">未折算人民币</div></article>
+      </section>
+      <div class="method-note"><span class="note-icon">i</span><span>人民币现金：<strong id="cashCny">—</strong>。持仓数量与成本来自人工持仓文件，行情按各股票表内日期显示。港股以港元计算；没有汇率或已实现盈亏数据，因此不合并不同币种，也不展示累计交易盈亏。</span></div>
+      <section class="list-section">
+        <div class="section-top"><div><div class="eyebrow">CURRENT POSITIONS</div><h2>当前持仓 · 投资业绩</h2><p id="holdingsCount">正在加载…</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>股票</th><th>币种</th><th class="number">持仓股数</th><th class="number">平均成本</th><th class="number">最新收盘</th><th class="number">持仓市值</th><th class="number">浮动盈亏</th><th class="number">盈亏%</th><th>价格日期</th></tr></thead><tbody id="holdingsBody"><tr><td colspan="9" class="empty-cell">正在读取实际持仓…</td></tr></tbody></table></div>
+      </section>
+    </div>
+    <footer>数据来自本地 fixed_tracked 决策归档与共享行情缓存 · 仅供研究复盘</footer>
+  </main>
+
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
+    <div class="drawer-header"><div><div class="eyebrow">STOCK RESEARCH</div><h2 id="drawerTitle">股票详情</h2><p id="drawerSubtitle"></p></div><button id="closeDrawer" class="close-button" type="button" aria-label="关闭详情">×</button></div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </aside>
+</body>
+</html>

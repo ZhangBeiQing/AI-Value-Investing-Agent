@@ -215,6 +215,20 @@ python scripts/manage_fixed_tracked_backtest.py status --experiment my_test
 
 ## 其他核心系统
 
+### 固定池 BUY 建议效果看板
+
+本地只读网页列出 `book-fixed_tracked` 历史分析过的全部股票，按 `position.jsonl` 中的 `buy` 记录标识曾给出 BUY 的股票。页面展示首次 BUY 日至最新缓存收盘价的涨跌、逐次 BUY 记录，以及最新可用的正反辩论、双方反驳、三名裁判和最终裁决。
+
+“实际持仓”页读取 `position/manual_position_override.json` 的股数、平均成本与人民币现金，结合共享行情缓存显示逐股市值、浮动盈亏和价格日期。A 股及 ETF 用人民币，港股用港元分别汇总；该文件没有汇率或已实现盈亏，因此不合并两种币种，也不推算累计交易盈亏。
+
+```bash
+source /home/zhangbeiqing/venv/ai_stock/bin/activate
+python scripts/serve_recommendation_dashboard.py
+# 浏览器打开 http://127.0.0.1:8765/
+```
+
+顶部收益是可比价格齐全的曾 BUY 股票的等权平均涨跌，不是实际账户收益。行情缓存缺失或落后于同市场最新缓存时，页面显示其价格日期，并将其排除在顶部汇总之外。服务默认只监听本机，不修改交易文件，也不会触发数据刷新。
+
 ### 月度行业研究
 
 独立于交易主轴的行业景气度研究系统：
