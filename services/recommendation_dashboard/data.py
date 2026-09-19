@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from core.logging import get_logger
+from services.recommendation_dashboard.research import research_packages
+from services.recommendation_dashboard.jobs import latest_jobs
+from services.selection_system.master_universe import load_master_universe
+from services.selection_system.paths import SelectionSystemPaths
 from shared_data_access.historical_prices import load_price_history
 from utlity.stock_utils import SymbolInfo
 
@@ -148,6 +152,40 @@ def build_dashboard(data_dir: Path) -> dict[str, Any]:
             "return_pct": first["return_pct"] if first else None,
             "buy_events": events,
         })
+    # Completed on-demand research appears in the stock list, but never becomes a
+    # historical BUY signal or a formal trading decision without the normal approval flow.
+    try:
+        universe_names = {item.symbol: item.name for item in load_master_universe(SelectionSystemPaths.from_base_dir(data_dir)).stocks}
+    except (OSError, ValueError, KeyError, json.JSONDecodeError):
+        universe_names = {}
+    listed_symbols = {row["symbol"] for row in rows}
+    for job in latest_jobs(data_dir):
+        symbol = job["symbol"]
+        if job["status"] != "complete" or symbol in listed_symbols:
+            continue
+        listed_symbols.add(symbol)
+        stock_name = universe_names.get(symbol, symbol)
+        verdict_path = data_dir / "web_research_runs" / job["id"] / "skill_runs" / job["date"] / "fixed_tracked" / "debate"
+        verdict = None
+        for stock_dir in verdict_path.glob(f"*_{symbol}"):
+            candidate = stock_dir / "final" / "stock_verdict.json"
+            if candidate.is_file():
+                verdict = _read_json(candidate)
+                break
+        try:
+            _, latest_price_date, latest_close = _price_points(data_dir, symbol, stock_name)
+        except (OSError, ValueError, KeyError):
+            latest_price_date, latest_close = None, None
+        if latest_price_date:
+            market = symbol.rsplit(".", 1)[-1]
+            market_dates[market] = max(market_dates.get(market, ""), latest_price_date)
+        rows.append({
+            "symbol": symbol, "stock_name": stock_name, "source": "on_demand", "job_id": job["id"],
+            "latest_analysis_date": job["date"], "latest_action": (verdict or {}).get("action_type"),
+            "price_impression": (verdict or {}).get("price_impression"), "confidence_score": (verdict or {}).get("confidence_score"),
+            "has_buy": False, "first_buy_date": None, "buy_count": 0, "buy_close": None,
+            "latest_close": latest_close, "price_date": latest_price_date, "return_pct": None, "buy_events": [],
+        })
     for row in rows:
         market = row["symbol"].rsplit(".", 1)[-1]
         row["price_is_latest_for_market"] = bool(
@@ -271,6 +309,25 @@ def stock_detail(data_dir: Path, symbol: str) -> dict[str, Any] | None:
     if decision is None:
         return None
     debate_date, debate_dir = _latest_debate_dir(data_dir, symbol)
+    for job in latest_jobs(data_dir):
+        if job["status"] != "complete" or job["symbol"] != symbol or job["date"] != decision["operation_date"]:
+            continue
+        candidate_root = data_dir / "web_research_runs" / job["id"] / "skill_runs" / job["date"] / BOOK / "debate"
+        matched_job = False
+        for candidate in candidate_root.glob(f"*_{symbol}"):
+            verdict_path = candidate / "final" / "stock_verdict.json"
+            if not verdict_path.is_file():
+                continue
+            try:
+                verdict = _read_json(verdict_path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if verdict == {key: value for key, value in decision.items() if key != "operation_date"}:
+                debate_date, debate_dir = job["date"], candidate
+                matched_job = True
+                break
+        if matched_job:
+            break
     stages: dict[str, Any] = {}
     if debate_dir:
         paths = {
@@ -298,4 +355,5 @@ def stock_detail(data_dir: Path, symbol: str) -> dict[str, Any] | None:
         "decision": decision,
         "debate_date": debate_date,
         "stages": stages,
+        "research_packages": research_packages(data_dir, symbol),
     }

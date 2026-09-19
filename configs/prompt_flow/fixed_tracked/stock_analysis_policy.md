@@ -58,7 +58,7 @@
 - 最后一次投资逻辑总结；
 - 上轮遗留的待核验事项。
 
-历史 `recommended_action`、`price_target`、计划性操作条件和旧版可能夹带执行指令的 verdict 不会进入本轮 Prompt。不要自行打开原始历史文件把这些过期指令重新读回来。
+历史 `recommended_action`、`price_target`、计划性操作条件和 `verdict` 不会进入本轮 Prompt。历史 verdict 无论新旧都可能造成结论锚定；不要自行打开原始历史文件把这些内容重新读回来。
 
 使用投资记忆时应重新检查：
 

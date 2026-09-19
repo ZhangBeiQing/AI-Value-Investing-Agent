@@ -22,7 +22,7 @@
 
 | `CacheKind` | 路径 | TTL | per_stock | 必需文件 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `FINANCIALS` | `financials_cache/` | 7 天 | ✓ | `profit_sheet.csv` / `balance_sheet.csv` / `cash_flow_sheet.csv` | 利润 / 资产负债 / 现金流 / `financial_abstract.csv`（可选）|
+| `FINANCIALS` | `financials_cache/` | 3650 天 | ✓ | `profit_sheet.csv` / `balance_sheet.csv` / `cash_flow_sheet.csv` | 利润 / 资产负债 / 现金流 / `financial_abstract.csv`（可选）|
 | `PRICE_SERIES` | `prices/` | 1 天 | ✓ | `price.csv` | 行情日线 |
 | `SHARE_INFO` | `share_info/` | 7 天 | ✓ | （由接口生成的 CSV） | A 股 `stock_share_change_cninfo.csv` / 港股 `stock_hk_financial_indicator_em.csv` |
 | `DISCLOSURES` | `disclosures/` | 1 天 | ✓ | `index.json` / `cninfo_list.csv` | 公告列表 + PDF + Markdown |

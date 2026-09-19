@@ -1,6 +1,6 @@
 # fixed_tracked 多 Agent 历史回测系统详细设计
 
-> 状态：设计待评审，尚未实现  
+> 状态：已实施（`services/backtest/` + `scripts/manage_fixed_tracked_backtest.py` + `.codex/skills/backtest-fixed-tracked/`）
 > 目标示例：回测 2026-01-01 至 2026-08-03 的 fixed_tracked 策略，初始现金 500,000 元  
 > 设计口径：当前固定池基线 + 每日长期候选、允许受约束联网、零费率、完全隔离账本、D 日收盘决策后于 D+1 开盘成交
 
@@ -55,13 +55,13 @@ slippage_bps: 0
 
 ### 2.2 股票集合
 
-基础池使用实验创建时 `configs.stock_pool.TRACKED_A_STOCKS` 中的当前 17 只股票，并把这份列表复制进实验配置，此后即使源码里的固定池变化，本次实验也不随之变化。
+基础池使用实验创建时 `configs.stock_pool.TRACKED_A_STOCKS` 中的当前全部股票（当前为 44 只），并把这份列表复制进实验配置，此后即使源码里的固定池变化，本次实验也不随之变化。
 
 当日分析集合：
 
 ```text
 当日 fixed_tracked
-= 冻结的 17 只基础股票
+= 冻结的基础股票池
 ∪ 当日长期候选
 ∪ 截至当日仍持仓的股票
 ```
@@ -110,7 +110,7 @@ python scripts/manage_selection_system.py \
 
 ### 2.4 幸存者偏差声明
 
-当前 17 只固定池被用于整个历史区间，会产生：
+实验创建时的固定池（当前 44 只）被用于整个历史区间，会产生：
 
 - 幸存者偏差；
 - 股票池选择的未来信息；
@@ -801,7 +801,7 @@ configs/prompt_flow/fixed_tracked/*
 
 ### 7.1 CLI
 
-新增：
+已实现：
 
 ```text
 scripts/manage_fixed_tracked_backtest.py
@@ -809,7 +809,7 @@ scripts/manage_fixed_tracked_backtest.py
 
 CLI 只负责解析参数和调用 service，不承载业务逻辑。
 
-建议子命令：
+子命令：
 
 ```bash
 # 建立实验、扫描覆盖率，不调用 LLM
@@ -833,6 +833,12 @@ python scripts/manage_fixed_tracked_backtest.py prepare-day \
   --experiment-id fixed_20260101_20260803_001 \
   --date 2026-04-01
 
+# P0 为空时生成显式无交易 05，不伪造单股 verdict
+python scripts/manage_fixed_tracked_backtest.py no-trade-day \
+  --experiment-id fixed_20260101_20260803_001 \
+  --date 2026-04-01 \
+  --reason "当日 P0 为空"
+
 # 在 05 已生成后，通过回测模式 run_post_trade 模拟挂单/成交并推进账本
 python scripts/manage_fixed_tracked_backtest.py execute-day \
   --experiment-id fixed_20260101_20260803_001 \
@@ -845,21 +851,20 @@ python scripts/manage_fixed_tracked_backtest.py finalize \
 
 ### 7.2 Service
 
-新增：
+已实现：
 
 ```text
 services/backtest/
 ├── experiment.py
-├── trading_calendar.py
-├── coverage_audit.py
-├── universe_builder.py
-├── historical_input_builder.py
-├── source_date_guard.py
+├── coverage.py
+├── universe.py
+├── day_inputs.py
+├── announcements.py
+├── financials.py
 ├── ledger.py
-├── execution_simulator.py
-├── portfolio_guard.py
-├── metrics.py
-└── orchestrator.py
+├── execution.py
+├── locking.py
+└── metrics.py
 ```
 
 职责：
@@ -867,25 +872,28 @@ services/backtest/
 | 模块 | 职责 |
 | --- | --- |
 | `experiment.py` | 创建和读取实验配置，冻结股票池、Prompt 和 Git 信息 |
-| `trading_calendar.py` | 构造真实交易日期，不用工作日近似 |
-| `coverage_audit.py` | 扫描历史输入并分类 |
-| `universe_builder.py` | 合并固定池、长期候选、持仓股 |
-| `historical_input_builder.py` | 构建回测目录中的 00-04 |
-| `source_date_guard.py` | 校验联网证据发布日期和回顾性污染 |
+| `coverage.py` | 只读扫描历史输入并按可用性分类 |
+| `universe.py` | 合并固定池、长期候选、持仓股，且不赋予量化候选交易权 |
+| `day_inputs.py` | 物化单日隔离工作目录（00-04） |
+| `announcements.py` | 准备共享的已审计公告缓存 |
+| `financials.py` | 财报原文准备与回测财报深研门禁 |
 | `ledger.py` | 只读写实验目录下的 position 和订单 |
-| `execution_simulator.py` | 由回测模式 `run_post_trade.py` 调用，完成 D+1 精确开盘价模拟成交 |
-| `portfolio_guard.py` | 自动处理现金、持仓、交易单位和多单冲突 |
+| `execution.py` | D+1 开盘价模拟成交并生成隔离的 06-08 |
+| `locking.py` | 实验级进程锁，防止同一账本并发推进 |
 | `metrics.py` | 净值、回撤、收益和交易统计 |
-| `orchestrator.py` | 状态机、断点续跑和阶段调用 |
+
+交易日构造复用 `shared_data_access.market_calendar`，不再单独维护 `trading_calendar.py`。日常命令通过 `core/run_context.py` 的 `RunContext` 在 live / backtest 两套上下文间切换。
 
 ### 7.3 Skill
 
-新增：
+已实现：
 
 ```text
 .codex/skills/backtest-fixed-tracked/
 ├── SKILL.md
+├── agents/openai.yaml
 └── references/
+    ├── artifact-contract.md
     ├── guarded-web-policy.md
     ├── orchestration.md
     └── result-review.md
@@ -1181,7 +1189,7 @@ date,cash,market_value,total_value,daily_return,drawdown,stale_price_symbols
 至少生成两个对照：
 
 1. 上证指数或沪深 300 的同期收益；
-2. 冻结的 17 只基础股票等权买入持有。
+2. 冻结的基础股票池等权买入持有。
 
 如果个别股票在起点尚未上市，等权基准必须说明加入规则，不能提前使用上市后的价格。
 
@@ -1230,7 +1238,7 @@ final_value = end_date 收盘后的现金 + 持仓市值
 
 至少覆盖：
 
-1. 当前 17 只基础池被正确冻结；
+1. 实验创建时的基础池被正确冻结；
 2. 当日 `12_quant_prefilter_long.csv` 只扩展研究范围，不直接产生交易；
 3. 缺失时可以基于历史因子安全重建 `12_quant_prefilter_long.csv`；
 4. 持仓股退出长期候选后仍在分析集合；
@@ -1277,7 +1285,7 @@ D3 开盘成交
 - 检查同一日所有角色都读取了 `00_backtest_context`；
 - 检查期末 `position.jsonl` 与 `trades.csv` 一致。
 
-## 14. 实施顺序
+## 14. 实施顺序（历史记录，四个阶段均已落地）
 
 ### 阶段一：纯 Python 骨架
 
@@ -1314,7 +1322,7 @@ D3 开盘成交
 3. 成本统计；
 4. 3 日、10 日、完整区间验证。
 
-## 15. 预计修改范围
+## 15. 修改范围（已落地）
 
 新增：
 
@@ -1322,10 +1330,11 @@ D3 开盘成交
 scripts/manage_fixed_tracked_backtest.py
 services/backtest/*
 .codex/skills/backtest-fixed-tracked/*
+core/run_context.py
 docs/backtest/fixed_tracked_agent_backtest_design.md
 ```
 
-可能需要以兼容方式扩展：
+以兼容方式扩展：
 
 ```text
 scripts/run_post_trade.py

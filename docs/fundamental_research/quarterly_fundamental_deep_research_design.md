@@ -340,7 +340,7 @@ services.research.stock_analysis.analyze_stock_dynamics_and_valuation(
 
 ### 8.2 本地上下文准备
 
-建议新增业务模块：
+已新增业务模块：
 
 ```text
 services/research/financial_report_context.py
@@ -1055,7 +1055,7 @@ scripts/register_financial_report_summary.py
 
 ### 17.2 固定规则
 
-建议新增：
+已新增：
 
 ```text
 configs/research/
@@ -1243,9 +1243,9 @@ financial-report-summary 的 Industry Researcher
 
 两者共享方法和可复用卡片，但不互相调用完整 Skill。
 
-## 23. 建议实施文件
+## 23. 实施文件（已落地）
 
-### 23.1 新增
+### 23.1 已新增
 
 ```text
 services/research/financial_report_context.py

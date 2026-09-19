@@ -542,6 +542,8 @@ BUY, SELL, FLAT -> 无多数
 13. `next_day_watchlist`
 14. `confidence_score`
 
+此外 schema 还允许两个可选字段：`current_position_pct` 与 `sizing_reason`（仓位与数量诊断），不影响 14 个必填字段的兼容性。
+
 删除的旧字段：
 
 - `deep_analysis_date`：与顶层日期和目录日期重复；

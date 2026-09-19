@@ -433,7 +433,7 @@ def build_research_markdown(
         lines.append(
             "以下内容是从当前账本完整历史中生成的研究记忆视图。"
             "完整历史仍保存在本地，但过期的 recommended_action、price_target、"
-            "计划性操作条件和旧版 verdict 不会进入本轮 Prompt。"
+            "计划性操作条件和历史 verdict 不会进入本轮 Prompt。"
         )
         lines.append("")
         latest_review = memory_context.get("latest_thesis_review") or {}

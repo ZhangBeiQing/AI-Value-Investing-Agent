@@ -380,12 +380,21 @@ def main() -> int:
                 allow_conversion=args.convert_missing_markdown,
             )
         if latest_path is None or not latest_path.exists():
+            pdf_path = bundle.latest_report.pdf_path
+            if pdf_path is None or not Path(pdf_path).is_file():
+                skip_reason = "latest_report_pdf_missing"
+            elif args.convert_missing_markdown:
+                skip_reason = "latest_report_markdown_conversion_failed"
+            else:
+                skip_reason = "latest_report_markdown_missing_conversion_disabled"
             skipped.append(
                 {
                     "symbol": bundle.symbol,
                     "stock_name": bundle.stock_name,
                     "final_mandate": bundle.final_mandate,
-                    "skip_reason": "latest_report_markdown_missing_conversion_disabled",
+                    "skip_reason": skip_reason,
+                    "latest_announcement_id": bundle.latest_report.announcement_id,
+                    "latest_report_date": bundle.latest_report.date,
                 }
             )
             continue

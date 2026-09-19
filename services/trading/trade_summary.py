@@ -522,18 +522,6 @@ def get_historical_context(signature: str, stock_code: str, n: int):
     return stock_history[:n]
 
 
-def _is_legacy_stock_decision(entry: dict) -> bool:
-    """识别会把旧执行计划混入长期记忆的历史 decision。"""
-    deprecated_fields = {
-        "deep_analysis_date",
-        "history_anchor",
-        "search_brief",
-        "motion",
-        "price_target",
-    }
-    return bool(deprecated_fields.intersection(entry))
-
-
 def _project_decision_memory(entry: dict) -> dict:
     """把完整历史记录投影为可供下一轮研究读取的长期投资记忆。"""
     projected = {
@@ -554,10 +542,8 @@ def _project_decision_memory(entry: dict) -> dict:
             "pro": court.get("pro"),
             "con": court.get("con"),
         }
-        # 旧版 verdict 经常混入未来价格、分批和加仓指令。新契约已把
-        # verdict 限定为长期判断，因此只有新契约记录才向后续 Agent 暴露。
-        if not _is_legacy_stock_decision(entry):
-            projected_court["verdict"] = court.get("verdict")
+        # 历史 verdict 即使符合新契约，也会把上一轮最终裁决直接锚定到
+        # 下一轮研究。研究记忆只保留当时的正反论据，由本轮重新裁决。
         projected["court"] = projected_court
 
     return {

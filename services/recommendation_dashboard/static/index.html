@@ -30,12 +30,19 @@
 
     <section class="metric-grid" aria-label="BUY 建议汇总">
       <article class="metric primary"><div class="metric-label">BUY 股票等权平均涨跌</div><div class="metric-value" id="totalReturn">—</div><div class="metric-note">每只股票从首次 BUY 当日收盘算起</div></article>
-      <article class="metric"><div class="metric-label">已分析股票</div><div class="metric-value" id="analyzedCount">—</div><div class="metric-note">历史决策覆盖的股票</div></article>
+      <article class="metric"><div class="metric-label">已分析股票</div><div class="metric-value" id="analyzedCount">—</div><div class="metric-note">含网页发起并正式入账的单股研究</div></article>
       <article class="metric"><div class="metric-label">曾出现 BUY</div><div class="metric-value" id="buyCount">—</div><div class="metric-note" id="buyEvents">—</div></article>
       <article class="metric"><div class="metric-label">上涨 / 下跌</div><div class="metric-value small" id="winLoss">—</div><div class="metric-note" id="priceCoverage">—</div></article>
     </section>
 
     <div class="method-note"><span class="note-icon">i</span><span>这里衡量建议后的价格表现，不是账户实际盈亏。收益使用共享缓存中的前复权收盘价，未另计现金分红、交易费用与汇率变化；每行均显示对应价格日期。价格落后于同市场最新缓存的股票暂不计入顶部汇总，重复 BUY 的单次结果可在详情中查看。</span></div>
+
+    <section class="research-workbench" aria-label="单股研究任务">
+      <div><div class="eyebrow">ON-DEMAND RESEARCH</div><h2>新增或重新分析股票</h2><p>输入股票名称；匹配成功后加入股票宇宙并启动研究。可能运行数十分钟并消耗模型额度；校验通过后自动写入正式决策与 Agent 虚拟账本，不修改你的真实持仓文件。</p></div>
+      <form id="addStockForm" class="add-stock-form"><input id="newStockName" name="name" placeholder="例如：中国联通" aria-label="股票名称" required><button type="submit" class="refresh-button">查找并分析</button></form>
+      <div id="addStockMessage" class="workbench-message" role="status"></div>
+      <div id="researchJobs" class="job-list"></div>
+    </section>
 
     <section class="list-section">
       <div class="section-top">

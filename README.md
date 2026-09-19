@@ -217,7 +217,7 @@ python scripts/manage_fixed_tracked_backtest.py status --experiment my_test
 
 ### 固定池 BUY 建议效果看板
 
-本地只读网页列出 `book-fixed_tracked` 历史分析过的全部股票，按 `position.jsonl` 中的 `buy` 记录标识曾给出 BUY 的股票。页面展示首次 BUY 日至最新缓存收盘价的涨跌、逐次 BUY 记录，以及最新可用的正反辩论、双方反驳、三名裁判和最终裁决。
+本地网页列出 `book-fixed_tracked` 历史分析过的全部股票，按 `position.jsonl` 中的 `buy` 记录标识曾给出 BUY 的股票。页面展示首次 BUY 日至最新缓存收盘价的涨跌、逐次 BUY 记录，以及最新可用的正反辩论、双方反驳、三名裁判和最终裁决。点击单股研究按钮时，网页还会启动隔离的后台研究任务，因此整站并非只读。
 
 “实际持仓”页读取 `position/manual_position_override.json` 的股数、平均成本与人民币现金，结合共享行情缓存显示逐股市值、浮动盈亏和价格日期。A 股及 ETF 用人民币，港股用港元分别汇总；该文件没有汇率或已实现盈亏，因此不合并两种币种，也不推算累计交易盈亏。
 
@@ -227,7 +227,9 @@ python scripts/serve_recommendation_dashboard.py
 # 浏览器打开 http://127.0.0.1:8765/
 ```
 
-顶部收益是可比价格齐全的曾 BUY 股票的等权平均涨跌，不是实际账户收益。行情缓存缺失或落后于同市场最新缓存时，页面显示其价格日期，并将其排除在顶部汇总之外。服务默认只监听本机，不修改交易文件，也不会触发数据刷新。
+顶部收益是可比价格齐全的曾 BUY 股票的等权平均涨跌，不是实际账户收益。行情缓存缺失或落后于同市场最新缓存时，页面显示其价格日期，并将其排除在顶部汇总之外。服务默认只监听本机；页面的“刷新数据”仅重读本地文件，不触发数据准备。
+
+网页另提供逐股研究包查看和单股研究任务。研究任务会在用户点击后更新该股数据并调用本机 Agent，日志与运行中产物保存在 `data/web_research_runs/`；最终裁决通过校验后自动并入 fixed_tracked 正式决策汇总和 Agent 虚拟仓位账本，参与 BUY 建议效果统计。真实持仓 `manual_position_override.json` 始终只由用户手动维护。新增股票只接受本地名称映射能核实的代码。运行边界及状态契约见 `docs/recommendation_dashboard_workbench.md`。
 
 ### 月度行业研究
 

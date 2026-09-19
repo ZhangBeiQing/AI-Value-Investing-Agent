@@ -69,7 +69,10 @@ data/agent_data/book-fixed_tracked/
   - `risk_reward_setup`
   - `motion`
   - `court`（含 `pro` / `con` / `verdict`）
+  - `price_impression`
   - `recommended_action`
+  - `action_num`
+  - `action_type`
   - `price_target`
   - `stop_loss`
   - `key_risks`

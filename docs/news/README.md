@@ -143,7 +143,7 @@ get_news_context(stock_code, simulation_date, lookback_days=60)
 | 每日刷新 | `selection_system build-announcements`（增量） | `refresh_all_for_date.py --include-selection-universe` 路径 |
 | 每日刷新 | `news/disclosures_builder.py --all`（增量 + audit） | `manage_daily_data` 默认路径，由 `manage_daily_data --skip-disclosures` 可跳过 |
 | 选股输入 | `04_recent_company_announcements.json` | 从各股 `news/news.json` 聚合最近 3 天公告 `summary`，仅保留选股阶段需要的轻量摘要字段 |
-| 三账本研究 | `04_stock_research/*_research.md` | `services/pipeline/steps/build_stock_research.py` 把公告摘要写入逐股研究包 |
+| 逐股研究 | `04_stock_research/*_research.md` | `services/pipeline/steps/build_stock_research.py` 把公告摘要写入逐股研究包 |
 
 详见：
 

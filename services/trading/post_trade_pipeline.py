@@ -123,6 +123,24 @@ def _collect_decision_symbols(decision: dict) -> List[str]:
     return symbols
 
 
+def _check_previously_published_symbols(decision: dict, signature: str, summary_date: str, log_path: Path) -> None:
+    """Prevent a second same-day execution from another 05 decision file."""
+    if log_path.is_file():
+        return
+    history_path = PROJECT_ROOT / "data" / "agent_data" / signature / "stock_decisions.json"
+    if not history_path.is_file():
+        return
+    history = json.loads(history_path.read_text(encoding="utf-8"))
+    symbols = set(_collect_decision_symbols(decision))
+    repeated = sorted({entry.get("symbol") for entry in history if isinstance(entry, dict)
+                       and entry.get("operation_date") == summary_date and entry.get("symbol") in symbols})
+    if repeated:
+        raise RuntimeError(
+            f"{summary_date} 已有正式入账的同股决策：{', '.join(repeated)}；"
+            "拒绝从另一份 05 决策再次执行。请先核对现有 06 与虚拟账本。"
+        )
+
+
 def _load_expected_symbols_from_snapshot(output_dir: Path) -> List[str]:
     snapshot_path = output_dir / "02_basic_snapshot_payload.json"
     if not snapshot_path.exists():
@@ -456,11 +474,11 @@ def execute_trade_from_decision(
     else:
         resolved_signature = get_config_value("SIGNATURE") or "book-fixed_tracked"
     ensure_runtime_env(resolved_output_dir, resolved_signature, summary_date)
-    ensure_position_file(resolved_signature, summary_date, symbols=expected_symbols)
-
     buys, sells = extract_trades(decision)
     resolved_output_dir.mkdir(parents=True, exist_ok=True)
     log_path = resolved_output_dir / "06_execution_log.json"
+    _check_previously_published_symbols(decision, resolved_signature, summary_date, log_path)
+    ensure_position_file(resolved_signature, summary_date, symbols=expected_symbols)
     if _load_matching_execution_log(
         log_path,
         summary_date=summary_date,

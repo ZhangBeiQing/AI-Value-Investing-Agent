@@ -28,6 +28,7 @@ from configs.stock_pool import TRACKED_A_STOCKS
 from openai import OpenAI
 from shared_data_access.cache_registry import CacheKind, build_cache_dir
 from shared_data_access.data_access import SharedDataAccess
+from shared_data_access.stockstar_financial_report import fetch_stockstar_financial_report_markdown
 from services.document_conversion import (
     PDFMarkdownConverter,
     is_pdf_markdown_cache_current,
@@ -320,6 +321,7 @@ BLACKLIST = [
     "付息公告", "跟踪评级", "信用评级", "票面利率调整",
     "转股价格调整", "不向下修正", "预计满足转股价格修正条件", # 这些是技术性调整
     "转股结果", "行权结果", "股份变动结果", "实施结果", # 月度/季度例行统计
+    "权益分派实施",  # 分红实施细节属于常规技术公告，保留权益分派预案而非重复下载实施公告
 
     "股份发行人的证券变动", # 完整表述
     "Monthly Return",    # 英文版关键词
@@ -378,6 +380,8 @@ class AnnouncementMeta:
     audited: bool = False
     audit_model: Optional[str] = None
     audit_timestamp: Optional[str] = None
+    content_source: Optional[str] = None
+    content_source_url: Optional[str] = None
 
 
 def _slugify(text: str) -> str:
@@ -528,15 +532,68 @@ def news_json_path(symbol_info: SymbolInfo) -> Path:
     return root / "news" / "news.json"
 
 
-def download_pdf(url: str, out_path: Path) -> bool:
+MIN_PDF_BYTES = 1024
+CNINFO_DENIAL_LIMIT = 3
+CNINFO_DENIAL_COOLDOWN_SECONDS = 600
+_cninfo_denial_lock = threading.Lock()
+_cninfo_denial_count = 0
+_cninfo_denied_until = 0.0
+
+
+def _cninfo_download_paused(now: float) -> bool:
+    with _cninfo_denial_lock:
+        return now < _cninfo_denied_until
+
+
+def _record_cninfo_download_result(*, denied: bool, now: float) -> None:
+    global _cninfo_denial_count, _cninfo_denied_until
+    with _cninfo_denial_lock:
+        if not denied:
+            _cninfo_denial_count = 0
+            _cninfo_denied_until = 0.0
+            return
+        _cninfo_denial_count += 1
+        if _cninfo_denial_count >= CNINFO_DENIAL_LIMIT and now >= _cninfo_denied_until:
+            _cninfo_denied_until = now + CNINFO_DENIAL_COOLDOWN_SECONDS
+            LOGGER.warning("巨潮 PDF 连续 %d 份被拒绝，暂停下载 %d 秒；未下载公告保留待下次重试",
+                           _cninfo_denial_count, CNINFO_DENIAL_COOLDOWN_SECONDS)
+
+
+def is_valid_pdf(path: Path) -> bool:
+    """校验本地PDF是否完整：需有 %PDF 文件头与 %%EOF 文件尾，且体积不为空。
+
+    cninfo 限流时会中途掐断连接，iter_content 正常结束但只落半截文件；
+    这类残件尾部没有 %%EOF，必须识别为无效，否则会被误当成"已下载"。
+    """
+    try:
+        if not path.exists():
+            return False
+        size = path.stat().st_size
+        if size < MIN_PDF_BYTES:
+            return False
+        with open(path, "rb") as fh:
+            if not fh.read(5).startswith(b"%PDF"):
+                return False
+            fh.seek(max(0, size - 1024))
+            tail = fh.read()
+        return b"%%EOF" in tail
+    except OSError:
+        return False
+
+
+def download_pdf(url: str, out_path: Path, attempts: int = 2) -> bool:
     """
     摘要: 下载公告PDF，优先通过公告详情接口获取真实直链，必要时回退到静态路径规则。
+    下载写入临时文件并校验完整性后才原子替换目标文件。
+    仅对超时、429、5xx 和疑似截断重试；403 等永久拒绝不重试。
     Args:
         url: 公告详情URL
         out_path: PDF输出路径
+        attempts: 整体重试次数
     Returns:
         是否下载成功
     """
+    import time
     import requests
     from urllib.parse import parse_qs, unquote, urlparse
 
@@ -560,25 +617,71 @@ def download_pdf(url: str, out_path: Path) -> bool:
         "Connection": "keep-alive",
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    if is_valid_pdf(out_path):
+        return True
+    if _cninfo_download_paused(time.monotonic()):
+        return False
+    tmp_path = out_path.with_name(f"{out_path.name}.{os.getpid()}.{threading.get_ident()}.part")
     _log(f"尝试下载PDF: {url} -> {out_path}")
 
-    def _save_from_url(pdf_url: str) -> bool:
+    def _save_from_url(pdf_url: str) -> str:
         if not pdf_url:
-            return False
+            return "missing"
         _log(f"尝试PDF直链: {pdf_url}")
-        try:
-            resp = requests.get(pdf_url, headers=download_headers, timeout=60, stream=True)
+
+        def _download_response(resp: "requests.Response") -> str:
             resp.raise_for_status()
-            with open(out_path, "wb") as f:
+            with open(tmp_path, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
-            ok = out_path.exists() and out_path.stat().st_size > 0
-            _log(f"PDF下载{'成功' if ok else '失败'}: {pdf_url}")
-            return ok
-        except Exception as exc:
-            _log(f"PDF直链下载失败: {pdf_url}, 错误: {exc}")
-            return False
+            if not is_valid_pdf(tmp_path):
+                LOGGER.warning("PDF无效或不完整: %s, size=%s", pdf_url, tmp_path.stat().st_size if tmp_path.exists() else 0)
+                return "retry"
+            os.replace(tmp_path, out_path)
+            _record_cninfo_download_result(denied=False, now=time.monotonic())
+            _log(f"PDF下载成功: {pdf_url} -> {out_path}")
+            return "ok"
+
+        try:
+            with requests.get(pdf_url, headers=download_headers, timeout=(5, 15), stream=True) as resp:
+                if resp.status_code not in {401, 403}:
+                    return _download_response(resp)
+                LOGGER.warning("PDF直链 HTTP %s（当前代理链路），尝试绕过代理直连: %s", resp.status_code, pdf_url)
+            with requests.Session() as direct_session:
+                direct_session.trust_env = False
+                with direct_session.get(pdf_url, headers=download_headers, timeout=(5, 30), stream=True) as direct_resp:
+                    return _download_response(direct_resp)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            LOGGER.warning("PDF直链 HTTP %s: %s", status, pdf_url)
+            if status in {401, 403}:
+                return "blocked"
+            if status == 404:
+                return "missing"
+            return "retry" if status == 429 or (status is not None and status >= 500) else "failed"
+        except (requests.ProxyError, requests.ConnectionError) as exc:
+            LOGGER.warning("PDF代理或连接失败，尝试绕过代理直连: %s, %s", pdf_url, exc)
+            try:
+                with requests.Session() as direct_session:
+                    direct_session.trust_env = False
+                    with direct_session.get(pdf_url, headers=download_headers, timeout=(5, 30), stream=True) as direct_resp:
+                        return _download_response(direct_resp)
+            except requests.RequestException as direct_exc:
+                LOGGER.warning("PDF直连仍失败，稍后可重试: %s, %s", pdf_url, direct_exc)
+                return "retry"
+        except requests.RequestException as exc:
+            LOGGER.warning("PDF直链网络失败，稍后可重试: %s, %s", pdf_url, exc)
+            return "retry"
+        except OSError as exc:
+            LOGGER.warning("PDF写入失败: %s, %s", out_path, exc)
+            return "failed"
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
 
     parsed = urlparse(url)
     query_params = parse_qs(parsed.query)
@@ -593,45 +696,73 @@ def download_pdf(url: str, out_path: Path) -> bool:
     announcement_time = _extract_param("announcementTime")
     plate = _extract_param("plate").lower()
 
-    if announcement_id and announcement_time:
-        detail_api = "https://www.cninfo.com.cn/new/announcement/bulletin_detail"
-        detail_params = {
-            "announceId": announcement_id,
-            "flag": "true" if plate == "szse" else "false",
-            "announceTime": announcement_time,
-        }
-        try:
-            resp = requests.post(detail_api, params=detail_params, headers=api_headers, timeout=20)
-            resp.raise_for_status()
-            payload = resp.json()
-            file_url = payload.get("fileUrl")
-            if not file_url:
-                announcement = payload.get("announcement") or {}
-                adjunct_url = announcement.get("adjunctUrl")
-                if adjunct_url:
-                    base = "https://static.cninfo.com.cn/"
-                    file_url = base.rstrip("/") + "/" + adjunct_url.lstrip("/")
-            if file_url and _save_from_url(file_url):
-                return True
-            _log("公告详情接口未返回有效PDF地址，尝试静态路径")
-        except Exception as exc:
-            _log(f"公告详情接口请求失败: {exc}")
-
     ann_date = announcement_time.split(" ")[0] if announcement_time else ""
     if not ann_date and "announcementTime=" in url:
         ann_date = unquote(url.split("announcementTime=")[1].split("&")[0]).split(" ")[0]
-    if announcement_id and ann_date:
-        pdf_urls = [
-            f"https://static.cninfo.com.cn/finalpage/{ann_date}/{announcement_id}.PDF",
-            f"https://static.cninfo.com.cn/finalpage/{ann_date}/{announcement_id}.pdf",
-            f"http://static.cninfo.com.cn/finalpage/{ann_date}/{announcement_id}.PDF",
-            f"http://static.cninfo.com.cn/finalpage/{ann_date}/{announcement_id}.pdf",
-        ]
-        for pdf_url in pdf_urls:
-            if _save_from_url(pdf_url):
-                return True
 
-    _log("所有PDF下载尝试失败")
+    if not announcement_id or not ann_date:
+        LOGGER.warning("公告链接缺少下载所需的编号或日期: %s", url)
+        return False
+
+    detail_blocked = False
+    denial_recorded = False
+    max_attempts = max(1, attempts)
+    for attempt in range(1, max_attempts + 1):
+        if announcement_time and not detail_blocked:
+            detail_api = "https://www.cninfo.com.cn/new/announcement/bulletin_detail"
+            detail_params = {
+                "announceId": announcement_id,
+                "flag": "true" if plate == "szse" else "false",
+                "announceTime": announcement_time,
+            }
+            try:
+                resp = requests.post(detail_api, params=detail_params, headers=api_headers, timeout=(5, 10))
+                resp.raise_for_status()
+                payload = resp.json()
+                file_url = payload.get("fileUrl")
+                if not file_url:
+                    announcement = payload.get("announcement") or {}
+                    adjunct_url = announcement.get("adjunctUrl")
+                    if adjunct_url:
+                        base = "https://static.cninfo.com.cn/"
+                        file_url = base.rstrip("/") + "/" + adjunct_url.lstrip("/")
+                if file_url and _save_from_url(file_url) == "ok":
+                    return True
+            except requests.HTTPError as exc:
+                status = exc.response.status_code if exc.response is not None else None
+                LOGGER.warning("公告详情接口 HTTP %s: %s", status, announcement_id)
+                if status in {401, 403, 404}:
+                    detail_blocked = True
+            except requests.RequestException as exc:
+                LOGGER.warning("公告详情接口网络失败: %s, %s", announcement_id, exc)
+            except (ValueError, KeyError, TypeError) as exc:
+                LOGGER.warning("公告详情接口数据无效: %s, %s", announcement_id, exc)
+                detail_blocked = True
+
+        upper_url = f"https://static.cninfo.com.cn/finalpage/{ann_date}/{announcement_id}.PDF"
+        upper_result = _save_from_url(upper_url)
+        result = upper_result
+        if result == "ok":
+            return True
+        # 404 可能只是扩展名大小写不一致；403 是访问链路/WAF 拒绝，
+        # 同一路径换成小写扩展名不会解除拒绝，只会制造一次重复请求。
+        if result == "missing":
+            lower_url = f"https://static.cninfo.com.cn/finalpage/{ann_date}/{announcement_id}.pdf"
+            result = _save_from_url(lower_url)
+            if result == "ok":
+                return True
+        if upper_result == "blocked" or result == "blocked":
+            _record_cninfo_download_result(denied=True, now=time.monotonic())
+            denial_recorded = True
+        if result in {"blocked", "failed", "missing"}:
+            break
+        if attempt < max_attempts:
+            LOGGER.warning("PDF下载暂时失败，2 秒后再试一次: %s", out_path.name)
+            time.sleep(2)
+
+    if not denial_recorded:
+        _record_cninfo_download_result(denied=False, now=time.monotonic())
+    LOGGER.warning("PDF下载失败，保留未下载状态供后续运行重试: %s", out_path.name)
     return False
 
 
@@ -1286,6 +1417,23 @@ def sync_financial_reports_for_stock(
             markdown_content = convert_pdf_to_markdown(Path(meta.pdf_path), md_path_obj)
             if markdown_content:
                 meta.md_path = str(md_path_obj)
+
+        if convert_markdown and (not meta.md_path or not Path(meta.md_path).is_file()):
+            md_file_name = f"{date}__{stock_code}__{meta.announcement_id}__{_slugify(title)}.md"
+            md_path_obj = md_dir(symbol_info) / md_file_name
+            try:
+                fallback = fetch_stockstar_financial_report_markdown(
+                    symbol_info,
+                    title=title,
+                    output_path=md_path_obj,
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                LOGGER.warning("证券之星财报正文备用获取失败: %s %s", title, exc)
+                fallback = None
+            if fallback:
+                meta.md_path = str(fallback[0])
+                meta.content_source = "stockstar_fulltext"
+                meta.content_source_url = fallback[1]
 
         idx[key] = meta
         synced += 1

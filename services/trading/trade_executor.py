@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 from core.logging import init_tool_logger
 from core.runtime_state import get_config_value, write_config_value
-from tools.price_tools import compute_total_value, get_latest_position, get_prev_close_prices
+from tools.price_tools import compute_total_value, get_latest_virtual_position, get_prev_close_prices
 from utlity.stock_utils import parse_symbol, SymbolFormatError
 
 
@@ -98,7 +98,7 @@ def execute_buy_orders(trades: Dict[str, int]) -> Dict[str, Any]:
         return validation_error
 
     try:
-        current_position, current_action_id = get_latest_position(today_date, signature)
+        current_position, current_action_id = get_latest_virtual_position(today_date, signature)
     except Exception as exc:
         logger.exception("buy 获取仓位失败")
         return {"error": f"Failed to get latest position: {exc}", "date": today_date}
@@ -163,7 +163,7 @@ def execute_sell_orders(trades: Dict[str, int]) -> Dict[str, Any]:
         return validation_error
 
     try:
-        current_position, current_action_id = get_latest_position(today_date, signature)
+        current_position, current_action_id = get_latest_virtual_position(today_date, signature)
     except Exception as exc:
         logger.exception("sell 获取仓位失败")
         return {"error": f"Failed to get latest position: {exc}", "date": today_date}

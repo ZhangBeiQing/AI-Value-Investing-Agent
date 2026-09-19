@@ -681,6 +681,106 @@ def _write_profit_forecast_snapshot(
     return snapshot_path
 
 
+def _fetch_cn_profit_forecast_resilient(
+    symbol_code: str,
+    logger: logging.Logger,
+) -> pd.DataFrame:
+    """akshare 同花顺一致预期的兜底抓取。
+
+    akshare 的 stock_profit_forecast_ths 用固定表索引取“业绩预测详表-详细指标预测”
+    （pd.read_html(...)[3]），但同花顺并非每只股票都渲染这张表（例如 600206 只有 3 张表），
+    此时会抛 IndexError 使整只股票的一致预期取不到。
+    这里改为按表头特征定位表格；缺失时退化为用“预测年报净利润 / 预测年报每股收益”
+    两张年度预测表合成下游所需的“预测指标”结构，保证仍能拿到机构一致预期。
+    """
+    import re
+    from io import StringIO
+
+    url = f"https://basic.10jqka.com.cn/new/{symbol_code}/worth.html"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+    }
+    resp = requests.get(url, headers=headers, timeout=30)
+    resp.raise_for_status()
+    resp.encoding = "gbk"
+    html = resp.text
+    if "本年度暂无机构做出业绩预测" in html:
+        return pd.DataFrame()
+
+    def _normalize_columns(frame: pd.DataFrame) -> pd.DataFrame:
+        frame = frame.copy()
+        frame.columns = [
+            str(col).replace("（", "-").replace("）", "") for col in frame.columns
+        ]
+        return frame
+
+    # 1) 优先按表头定位“详细指标预测”表，不依赖固定索引
+    for frame in pd.read_html(StringIO(html)):
+        if "预测指标" in [str(col) for col in frame.columns]:
+            return _normalize_columns(frame)
+
+    # 2) 退路：从年度预测表合成，按表内标题区分每股收益与净利润
+    eps_frame = None
+    profit_frame = None
+    for chunk in re.split(r"(?i)<table", html)[1:]:
+        end = chunk.lower().find("</table>")
+        if end == -1:
+            continue
+        fragment = chunk[:end]
+        try:
+            frame = pd.read_html(StringIO("<table" + fragment))[0]
+        except ValueError:
+            continue
+        if "年度" not in [str(col) for col in frame.columns]:
+            continue
+        if "预测年报每股收益" in fragment:
+            eps_frame = frame
+        elif "预测年报净利润" in fragment:
+            profit_frame = frame
+
+    if profit_frame is None and eps_frame is None:
+        return pd.DataFrame()
+
+    def _annual_values(frame: pd.DataFrame) -> Dict[str, str]:
+        values: Dict[str, str] = {}
+        if frame is None:
+            return values
+        for _, row in frame.iterrows():
+            raw_year = row.get("年度", "")
+            if raw_year is None or (isinstance(raw_year, float) and pd.isna(raw_year)):
+                continue
+            try:
+                year = str(int(float(raw_year)))
+            except (TypeError, ValueError):
+                year = str(raw_year).strip()
+            mean = row.get("均值")
+            if not year or mean is None or pd.isna(mean):
+                continue
+            values[year] = str(mean)
+        return values
+
+    profit_values = _annual_values(profit_frame)
+    eps_values = _annual_values(eps_frame)
+    if not profit_values and not eps_values:
+        return pd.DataFrame()
+
+    years = sorted(set(profit_values) | set(eps_values))
+    columns = ["预测指标", *[f"预测{year}-平均" for year in years]]
+
+    def _row(label: str, values: Dict[str, str], suffix: str = "") -> list:
+        return [label, *[f"{values.get(year, '')}{suffix}" if values.get(year) else "" for year in years]]
+
+    rows = []
+    if profit_values:
+        rows.append(_row("净利润(元)", profit_values, "亿"))
+    if eps_values:
+        rows.append(_row("每股收益(元)", eps_values))
+    return pd.DataFrame(rows, columns=columns)
+
+
 def update_cn_profit_forecast_cached(
     symbolInfo: SymbolInfo,
     base_data_dir: str | Path = "data",
@@ -712,12 +812,21 @@ def update_cn_profit_forecast_cached(
 
     try:
         logger.info("正在获取%s %s A股机构一致预期...", symbolInfo.stock_name, symbolInfo.symbol)
-        df = api_call_with_delay(
-            ak.stock_profit_forecast_ths,
-            symbol=symbolInfo.code,
-            indicator="业绩预测详表-详细指标预测",
-            logger=logger,
-        )
+        try:
+            df = api_call_with_delay(
+                ak.stock_profit_forecast_ths,
+                symbol=symbolInfo.code,
+                indicator="业绩预测详表-详细指标预测",
+                logger=logger,
+            )
+        except Exception as primary_exc:
+            logger.warning(
+                "%s %s 同花顺详细指标预测表不可用(%s)，改用兜底抓取",
+                symbolInfo.stock_name,
+                symbolInfo.symbol,
+                primary_exc,
+            )
+            df = _fetch_cn_profit_forecast_resilient(symbolInfo.code, logger)
         if df is None or df.empty:
             logger.warning("%s %s A股机构一致预期为空", symbolInfo.stock_name, symbolInfo.symbol)
             return _read_cached_dataframe(csv_path)
@@ -1128,10 +1237,101 @@ def update_share_info_cached(
         
         except Exception as exc:
             logger.error(f"获取{symbolInfo.stock_name} {symbolInfo.symbol}股本数据失败: {exc}")
+
+        if symbolInfo.is_cn_market() and not refreshed:
+            share_file = share_cache_dir / "stock_share_change_cninfo.csv"
+            fallback = _build_cn_share_history_from_local_caches(
+                symbolInfo,
+                base_data_dir=base_data_dir,
+                logger=logger,
+            )
+            if not fallback.empty:
+                fallback.to_csv(share_file, index=False, encoding="utf-8")
+                logger.warning(
+                    "%s %s 巨潮股本接口不可用，已用本地财报股本与行情流通股本生成兼容缓存: %s",
+                    symbolInfo.stock_name,
+                    symbolInfo.symbol,
+                    share_file,
+                )
+                refreshed = True
         
         # 如果有数据刷新，记录缓存刷新时间
         if refreshed:
             record_cache_refresh(share_cache_dir)
+
+
+def _build_cn_share_history_from_local_caches(
+    symbolInfo: SymbolInfo,
+    *,
+    base_data_dir: str | Path,
+    logger: logging.Logger,
+) -> pd.DataFrame:
+    """用已缓存财报总股本与行情流通股本构造巨潮兼容股本历史。"""
+    financial_dir = build_cache_dir(
+        symbolInfo, CacheKind.FINANCIALS, base_dir=base_data_dir, ensure=False
+    )
+    price_dir = build_cache_dir(
+        symbolInfo, CacheKind.PRICE_SERIES, base_dir=base_data_dir, ensure=False
+    )
+    balance_path = financial_dir / "balance_sheet.csv"
+    price_path = price_dir / "price.csv"
+    if not balance_path.is_file() or not price_path.is_file():
+        logger.warning(
+            "%s %s 本地股本回退缺少资产负债表或行情缓存",
+            symbolInfo.stock_name,
+            symbolInfo.symbol,
+        )
+        return pd.DataFrame()
+    try:
+        balance = pd.read_csv(
+            balance_path,
+            usecols=["NOTICE_DATE", "SHARE_CAPITAL"],
+        )
+        prices = pd.read_csv(price_path, usecols=["日期", "流通股本"])
+    except (OSError, ValueError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
+        logger.warning("%s %s 本地股本回退读取失败: %s", symbolInfo.stock_name, symbolInfo.symbol, exc)
+        return pd.DataFrame()
+
+    balance["effective_date"] = pd.to_datetime(balance["NOTICE_DATE"], errors="coerce")
+    balance["total_shares"] = pd.to_numeric(balance["SHARE_CAPITAL"], errors="coerce")
+    balance = (
+        balance.dropna(subset=["effective_date", "total_shares"])
+        .loc[lambda frame: frame["total_shares"] > 0]
+        .sort_values("effective_date")
+        .drop_duplicates(subset=["effective_date"], keep="last")
+    )
+    prices["effective_date"] = pd.to_datetime(prices["日期"], errors="coerce")
+    prices["float_shares"] = pd.to_numeric(prices["流通股本"], errors="coerce")
+    prices = (
+        prices.dropna(subset=["effective_date", "float_shares"])
+        .loc[lambda frame: frame["float_shares"] > 0]
+        .sort_values("effective_date")
+        .drop_duplicates(subset=["effective_date"], keep="last")
+    )
+    if balance.empty or prices.empty:
+        logger.warning("%s %s 本地股本回退没有有效行", symbolInfo.stock_name, symbolInfo.symbol)
+        return pd.DataFrame()
+
+    merged = pd.merge_asof(
+        prices[["effective_date", "float_shares"]],
+        balance[["effective_date", "total_shares"]],
+        on="effective_date",
+        direction="backward",
+    ).dropna(subset=["total_shares"])
+    if merged.empty:
+        return pd.DataFrame()
+    return pd.DataFrame(
+        {
+            "证券代码": symbolInfo.code,
+            "证券简称": symbolInfo.stock_name,
+            "公告日期": merged["effective_date"].dt.strftime("%Y-%m-%d"),
+            "变动日期": merged["effective_date"].dt.strftime("%Y-%m-%d"),
+            # 巨潮兼容缓存的股本单位为万股。
+            "总股本": merged["total_shares"] / 10_000,
+            "已流通股份": merged["float_shares"] / 10_000,
+            "数据来源": "local_financial_and_price_cache",
+        }
+    )
 
 
 def update_chip_distribution_cached(

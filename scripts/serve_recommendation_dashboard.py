@@ -1,4 +1,4 @@
-"""CLI entrypoint for the read-only fixed-tracked BUY dashboard."""
+"""CLI entrypoint for the local fixed-tracked research dashboard."""
 
 from __future__ import annotations
 

@@ -590,6 +590,15 @@ def get_latest_position(today_date: str, modelname: str) -> Dict[str, float]:
         LOGGER.info("get_latest_position 使用 manual_position_override: signature=%s, today=%s", modelname, today_date)
     return positions or {}, record_id
 
+
+def get_latest_virtual_position(today_date: str, modelname: str) -> Tuple[Dict[str, float], int]:
+    """Read the Agent paper ledger only; never substitute the user's real holdings."""
+    position_file = Path(__file__).resolve().parents[1] / "data" / "agent_data" / modelname / "position" / "position.jsonl"
+    latest = _pick_latest_record_on_or_before(_load_position_records(position_file), today_date)
+    if latest is None:
+        return {}, -1
+    return dict(latest["positions"]), latest["id"]
+
 def add_no_trade_record(today_date: str, modelname: str):
     """
     添加不交易记录。从 ../data/agent_data/{modelname}/position/position.jsonl 中前一日最后一条持仓，并更新在今日的position.jsonl文件中。
@@ -601,7 +610,7 @@ def add_no_trade_record(today_date: str, modelname: str):
         None
     """
     save_item = {}
-    current_position, current_action_id = get_latest_position(today_date, modelname)
+    current_position, current_action_id = get_latest_virtual_position(today_date, modelname)
     LOGGER.info("add_no_trade_record 使用上一条仓位: position=%s, action_id=%s", current_position, current_action_id)
     save_item["date"] = today_date
     save_item["id"] = current_action_id+1

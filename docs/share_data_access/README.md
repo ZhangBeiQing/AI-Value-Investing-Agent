@@ -22,20 +22,29 @@ prepare_dataset(
     as_of_date: str,
     force_refresh: bool = False,
     force_refresh_price: bool = False,
+    skip_price_refresh: bool = False,
     force_refresh_financials: bool = False,
     skip_financial_refresh: bool = False,
     include_disclosures: bool = False,
-    price_lookback_days: int | None = None,
-    disclosure_lookback_days: int = 730,
+    disclosure_lookback_days: int | None = None,
+    force_refresh_disclosures: bool = False,
+    disclosure_as_of_date: str | None = None,
+    include_chip_distribution: bool = False,
+    force_refresh_chip_distribution: bool = False,
+    chip_adjust: str = "qfq",
+    prefer_local_chip_distribution: bool = False,
+    local_full_history_chip_distribution: bool = False,
 ) -> PreparedData
 ```
+
+价格抓取窗口 `price_lookback_days`（默认 1800 个交易日）是 `SharedDataAccess` 的初始化参数，不在 `prepare_dataset` 上逐次传入。
 
 主要职责：
 
 1. 调用 `ensure_symbol_data` 触发抓取或刷新本地缓存，支持价格 / 财报 / 股本按需独立刷新
 2. 自动识别指数或 ETF，只返回价格数据，防止对无财务数据的标的发起无效请求；港股 ETF/杠杆产品没有稳定代码前缀，识别时必须传递含名称的完整 `SymbolInfo`
 3. 组装 `PreparedData`：
-   - `financials` (`FinancialDataBundle`)：`profit_sheet.csv` / `balance_sheet.csv` / `cash_flow_sheet.csv` / `analysis_indicator.csv` / `financial_abstract.csv`
+   - `financials` (`FinancialDataBundle`)：`profit_sheet` / `balance_sheet` / `cash_flow_sheet` / `financial_abstract`（`financial_abstract` 可选）
    - `prices` (`PriceDataBundle`)：`price.csv` 内最近 `price_lookback_days`（默认 1800 天）的行情，包含起止日期、源文件
    - `share_info` (`ShareInfo`)：通过 `ShareInfoProvider` 读取或缓存总股本与流通股本，自动处理 TTL 与数据源优先级
    - `disclosures` (`DisclosureBundle`，可选)：当 `include_disclosures=True` 时返回，载入近 `disclosure_lookback_days` 天内的公告列表 DataFrame

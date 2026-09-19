@@ -1,4 +1,4 @@
-更新日期：2026-08-04
+更新日期：2026-09-17
 
 # AI-Value-Investing-Agent 项目系统白皮书
 
@@ -111,7 +111,7 @@ data/skill_runs/YYYY-MM-DD/
 由 `services/trading/post_trade_pipeline.py` 编排，串联 `05` → `06-08` 后处理：
 
 - `06_execution_log.json`：交易执行结果（写入 `data/agent_data/{signature}/position/position.jsonl`）
-- `07_daily_summary.json`：当日组合级总结（system_risk_notes / system_focus_items / portfolio_overview）
+- `07_daily_summary.json`：当日组合级总结（system_risk_notes / system_focus_items）
 - `08_history_merge.json`：写入 `data/agent_data/{signature}/{stock_decisions.json, decision_summary.json, portfolio_daily_summary.json}` 并合并连续 HOLD/FLAT 序列
 
 历史决策合并逻辑详见 `docs/trade_summary/`。
@@ -126,7 +126,11 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── refresh_all_for_date.py
 │   ├── manage_daily_data.py
 │   ├── manage_selection_system.py
+│   ├── manage_industry_research.py
+│   ├── manage_debate.py
+│   ├── manage_fixed_tracked_backtest.py
 │   ├── prepare_financial_report_skill.py
+│   ├── register_financial_report_summary.py
 │   ├── run_daily_pipeline.py
 │   ├── run_post_trade.py
 │   ├── merge_subagent_decisions.py
@@ -138,35 +142,50 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── research/               # 宏观/新闻/财报/个股研究的核心实现
 │   ├── industry_research/      # 半年结构扫描、月度领先指标监控、产业链深研
 │   ├── selection_system/       # 选股系统：universe / news / board_heat / factor_store / quant_prefilter / candidate_selection
+│   ├── backtest/               # fixed_tracked 隔离回测：实验、覆盖率、universe、账本、D+1 成交、净值
 │   ├── snapshot/               # basic_snapshot
-│   └── trading/                # 交易执行 + 06-08 后处理（post_trade_pipeline.py / trade_summary.py / trade_executor.py）
+│   ├── recommendation_dashboard/ # 本地推荐看板服务
+│   ├── document_conversion/    # PDF → Markdown 等文档转换
+│   └── trading/                # 交易执行 + 06-08 后处理（post_trade_pipeline.py / trade_summary.py / trade_executor.py / debate_pipeline.py）
 ├── shared_data_access/         # 统一外部数据访问与缓存
 │   ├── data_access.py          # SharedDataAccess.prepare_dataset() 唯一入口
 │   ├── cache_registry.py       # 缓存类型 / TTL / 路径登记
+│   ├── market_calendar.py      # 交易日历（000001.IDX + SSE 回退）
 │   ├── chip_distribution.py    # 筹码分布抓取/回退计算
 │   ├── board_metrics.py        # 板块行情/历史
 │   ├── indicator_library.py    # 统一指标库
 │   ├── macro_objective_panel.py
 │   ├── industry_catalog.py     # 申万行业目录缓存
 │   ├── industry_financial_panel.py # 全A行业财务扩散验证
+│   ├── historical_prices.py
 │   ├── models.py / paths.py / exceptions.py / validation.py
 ├── core/                       # 通用基础设施
 │   ├── logging.py              # 统一日志入口
 │   ├── llm_output.py
+│   ├── network.py              # 网络超时设置
+│   ├── run_context.py          # live / backtest 运行上下文
 │   └── runtime_state.py
+├── news/                       # 公告 PDF 抓取 / 原子摘要 / 战略审计（disclosures_builder.py）
+├── fundamental/                # 财报基本面研究辅助（fundamental_research.py）
+├── prompts/                    # 旧版 prompt 组装与财报深研 prompt 素材
+├── indicator_library/          # 独立指标计算包（calculators/）
 ├── configs/
 │   ├── stock_pool.py           # TRACKED_A_STOCKS（fixed_tracked 静态池）
 │   ├── prompt_flow/            # fixed_tracked Markdown policy + short/legacy JSON flow
+│   ├── research/               # 财报 / 产业 / 估值等固定研究规则
+│   ├── industry_research/      # theme_registry.yaml
 │   └── selection_system/       # factor_scoring.yaml 等评分配置
 ├── data/                       # 运行产物与缓存
 ├── logs/                       # 组件日志
+├── tests/                      # 单元与集成测试
 ├── .codex/                     # 项目规则、skills、commands（主维护目录）
 │   ├── rules/
 │   ├── skills/
 │   └── commands/
 ├── docs/                       # 设计与系统文档（本文所在）
 ├── agent_tools/, tools/        # 历史兼容层，新代码不再向此处沉淀
-└── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py
+├── utlity/                     # 通用工具函数（parse_symbol 等）
+└── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py / tool_financial_report.py / trade_summary.py
                                 # 历史保留的顶层脚本，仍由 daily 链路调用，新逻辑不再继续堆在这里
 ```
 
@@ -259,7 +278,7 @@ data/skill_runs/YYYY-MM-DD/
 - `position/manual_position_override.json` — 人工干预入口
 - `stock_decisions.json` — 原始逐股决策表（追加写入）
 - `decision_summary.json` — 合并后的决策摘要（连续 HOLD/FLAT 序列合并为一条）
-- `portfolio_daily_summary.json` — 组合级别的 system_risk_notes / system_focus_items / portfolio_overview
+- `portfolio_daily_summary.json` — 组合级别的 system_risk_notes / system_focus_items（`portfolio_overview` 等字段当前实现未启用）
 
 ### 5.2 三步流程
 
@@ -310,6 +329,7 @@ data/skill_runs/YYYY-MM-DD/
 
 | Skill | 触发场景 |
 | --- | --- |
+| `daily-data-preparation` | 用户说「开始今天的数据准备」→ 串起刷新、宏观/新闻总结、财报 prepare 与研究、`run_daily_pipeline`，产出 01-04 |
 | `daily-macro-summary` | 用户说「更新今天的宏观总结」 → `data/macro_economy/YYYYMMDD.md` |
 | `gradual-hot-news-summary` | 用户说「更新今日热点主题总结」 → `06_hot_news_state.json` |
 | `monthly-industry-research` | 用户说「开始本月行业研究」 → 月度行业雷达与单主题产业链深研 |
@@ -346,7 +366,9 @@ data/skill_runs/YYYY-MM-DD/
 | `docs/news/README.md` | 上市公司公告新闻系统设计 |
 | `docs/trade_summary/README.md` | 每日操盘总结 JSON 契约与处理流程 |
 | `docs/fundamental_research/README.md` | 财报研究文件约定与 skill 入口 |
-| `docs/财报样例` | 财报研究 prompt 样例（人工资料）|
+| `docs/fundamental_research/quarterly_fundamental_deep_research_design.md` | 季度基本面深度研究系统详细设计（workdir / 预期差 / 产业链 / Challenger） |
+| `docs/fixed_tracked_debate_prompt_design.md` | fixed_tracked 多 Agent 辩论与 Prompt 分层详细设计 |
+| `docs/backtest/fixed_tracked_agent_backtest_design.md` | fixed_tracked 隔离多 Agent 历史回测系统详细设计 |
 
 ---
 
