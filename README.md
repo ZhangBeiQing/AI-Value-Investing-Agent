@@ -42,7 +42,7 @@ fixed_tracked 账本采用中心化管理 + 逐股多 Agent 辩论：
 | --- | --- | --- |
 | `fixed_tracked` | 静态池 + 实际持仓 + `12_quant_prefilter_short.csv` + 长期候选 | 主 Agent 筛选 P0 后执行多 Agent 辩论 |
 
-旧 `short_book` / `long_book` 代码与 Skill 暂时保留用于历史兼容，但不再由自动日常流水线生成或调度。
+旧 `short_book` / `long_book` 的 Skill 与 Prompt flow 已移除；当前日常只用综合 `fixed_tracked`。
 
 ## 当前日常流程
 
@@ -311,7 +311,7 @@ core/                           通用基础设施
 configs/
 ├── stock_pool.py               TRACKED_A_STOCKS（固定池）
 ├── prompt_flow/fixed_tracked/  investment_policy / main_policy / stock_analysis_policy
-├── prompt_flow/skill_flow*.json  short_book 兼容 Prompt flow
+├── prompt_flow/skill_flow.json   默认 Prompt flow
 ├── research/                   财报输出 schema / 搜索证据规则
 └── selection_system/           factor_scoring.yaml
 data/                           运行产物与缓存（不进 git）
@@ -343,8 +343,6 @@ docs/                           系统设计文档
 | `gradual-hot-news-summary` | 说"更新今日热点主题总结" | `06_hot_news_state.json` |
 | `financial-report-summary` | 说"生成财报总结" | `financial_reports/*.md` |
 | `auto-trading-fixed-tracked` | 说"开始今天固定股票池交易" | `fixed_tracked/05_decision.json` |
-| `auto-trading-short-book` | 说"开始今天短线股票池交易" | `short_book/05_decision.json` |
-| `auto-trading-long-book` | 说"开始今天长期股票池交易" | `long_book/05_decision.json` |
 | `backtest-fixed-tracked` | 说"回测固定股池" | `backtest_experiments/` |
 | `auto-selection-daily-pipeline` | 说"开始今天自动选股"（实验性） | `10_candidate_merge.json` |
 | `monthly-industry-research` | 说"开始本月行业研究" | `industry_research/` |
@@ -373,20 +371,6 @@ docs/                           系统设计文档
 pip install -r requirements.txt
 cp .env.example .env
 ```
-
-### PDF 转 Markdown（pymupdf4llm）
-
-本项目使用 [pymupdf4llm](https://pypi.org/project/pymupdf4llm/) 将财报 PDF 转为 Markdown，已列入 `requirements.txt`：
-
-```bash
-pip install pymupdf4llm
-```
-
-转换在项目虚拟环境内本地完成，不需要额外服务或 GPU；实现见 `services/document_conversion/pdf_markdown.py`。
-
-调用方只管用：转换结果会连同源 PDF 的 size/mtime 一起缓存（`.md` + `.md.meta.json`），同一份 PDF 不会重复转换。
-
-> 扫描件（无文本层）需要本机安装 OCR 后端（Tesseract tessdata 或 RapidOCR）后 `pymupdf4llm` 才会自动 OCR；没装时这类 PDF 会直接报错并记为数据缺口，不会产出空文件。
 
 主要配置文件：
 

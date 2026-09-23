@@ -334,8 +334,6 @@ data/skill_runs/YYYY-MM-DD/
 | `auto-selection-daily-pipeline` | 用户说「开始今天自动选股」（实验性，日常通常不跑） |
 | `financial-report-summary` | 用户说「生成财报总结」 → 各股 `financial_reports/*.md` |
 | `auto-trading-fixed-tracked` | 用户说「开始今天固定股票池交易」 → `fixed_tracked/05_decision.json` |
-| `auto-trading-short-book` | 用户说「开始今天短线股票池交易」 → `short_book/05_decision.json` |
-| `auto-trading-long-book` | 用户说「开始今天长期股票池交易」 → `long_book/05_decision.json` |
 | `backtest-fixed-tracked` | 指定历史区间 → 隔离运行 fixed_tracked 多 Agent 决策、D+1 开盘模拟成交与净值汇总 |
 | `add-skill-pipeline-step` | 修改 / 新增 01-08 流水线步骤时使用 |
 | `extend-shared-data-access` | 新增数据源、缓存目录、衍生指标时使用 |

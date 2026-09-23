@@ -15,7 +15,6 @@
 - `fixed_tracked/stock_analysis_policy.md`：个股辩论角色研究方法；`investment_policy.md` + `configs/research/web_research_policy.md` + 本文件 生成 `03_stock_analysis_input.md`
 - `fixed_tracked/stock_decision.schema.json` / `stock_decision.example.json`：单股最终 verdict 的 schema 与完整样例
 - `skill_flow.json`：默认 Prompt flow，是 `services/prompting/agent_prompt.py` 的 `DEFAULT_PROMPT_CONFIG`，可用环境变量 `PROMPT_FLOW_CONFIG` 覆盖
-- `skill_flow_short_book.json`：short_book 历史流程的 Prompt flow；日常 fixed_tracked 不使用（当前日常不跑 short_book）
 
 ### `research/`
 

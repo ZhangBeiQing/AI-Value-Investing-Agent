@@ -35,7 +35,7 @@
 - `configs/prompt_flow/fixed_tracked/investment_policy.md`：fixed_tracked 全部 Agent 共用的核心投资策略
 - `configs/prompt_flow/fixed_tracked/main_policy.md`：fixed_tracked 主 Agent 当前 Prompt 源
 - `configs/prompt_flow/fixed_tracked/stock_analysis_policy.md`：fixed_tracked 个股辩论角色共同研究方法
-- `configs/prompt_flow/skill_flow*.json`：short_book 与旧版兼容 Prompt flow
+- `configs/prompt_flow/skill_flow.json`：默认 Prompt flow
 - `.codex/rules/`：当前主维护的规则目录，供 Codex 场景优先使用
 - `.codex/skills/`：当前主维护的项目技能文档
 - `.codex/commands/`：当前主维护的固定动作文档
@@ -76,7 +76,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 改代码前先读相关文件，不要凭印象改结构
 - 新业务逻辑优先写到 `services/`、`shared_data_access/`、`core/`
 - 任何外部行情、财报、股本、公告抓取都优先走 `shared_data_access`
-- 用户说"开始今天股票交易"时，优先按 `.codex/skills/auto-trading-daily-pipeline/SKILL.md` 执行，默认假设 `data/skill_runs/YYYY-MM-DD/` 的 `01-04` 已由用户手动准备完成
+- 用户说"开始今天股票交易"时，优先按 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` 执行，默认假设 `data/skill_runs/YYYY-MM-DD/` 的 `01-04` 已由用户手动准备完成
 - 改主链路后至少给出对应验证证据：日志、输出文件或失败现场
 - 新增或修改核心组件时使用统一日志入口，不要直接散落 `print`
 - 需要联网搜索时优先使用 `WebSearch` 工具，不要使用 `WebFetch` 或其他工具
@@ -113,7 +113,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 | 任务 | 首选参考 |
 | --- | --- |
-| 开始今天股票交易 | `data/skill_runs/YYYY-MM-DD/`, `.codex/skills/auto-trading-daily-pipeline/SKILL.md` |
+| 开始今天股票交易 | `data/skill_runs/YYYY-MM-DD/`, `.codex/skills/auto-trading-fixed-tracked/SKILL.md` |
 | 交易前准备当日全部数据 | `.codex/skills/daily-data-preparation/SKILL.md` |
 | 早上一键刷数据 | `scripts/refresh_all_for_date.py`, `services/data_refresh/refresh_orchestrator.py` |
 | 刷新每日数据（单步） | `scripts/manage_daily_data.py`, `services/data_refresh/`, `.codex/skills/extend-shared-data-access/SKILL.md` |
@@ -172,10 +172,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 ## Skills
 
 - `daily-data-preparation`：交易 skill 之前的每日数据准备总调度，串联 `refresh_all_for_date` → PDF 转 Markdown 依赖就绪（`pymupdf4llm`） → 并发 2 个 subagent（宏观 / 新闻）与财报 prepare → 主 agent 亲自做逐股财报研究 → `run_daily_pipeline`，一次性产出 `01-04` 研究包。**已挂 crontab，周一至周五 21:03 自动运行**（`scripts/cron_daily_data_prep.sh`）
-- `auto-trading-daily-pipeline`：三账本交易公共模板与调度说明，负责定义 fixed_tracked / short_book / long_book 的共用流程与串行执行原则
-- `auto-trading-fixed-tracked`：固定股票池 `fixed_tracked` 的单账本交易分析与后处理 skill
-- `auto-trading-short-book`：短期股票池 `short_book` 的单账本交易分析与后处理 skill
-- `auto-trading-long-book`：长期股票池 `long_book` 的单账本交易分析与后处理 skill
+- `auto-trading-fixed-tracked`：固定股票池 `fixed_tracked` 的单账本交易分析与后处理 skill（当前唯一日常交易账本）
 - `backtest-fixed-tracked`：按历史交易日串行回放固定池多 Agent 决策，使用隔离账本和 D+1 开盘模拟成交
 - `add-skill-pipeline-step`：新增或重构 `skill` 流水线步骤时使用
 - `extend-shared-data-access`：新增数据源、缓存目录或指标依赖时使用

@@ -176,13 +176,11 @@ load_yesterday_daily_summary(signature: str) -> dict | None
 
 ## 5. AI 输出格式（输入 → 系统）
 
-`05_decision.json` 中的 `stock_decisions` 数组里每个元素是一个完整 stock entry，由三本账本的 auto-trading skill 在 subagent 阶段生成并由 `merge_subagent_decisions.py` 合并而成。
+`05_decision.json` 中的 `stock_decisions` 数组里每个元素是一个完整 stock entry，由 auto-trading skill 在 subagent 阶段生成并由 `merge_subagent_decisions.py` 合并而成。
 
 skill 端要求 entry 字段集见各账本 SKILL.md：
 
 - `configs/prompt_flow/fixed_tracked/stock_decision.schema.json`（原 14 个字段保持兼容，新生成决策另含 2 个仓位与数量诊断字段）
-- `.codex/skills/auto-trading-short-book/SKILL.md`
-- `.codex/skills/auto-trading-long-book/SKILL.md`
 
 写入时机：人工确认 `05_decision.json` 后执行 `python scripts/run_post_trade.py --date YYYY-MM-DD --book-type {book_type} --signature book-{book_type}`，由 `services/trading/post_trade_pipeline.py` 串联：
 
