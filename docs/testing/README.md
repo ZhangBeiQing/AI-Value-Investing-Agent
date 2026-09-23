@@ -18,7 +18,7 @@ python -m pytest tests -q                 # 约 30 秒
 python -m pytest tests -q -k price        # 只跑名字含 price 的用例
 ```
 
-- 全量（含 `services/recommendation_dashboard/checks.py` 内的测试）当前约 **135 项，应全部通过**。
+- 全量（`python -m pytest tests -q`）当前约 **135 项，应全部通过**。
 - 测试必须可离线运行，**不允许依赖实时联网或真实交易数据**；外部依赖用 `monkeypatch`、`tmp_path` 隔离。
 
 ## 覆盖范围
@@ -37,10 +37,9 @@ python -m pytest tests -q -k price        # 只跑名字含 price 的用例
 | `test_hot_news_digest.py` | 渐进式新闻总结的轻量 digest 派生 |
 | `test_trade_memory_context.py` | 交易历史记忆投影与 prompt 上下文 |
 | `test_analysis_index.py` / `post_trade_pipeline_test.py` / `cache_initialization_test.py` | 分析索引、交易后处理串联、缓存初始化 |
+| `test_recommendation_dashboard.py` | 推荐看板：BUY 信号表现、持仓聚合、研究包选择（`unittest` 风格） |
 | `test_document_conversion.py` / `test_network_timeouts.py` | PDF→Markdown 转换、网络超时设置 |
 | `test_pipeline_refresh_defaults.py` / `test_prompt_profiles.py` | 刷新默认参数、prompt 分层职责边界 |
-
-> 另有 `services/recommendation_dashboard/checks.py`：以 `unittest` 编写，属于推荐看板模块自带测试，直接放在模块目录内未迁移到 `tests/`。
 
 ## 约定
 
