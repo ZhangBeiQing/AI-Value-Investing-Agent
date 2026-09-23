@@ -181,9 +181,7 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── skills/
 │   └── commands/
 ├── docs/                       # 设计与系统文档（本文所在）
-├── commons/                     # 通用工具函数（parse_symbol 等）
-└── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py
-                                # 历史保留的顶层脚本，仍由 daily 链路调用，新逻辑不再继续堆在这里
+└── commons/                    # 通用工具函数（parse_symbol 等）
 ```
 
 ---
@@ -295,7 +293,7 @@ data/skill_runs/YYYY-MM-DD/
 
 - 历史兼容层（`agent_tools/`、`tools/`、`prompts/`）已清理：真实实现统一位于 `services/` 与 `core/`，不再保留旧导入路径包装
 - 旧时代的 MCP 服务脚本（`start_mcp_services.py`、`tool_python.py`、`tool_math.py`）已经清理
-- `basic_stock_info.py`、`enhanced_pe_pb_analyzer.py`、`stock_price_dynamics_summarizer.py`、`shared_financial_utils.py` 仍位于仓库根目录，是历史保留的顶层脚本，仍被日常链路调用，但**不再继续在此沉淀新逻辑**
+- 原位于仓库根目录的 `basic_stock_info.py`、`enhanced_pe_pb_analyzer.py`、`stock_price_dynamics_summarizer.py`、`shared_financial_utils.py` 已分别迁入 `scripts/`、`services/research/`、`shared_data_access/`
 
 ### 6.2 日志规范
 

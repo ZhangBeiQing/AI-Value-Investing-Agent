@@ -24,7 +24,7 @@ from core.logging import bootstrap_run_logging_from_argv  # type: ignore
 
 bootstrap_run_logging_from_argv("data_prep")
 
-from basic_stock_info import DEFAULT_PRICE_LOOKBACK_DAYS  # type: ignore
+from services.snapshot.basic_snapshot import DEFAULT_PRICE_LOOKBACK_DAYS  # type: ignore
 from configs.stock_pool import TRACKED_A_STOCKS  # type: ignore
 from core.logging import init_component_logger  # type: ignore
 from core.network import install_network_timeouts  # type: ignore
@@ -288,7 +288,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
             basic_cmd = [
                 sys.executable,
                 "-u",
-                "basic_stock_info.py",
+                "scripts/basic_stock_info.py",
                 "--today-time",
                 target_date,
                 "--get-look-back-days",

@@ -18,8 +18,8 @@ from core.logging import init_tool_logger
 warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"pkg_resources")
 warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"py_mini_racer")
 
-from enhanced_pe_pb_analyzer import EnhancedPEPBAnalyzer
-from stock_price_dynamics_summarizer import stock_price_dynamics_summarizer
+from services.research.enhanced_pe_pb_analyzer import EnhancedPEPBAnalyzer
+from services.research.stock_price_dynamics_summarizer import stock_price_dynamics_summarizer
 from commons import SymbolInfo, get_latest_trading_day, is_etf_symbol, parse_symbol, resolve_base_dir
 
 

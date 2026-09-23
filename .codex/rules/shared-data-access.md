@@ -3,10 +3,7 @@ paths:
   - shared_data_access/**
   - services/research/**
   - services/snapshot/**
-  - basic_stock_info.py
-  - enhanced_pe_pb_analyzer.py
-  - stock_price_dynamics_summarizer.py
-  - shared_financial_utils.py
+  - scripts/basic_stock_info.py
 ---
 
 # Shared Data Access Rules

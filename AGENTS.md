@@ -118,7 +118,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 | 刷新每日数据（单步） | `scripts/manage_daily_data.py`, `services/data_refresh/`, `.codex/skills/extend-shared-data-access/SKILL.md` |
 | 调整 `01-04` 产物 | `scripts/run_daily_pipeline.py`, `services/pipeline/`, `.codex/rules/skill-pipeline.md`, `.codex/skills/add-skill-pipeline-step/SKILL.md` |
 | 增加研究/快照字段 | `services/research/`, `services/snapshot/`, `.codex/rules/shared-data-access.md` |
-| 增加外部数据缓存 | `shared_data_access/`, `shared_financial_utils.py`, `.codex/skills/extend-shared-data-access/SKILL.md` |
+| 增加外部数据缓存 | `shared_data_access/`, `shared_data_access/shared_financial_utils.py`, `.codex/skills/extend-shared-data-access/SKILL.md` |
 | 调整交易后处理 | `scripts/run_post_trade.py`, `services/trading/`, `.codex/rules/skill-pipeline.md` |
 | 排查主链路失败 | `logs/runs/<日期>/<流程>/merged.log`, `logs/cron_daily_prep/latest_status.json` |
 | 统一日志接入 | `core/logging.py`, `.codex/rules/code-style.md` |

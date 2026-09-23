@@ -10,7 +10,7 @@ from typing import Dict, Optional, TYPE_CHECKING
 import pandas as pd
 
 from core.logging import get_logger
-from shared_financial_utils import (
+from .shared_financial_utils import (
     ShareInfoProvider,
     apply_dataframe_cutoff,
     filter_financial_abstract_by_cutoff,
