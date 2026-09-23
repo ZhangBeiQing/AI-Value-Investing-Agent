@@ -86,6 +86,10 @@ prepare_dataset(
   固定输出 9 列 `日期, 开盘, 最高, 最低, 收盘, 成交量, 成交额, 换手率, 流通股本`，单位统一为
   成交量=股、成交额=元、换手率=小数比例、流通股本=股。东财接口的「手 / 百分数」在出口处换算，
   避免同一 `price.csv` 因回退切换出现列结构或单位（100 倍）不一致。
+- 所有 akshare 调用经 `utlity/stock_utils.py:api_call_with_delay` 统一节流：进程级锁 + 单调时钟在
+  「调用前」预留时间片，保证跨线程的调用起点至少相隔默认 0.25s（聚合约 4 req/s），避免线程池各 worker
+  各自 sleep 导致齐发（thundering herd）而触发限流；可用环境变量 `AKSHARE_MIN_INTERVAL_SECONDS`
+  调整，应急降速时可调大（如 0.5~1.0）。
 - 一旦写入缓存就可供未来任意回测日使用，无需按回测日期重新拉取
 - `prepare_dataset` 在读取缓存后才会根据 `as_of_date` 做时间截断，保证回测环境只能看到该日期之前的数据
 - 若需要更长窗口，通过 `SharedDataAccess` 初始化参数（`price_lookback_days`）或缓存策略配置统一放大抓取范围，**不要**在 update 阶段依赖 `as_of`

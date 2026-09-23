@@ -6,7 +6,9 @@ and filesystem layout used by the stock analysis toolkit.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import threading
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -36,7 +38,10 @@ SYMBOL_SUFFIX_INFO: Dict[str, Dict[str, str]] = {
     "IDX": {"market": "CN_INDEX", "calendar": "CN"},
 }
 
-DEFAULT_API_CALL_DELAY = 0.5
+DEFAULT_API_CALL_DELAY = 0.25
+API_MIN_INTERVAL_ENV = "AKSHARE_MIN_INTERVAL_SECONDS"
+_API_THROTTLE_LOCK = threading.Lock()
+_last_api_call_at = 0.0
 HK_HIST_MAX_RETRIES = 3
 T = TypeVar("T")
 ETF_CODE_PREFIXES = ("51", "58", "15", "16", "50", "53")
@@ -53,6 +58,37 @@ def _sanitize_stock_name_value(value: Any) -> str:
     return str(value).strip()
 
 
+def _configured_api_min_interval(default: float) -> float:
+    """最小调用间隔，可用环境变量覆盖以便调参与应急降速。"""
+
+    raw = os.environ.get(API_MIN_INTERVAL_ENV)
+    if raw is None:
+        return default
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        return default
+
+
+def _enforce_api_min_interval(min_interval: float) -> None:
+    """跨线程串行化 API 调用起点，保证全局最小间隔。
+
+    旧实现只在每次调用后 ``time.sleep``，线程池中每个 worker 各自休眠，
+    无法协调，N 个 worker 仍会在同一时刻齐发 N 个请求（thundering herd），
+    聚合速率约为 ``并发数 / 间隔``，很容易触发数据源限流。这里用进程级
+    单调时钟 + 锁在「调用前」预留时间片，使所有线程的调用起点至少相隔
+    ``min_interval``，从而把聚合速率稳定在 ``1 / min_interval``。
+    """
+
+    global _last_api_call_at
+    with _API_THROTTLE_LOCK:
+        now = time.monotonic()
+        wait = _last_api_call_at + min_interval - now
+        if wait > 0:
+            time.sleep(wait)
+        _last_api_call_at = time.monotonic()
+
+
 def api_call_with_delay(
     api_func: Callable[..., T],
     *args: Any,
@@ -60,13 +96,24 @@ def api_call_with_delay(
     delay: Optional[float] = None,
     **kwargs: Any,
 ) -> T:
-    """统一的 AkShare 调用包装器，提供简单的节流与日志支持。"""
+    """统一的 AkShare 调用包装器，提供跨线程节流与日志支持。
 
-    wait_seconds = DEFAULT_API_CALL_DELAY if delay is None else max(delay, 0)
+    ``delay`` 为两次调用起点的最小全局间隔；传 ``None`` 时取默认值或
+    环境变量 ``AKSHARE_MIN_INTERVAL_SECONDS``。
+    """
+
+    min_interval = (
+        _configured_api_min_interval(DEFAULT_API_CALL_DELAY)
+        if delay is None
+        else max(delay, 0.0)
+    )
     func_name = getattr(api_func, "__name__", str(api_func))
 
     if logger:
         logger.info("开始调用API: %s", func_name)
+
+    if min_interval > 0:
+        _enforce_api_min_interval(min_interval)
 
     try:
         result = api_func(*args, **kwargs)
@@ -77,11 +124,6 @@ def api_call_with_delay(
         if logger:
             logger.error("API调用失败: %s, 错误: %s", func_name, exc)
         raise
-    finally:
-        if wait_seconds > 0:
-            if logger:
-                logger.debug("API调用后等待 %.2f 秒...", wait_seconds)
-            time.sleep(wait_seconds)
 
 CALENDAR_DIR = DEFAULT_DATA_DIR / "calendars"
 CALENDAR_DIR.mkdir(parents=True, exist_ok=True)
