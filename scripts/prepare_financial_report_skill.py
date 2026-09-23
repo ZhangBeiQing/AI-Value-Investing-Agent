@@ -16,8 +16,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.logging import init_component_logger
+from core.logging import bootstrap_run_logging_from_argv, init_component_logger
 from core.network import install_network_timeouts
+
+bootstrap_run_logging_from_argv("data_prep")
+
 from services.research.financial_report_skill import (
     build_stock_report_bundles,
     load_tracked_items,

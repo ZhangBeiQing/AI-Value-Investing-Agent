@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import sys
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +18,13 @@ LOG_HEADER = "(AI-Stock)"
 DATE_FORMAT = "%Y%m%d-%H:%M:%S"
 LOG_PREFIX_WIDTH = 18
 DEFAULT_LEVEL = logging.INFO
+
+# 运行日志目录环境变量：设置后，同一流程的所有组件日志都落到该目录，
+# 便于按「日期 + 流程」一次定位。子进程会继承该变量。
+RUN_LOG_DIR_ENV = "AI_STOCK_LOG_DIR"
+RUN_LOG_KEEP_DAYS_ENV = "AI_STOCK_LOG_KEEP_DAYS"
+DEFAULT_RUN_LOG_KEEP_DAYS = 14
+DEFAULT_RUN_LOG_BASE = "logs/runs"
 
 ANSI_RESET = "\033[0m"
 ANSI_COLORS = {
@@ -114,14 +122,101 @@ def _default_filename_prefix(component_name: str) -> str:
     return "_".join(word.lower() for word in words)
 
 
-def _detect_model_name() -> str:
-    env_signature = os.environ.get("SIGNATURE", "").strip()
-    if env_signature:
-        return _sanitize(env_signature, "unknown_model")
-    default_signature = os.environ.get("DEFAULT_SIGNATURE", "").strip()
-    if default_signature:
-        return _sanitize(default_signature, "unknown_model")
-    return "unknown_model"
+def _resolve_run_log_base(base_dir: str | Path | None) -> Path:
+    if base_dir is None:
+        return PROJECT_ROOT / DEFAULT_RUN_LOG_BASE
+    candidate = Path(base_dir)
+    return candidate if candidate.is_absolute() else PROJECT_ROOT / candidate
+
+
+def _run_log_dir() -> Optional[Path]:
+    """Return the active run-scoped log directory, if one has been configured."""
+
+    raw = os.environ.get(RUN_LOG_DIR_ENV, "").strip()
+    if not raw:
+        return None
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    return candidate
+
+
+def prune_run_logs(
+    *,
+    keep_days: int | None = None,
+    base_dir: str | Path | None = None,
+) -> int:
+    """Delete run-log date directories older than ``keep_days`` (default 14)."""
+
+    if keep_days is None:
+        raw = os.environ.get(RUN_LOG_KEEP_DAYS_ENV, "").strip()
+        try:
+            keep_days = int(raw) if raw else DEFAULT_RUN_LOG_KEEP_DAYS
+        except ValueError:
+            keep_days = DEFAULT_RUN_LOG_KEEP_DAYS
+    if keep_days <= 0:
+        return 0
+    base = _resolve_run_log_base(base_dir)
+    if not base.exists():
+        return 0
+    cutoff = (datetime.now() - timedelta(days=keep_days)).strftime("%Y-%m-%d")
+    removed = 0
+    for day_dir in base.iterdir():
+        if not day_dir.is_dir():
+            continue
+        name = day_dir.name
+        if len(name) == 10 and name[:4].isdigit() and name <= cutoff:
+            shutil.rmtree(day_dir, ignore_errors=True)
+            removed += 1
+    return removed
+
+
+def configure_run_logging(
+    flow: str,
+    run_date: str | None = None,
+    *,
+    base_dir: str | Path | None = None,
+    keep_days: int | None = None,
+) -> Path:
+    """Point all subsequent loggers at ``logs/runs/<date>/<flow>``.
+
+    Entry scripts call this once (directly or via
+    :func:`bootstrap_run_logging_from_argv`) before importing services, so that
+    every component of one daily flow shares a single directory and a single
+    ``merged.log``. Subprocesses inherit ``AI_STOCK_LOG_DIR`` automatically.
+    """
+
+    date_str = str(run_date or datetime.now().strftime("%Y-%m-%d")).strip()[:10]
+    base = _resolve_run_log_base(base_dir)
+    target = base / date_str / _sanitize(flow, "run")
+    target.mkdir(parents=True, exist_ok=True)
+    os.environ[RUN_LOG_DIR_ENV] = str(target)
+    prune_run_logs(keep_days=keep_days, base_dir=base_dir)
+    return target
+
+
+def bootstrap_run_logging_from_argv(
+    flow: str,
+    *,
+    date_argv: str = "--date",
+    base_dir: str | Path | None = None,
+) -> Path:
+    """Configure run logging using ``--date`` from ``sys.argv`` when present."""
+
+    run_date = None
+    argv = sys.argv[1:]
+    for index, token in enumerate(argv):
+        if token == date_argv and index + 1 < len(argv):
+            run_date = argv[index + 1]
+            break
+        if token.startswith(f"{date_argv}="):
+            run_date = token.split("=", 1)[1]
+            break
+    return configure_run_logging(flow, run_date, base_dir=base_dir)
 
 
 def _supports_color() -> bool:
@@ -251,11 +346,18 @@ def init_component_logger(
     level: int = DEFAULT_LEVEL,
 ) -> logging.Logger:
     component_label = _to_component_name(component_name)
-    safe_group = _sanitize(group, "main_scripts")
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_prefix = filename_prefix or _default_filename_prefix(component_label)
-    log_dir = PROJECT_ROOT / "logs" / Path(safe_group) / component_label
-    log_filename = f"{file_prefix}_{timestamp}.log"
+    run_dir = _run_log_dir()
+    if run_dir is not None:
+        # 运行流水目录：同一流程的所有组件共享一个目录与一个 merged.log
+        log_dir = run_dir
+        log_filename = f"{component_label}.log"
+    else:
+        # 独立调试：扁平到 logs/debug/<group>/<Component>/，不再按模型签名分层
+        safe_group = _sanitize(group, "debug")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_dir = PROJECT_ROOT / "logs" / "debug" / Path(safe_group) / component_label
+        log_filename = f"{file_prefix}_{timestamp}.log"
     logger = get_logger(
         component_label,
         level=level,
@@ -273,29 +375,39 @@ def init_tool_logger(
     model_name: Optional[str] = None,
     level: int = DEFAULT_LEVEL,
 ) -> logging.Logger:
+    # model_name 保留仅为兼容旧调用签名，不再参与目录分段
     safe_tool = _sanitize(tool_name, "unknown_tool")
-    safe_model = _sanitize(model_name or _detect_model_name(), "unknown_model")
     component_name = _to_component_name(tool_name, "UnknownTool")
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = PROJECT_ROOT / "logs" / safe_model / f"{safe_tool}_tool"
+    run_dir = _run_log_dir()
+    if run_dir is not None:
+        log_dir = run_dir
+        log_filename = f"{component_name}.log"
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_dir = PROJECT_ROOT / "logs" / "debug" / "tools" / safe_tool
+        log_filename = f"{timestamp}.log"
     logger = get_logger(
         component_name,
         level=level,
         log_dir=log_dir,
-        filename=f"{timestamp}.log",
+        filename=log_filename,
         merged_prefix=f"[{safe_tool}]",
     )
-    logger.info("日志初始化: %s", log_dir / f"{timestamp}.log")
+    logger.info("日志初始化: %s", log_dir / log_filename)
     return logger
 
 
 __all__ = [
     "DEFAULT_LEVEL",
+    "RUN_LOG_DIR_ENV",
     "LOGGER_COLORS_EXACT",
     "LOGGER_PATTERNS",
+    "bootstrap_run_logging_from_argv",
+    "configure_run_logging",
     "get_logger",
     "init_component_logger",
     "init_tool_logger",
+    "prune_run_logs",
     "register_logger_color",
     "register_logger_pattern",
     "setup_file_logging",

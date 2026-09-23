@@ -20,6 +20,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from core.logging import bootstrap_run_logging_from_argv  # type: ignore
+
+bootstrap_run_logging_from_argv("data_prep")
+
 from basic_stock_info import DEFAULT_PRICE_LOOKBACK_DAYS  # type: ignore
 from configs.stock_pool import TRACKED_A_STOCKS  # type: ignore
 from core.logging import init_component_logger  # type: ignore

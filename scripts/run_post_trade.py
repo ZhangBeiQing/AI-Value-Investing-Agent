@@ -13,6 +13,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from core.logging import bootstrap_run_logging_from_argv
+
+bootstrap_run_logging_from_argv("fixed_tracked_trade")
+
 from services.trading.post_trade_pipeline import run_post_trade
 
 

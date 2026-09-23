@@ -68,13 +68,20 @@
 
 - 统一日志头为 `(AI-Stock)`。
 - 控制台日志使用按组件分类的颜色；`WARNING` / `ERROR` 颜色优先级高于组件颜色。
-- 组件日志默认同时写：
-  - 当前组件自己的时间戳日志文件
-  - 同目录下的 `merged.log`
-- 推荐目录约定：
-  - 工具 / research / trading 兼容层：`logs/{signature}/{tool}_tool/`
-  - 主脚本：`logs/main_scripts/{ComponentName}/`
-  - 其他服务组件：`logs/services/.../{ComponentName}/`
+- **运行日志按「日期 + 流程」聚合**：入口脚本在 import services 之前调用
+  `core.logging.bootstrap_run_logging_from_argv("<flow>")`（或直接
+  `configure_run_logging(flow, run_date)`），把 `AI_STOCK_LOG_DIR` 指向
+  `logs/runs/<YYYY-MM-DD>/<flow>/`。同一流程的所有组件共享该目录，并共同追加到一个
+  `merged.log`；子进程通过环境变量自动继承。
+  - 当前流程名：每日材料准备 = `data_prep`；每日固定股池交易 = `fixed_tracked_trade`。
+- **未设定运行目录时**（独立调试 / 临时脚本）落 `logs/debug/`，且不再按模型签名分层：
+  - 组件：`logs/debug/<group>/<ComponentName>/<prefix>_<时间戳>.log`
+  - 工具：`logs/debug/tools/<tool>/<时间戳>.log`
+- 每个 logger 只写：自己的文件 + 所在运行目录的 `merged.log`；不要再为每个组件单独建
+  `merged.log`。
+- 保留策略：`logs/runs/` 默认只保留最近 14 天（`AI_STOCK_LOG_KEEP_DAYS` 可调），由
+  `configure_run_logging` 自动清理；也可手动运行 `python scripts/clean_logs.py`
+  （`--include-debug` 清理 debug，`--purge-legacy --yes` 删除旧的分层目录）。
 
 ## 7. 新增组件如何接入日志
 

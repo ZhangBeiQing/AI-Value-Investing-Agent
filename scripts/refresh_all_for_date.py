@@ -22,7 +22,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.logging import init_component_logger  # noqa: E402
+from core.logging import (  # noqa: E402
+    bootstrap_run_logging_from_argv,
+    init_component_logger,
+)
+
+bootstrap_run_logging_from_argv("data_prep")
+
 from core.network import install_network_timeouts  # noqa: E402
 from services.data_refresh.refresh_orchestrator import (  # noqa: E402
     format_followup_checklist,

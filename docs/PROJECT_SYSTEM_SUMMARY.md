@@ -306,6 +306,9 @@ data/skill_runs/YYYY-MM-DD/
 - 禁止在 `services/`、`core/`、`shared_data_access/`、`agent_tools/` 等库代码里直接用 `print`
 - 统一通过 `core.logging` 入口：`get_logger()` / `init_component_logger()` / `init_tool_logger()`
 - Logger 名必须是业务语义明确的 PascalCase（如 `ManageDailyData`、`DailyPipeline`、`TradeSummary`）
+- 运行日志按「日期 + 流程」聚合到 `logs/runs/<YYYY-MM-DD>/<flow>/`（同一流程一个目录 + 一个 `merged.log`），
+  入口脚本通过 `bootstrap_run_logging_from_argv("<flow>")` 设定；未设定时落 `logs/debug/`。默认保留最近 14 天，
+  可用 `scripts/clean_logs.py` 清理
 - 详见 `.codex/rules/code-style.md`
 
 ---
