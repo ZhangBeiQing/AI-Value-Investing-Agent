@@ -572,7 +572,7 @@ BUY, SELL, FLAT -> 无多数
 
 修改：
 
-- `prompts/agent_prompt.py`
+- `services/prompting/agent_prompt.py`
 - `services/prompting/system_prompt.py`
 - `services/pipeline/steps/build_agent_input.py`
 - `services/pipeline/daily_pipeline.py`

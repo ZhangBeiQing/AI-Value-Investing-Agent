@@ -3,13 +3,9 @@ paths:
   - scripts/manage_daily_data.py
   - scripts/run_daily_pipeline.py
   - scripts/run_post_trade.py
-  - scripts/execute_trade_from_decision.py
-  - scripts/merge_trade_summary.py
-  - scripts/step*.py
   - services/pipeline/**
   - services/data_refresh/**
   - services/trading/**
-  - prompts/**
   - configs/prompt_flow/**
 ---
 
