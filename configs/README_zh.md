@@ -18,7 +18,7 @@
 - `stock_decision.schema.json` 定义单股最终 verdict
 - `stock_decision.example.json` 为 finalizer 提供一份通过 Schema 校验的完整输出样例
 
-`prompt_flow/skill_flow_short_book.json` 继续服务 short_book。根目录下旧 `skill_flow.json` 与 `skill_flow_long_book.json` 只保留兼容和历史参考。
+`prompt_flow/skill_flow_short_book.json` 继续服务 short_book。根目录下旧 `skill_flow.json` 只保留兼容和历史参考。
 
 ### `.env`
 

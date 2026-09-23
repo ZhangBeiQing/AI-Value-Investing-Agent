@@ -33,7 +33,6 @@ SKILL_FLOW_CONFIG = (
     / "fixed_tracked"
     / "main_policy.md"
 )
-LONG_BOOK_FLOW_CONFIG = PROJECT_ROOT / "configs" / "prompt_flow" / "skill_flow_long_book.json"
 LOGGER = init_component_logger(
     "DailyPipeline",
     group="services/pipeline",
@@ -271,16 +270,6 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
     }
     books = [
         fixed_book,
-        {
-            "book_type": "long_book",
-            "signature": _book_signature("long_book"),
-            "prompt_config": str(LONG_BOOK_FLOW_CONFIG),
-            "source_type": long_source_type,
-            "source_path": long_source_path,
-            "capital_budget": 400000,
-            "symbols": long_symbols,
-            "not_listed_as_of_date": long_not_listed,
-        },
     ]
     return {
         "run_date": run_date,

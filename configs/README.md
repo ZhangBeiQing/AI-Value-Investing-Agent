@@ -18,7 +18,7 @@ Defines the active fixed_tracked prompt sources:
 - `stock_decision.schema.json` defines the final per-stock verdict
 - `stock_decision.example.json` gives the finalizer a complete schema-valid output example
 
-`prompt_flow/skill_flow_short_book.json` remains active for short_book. The root `skill_flow.json` and `skill_flow_long_book.json` remain only for compatibility and historical reference.
+`prompt_flow/skill_flow_short_book.json` remains active for short_book. The root `skill_flow.json` remains only for compatibility and historical reference.
 
 ### `.env`
 
