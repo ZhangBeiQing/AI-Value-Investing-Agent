@@ -98,7 +98,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 不要把运行产物、临时调试文件、日志直接塞进源码目录
 - 不要用 `from x import *`
 - 用户未明确要求时，不要因为“开始今天股票交易”自动执行 `manage_daily_data`、`run_daily_pipeline`、`run_post_trade`
-- **禁止使用 Glob 工具搜索 `data/` 目录下的文件**。Glob 工具有 Bug：`data/` 下存在 `.git` 子目录会导致 Glob 对整个 `data/` 目录返回空结果。改用 `find` 或 `ls` 替代，例如 `find data/skill_runs -name "05_decision.json"` 或 `ls data/skill_runs/*/long_book/05_decision.json`
+- 搜索 `data/` 时，Glob 必须指定 `path` 参数指向 `data` 或其子目录。`data/` 在 `.gitignore` 中被忽略，若用从仓库根相对的 pattern（如 `data/**/*.json`）会被 Glob 静默跳过而返回空；改用 `glob(pattern="**/*.json", path="data/skill_runs")` 这类形式即可正常返回。若仍不确定，可用 `find` / `ls` 兜底，例如 `find data/skill_runs -name "05_decision.json"`
 
 ## Progressive Disclosure
 
