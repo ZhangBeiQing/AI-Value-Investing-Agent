@@ -80,9 +80,6 @@ logs/
 
 # 临时文件/目录
 tmp/
-test/
-/tests/
-**/test_*
 *.html
 *.jpg
 *.jpeg
