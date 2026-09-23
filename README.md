@@ -6,28 +6,23 @@ AI驱动的价值投资。核心思路是先用 Python 准备好当日全部数�
 
 ## 系统架构
 
+日常只有两个触发点，中间步骤由 skill 封装：
+
 ```
-┌─────────────────────────────────────────────────┐
-│  Python 数据层（一次性运行）                        │
-│  scripts/refresh_all_for_date.py                 │
-│  → 行情/财报/股本/公告/新闻/板块/因子/量化初筛      │
-├─────────────────────────────────────────────────┤
-│  Python 输入产物（一次性运行）                      │
-│  scripts/run_daily_pipeline.py                   │
-│  → 01_global_context / 02_snapshot /             │
-│    03_agent_input / 04_stock_research            │
-├─────────────────────────────────────────────────┤
-│  LLM Skill 层（逐 skill 人工触发）                 │
-│  /daily-macro-summary                            │
-│  /gradual-hot-news-summary                       │
-│  /financial-report-summary                       │
-│  /auto-trading-fixed-tracked ← 多 Agent 辩论      │
-├─────────────────────────────────────────────────┤
-│  Python 后处理（人工确认后运行）                    │
-│  scripts/run_post_trade.py                       │
-│  → 06_execution_log / 07_daily_summary /         │
-│    08_history_merge                              │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ 第 1 步 · 每日数据准备（crontab 周一至周五 21:03 自动运行）     │
+│   skill: daily-data-preparation                            │
+│   ├─ refresh_all_for_date.py   行情/财报/公告/新闻/板块/因子/初筛│
+│   ├─ daily-macro-summary       宏观总结                      │
+│   ├─ gradual-hot-news-summary  渐进式新闻主题状态             │
+│   ├─ financial-report-summary  逐股财报深研                  │
+│   └─ run_daily_pipeline.py     生成 01-04 输入产物           │
+├──────────────────────────────────────────────────────────┤
+│ 第 2 步 · 固定股池交易（新开 opencode 会话，人工触发）          │
+│   skill: auto-trading-fixed-tracked                        │
+│   挑 P0 → Bull/Bear → Rebuttal → 3×Juror → Finalizer        │
+│   → 人工确认 → 05_decision.json → run_post_trade.py (06-08) │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### 多 Agent 辩论架构（fixed_tracked）
@@ -51,37 +46,73 @@ fixed_tracked 账本采用中心化管理 + 逐股多 Agent 辩论：
 
 ## 当前日常流程
 
-> **一键入口 / 已定时**：下面的步骤 1-5（数据准备全链路）已封装成 skill `daily-data-preparation`，直接说"开始今天的数据准备"即可。它还已挂到 crontab，**周一至周五 21:03 自动运行**（`scripts/cron_daily_data_prep.sh`，状态见 `logs/cron_daily_prep/latest_status.json`），正常情况下早上起来 01-04 已就绪，直接跑步骤 6 的交易 skill。本节保留完整命令，供排查和单步重跑使用。
->
-> **运行环境**：建议使用 [opencode](https://github.com/anomalyco/opencode) 运行，它对并发 SubAgent 数量没有限制，且自带搜索工具，无需额外配置。
-> 
-> **运行原则**：以下全部步骤在一个会话里一次性跑完，不需要等待和中断。Agent 应自行处理超时和并发调度。
-> 
-> **搜索要求**：使用 opencode 自带的 Search MCP 即可，不需要额外配置阿里云百炼 MCP。
-> 
-> **网络代理**：执行 `git push` 等需要访问 GitHub 的命令前，先执行 `proxy_on`（定义在 `~/.bashrc` 中）。
-> 
-> **日期语义**：所有主脚本的 `--date` 都表示"要分析的交易日"，即收盘数据已产生的那一天。日常节奏是**当天晚上 9 点分析当天收盘、为下一交易日出预案，所以默认值就是 `today`**（不做减一）；周末或节假日请手动指定最近一个交易日。非交易日自动 SKIPPED，不刷新数据。
+日常只有两个动作，其余步骤都被 skill 封装在内部。
 
-### 1. 激活虚拟环境 + 一键刷新全部数据
+### 第 1 步 · 每日数据准备（已定时，通常无需手动）
+
+说"开始今天的数据准备"触发 `daily-data-preparation` skill。它会一次性跑完：
+
+- `refresh_all_for_date.py`：行情 / 财报 / 公告 / 新闻 / 板块 / 因子 / 量化初筛
+- 宏观总结（`daily-macro-summary`）+ 渐进式新闻主题总结（`gradual-hot-news-summary`）
+- 财报 PDF prepare 与逐股财报深研（`financial-report-summary`）
+- `run_daily_pipeline.py`：生成 `01-04` 输入产物
+
+**它已挂 crontab，周一至周五 21:03（A 股收盘后）自动运行**。正常情况下第二天早上 `data/skill_runs/<date>/` 的 `01-04` 已就绪，直接进入第 2 步即可。
+
+- 定时脚本：`scripts/cron_daily_data_prep.sh`（crontab 条目 `3 21 * * 1-5`）
+- 运行状态：`logs/cron_daily_prep/latest_status.json`（`running` / `success` / `skipped` / `timeout` / `failed`）
+- 当轮明细：`logs/cron_daily_prep/<date>.log`
+- 非交易日自动 `skipped`；周末 / 节假日补跑需显式传最近一个交易日
+- 手动补跑（务必 detach，否则父会话退出会连带杀掉进程）：
+
+  ```bash
+  setsid nohup scripts/cron_daily_data_prep.sh <YYYY-MM-DD> &
+  ```
+
+- cron 只在 WSL 运行期间触发；`wsl --shutdown` 或关机期间不会补跑。
+
+### 第 2 步 · 固定股池交易（新开一个 opencode 会话）
+
+说"开始今天固定股票池交易"触发 `auto-trading-fixed-tracked` skill：
+
+1. 主 Agent 依据今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0
+2. 每只 P0：Bull / Bear → Rebuttal → 3 名 Juror → Finalizer
+3. 人工确认后生成 `data/skill_runs/<date>/fixed_tracked/05_decision.json`
+4. 确认交易后运行 `run_post_trade.py` 生成 `06-08`，归档到 `data/agent_data/book-fixed_tracked/`
+
+> 交易 skill 只负责生成决策与后处理，**不自动下单**；真实下单由你手动完成。
+
+### 运行环境与约定
+
+- 建议使用 opencode 运行：对并发 SubAgent 数量无硬限制，且自带搜索工具，无需额外配置。
+- 日期语义：所有主脚本的 `--date` 都表示"要分析的交易日"（收盘数据已产生的那一天），默认 `today`、不做减一；周末 / 节假日请手动指定最近一个交易日。
+- 交易日守卫：非交易日入口以 `SKIPPED` 结束，不刷新数据、不生成产物。
+- 执行 `git push` 等需要访问 GitHub 的命令前，先执行 `proxy_on`（定义在 `~/.bashrc` 中）。
+
+### 手动分步（排查 / 单步重跑用）
+
+> 下面把第 1 步拆成手动命令，仅用于排查问题或单步重跑；日常**不需要**手动执行。
+
+#### 1. 激活虚拟环境 + 一键刷新全部数据
 
 ```bash
-source venv/bin/activate
+source /home/zhangbeiqing/venv/ai_stock/bin/activate
 python scripts/refresh_all_for_date.py --date cur_date
 ```
 
 > `cur_date` 替换为实际日期，如 `2026-08-06`。
 
 对 `TRACKED_A_STOCKS ∪ master_universe`（约 100+ 只）刷新：
+
 - 价格、财报结构化缓存、宏观客观面板
-- 全市场新闻采集/去重/增强
+- 全市场新闻采集 / 去重 / 增强
 - 板块热度分析
-- 因子库构建、因子评分、量化初筛（短/长两本候选）
+- 因子库构建、因子评分、量化初筛（短 / 长两本候选）
 - 清理旧研究缓存
 
 该命令约需 **15 分钟**，Agent 请设置足够的超时时间，避免中途中断。
 
-### 2. 确认 PDF 转 Markdown 依赖（pymupdf4llm）
+#### 2. 确认 PDF 转 Markdown 依赖（pymupdf4llm）
 
 财报 PDF 转 Markdown 由 `pymupdf4llm` 在项目虚拟环境内直接完成，不需要启动任何常驻服务：
 
@@ -91,26 +122,26 @@ python -c "import pymupdf4llm; print(pymupdf4llm.VERSION)"
 
 能打印版本号即就绪；未安装则执行 `pip install pymupdf4llm`（已列入 `requirements.txt`）。
 
-### 3. 并发启动 2 个 SubAgent + 后台跑财报 prepare
+#### 3. 并发启动 2 个 SubAgent + 后台跑财报 prepare
 
 步骤 1 完成后，**在同一条消息里一次性发出三件事**（2 个 SubAgent + 1 个后台命令），不要逐个串行等待：
 
 **SubAgent A — 宏观总结**（约需 5-10 分钟）
 
-> 执行： "开始 cur_date 的宏观总结"
-> 
+> 执行："开始 cur_date 的宏观总结"
+>
 > 触发 skill：`daily-macro-summary`
-> 
+>
 > 产出：`data/macro_economy/YYYYMMDD.md`
 
 **SubAgent B — 渐进式新闻总结**（约需 20 分钟）
 
-> 执行： "开始 cur_date 的渐进式新闻总结，没用的已经过时的新闻就删掉，不要让渐进式新闻总结文件太大"
-> 
+> 执行："开始 cur_date 的渐进式新闻总结，没用的已经过时的新闻就删掉，不要让渐进式新闻总结文件太大"
+>
 > 触发 skill：`gradual-hot-news-summary`
-> 
-> 产出：`data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
-> 
+>
+> 产出：`data/selection_runs/YYYY-MM-DD/06_hot_news_state.json` + `06_hot_news_digest.json`
+>
 > 注意：需定期清理过期新闻主题，控制文件体积。
 
 **第三件事 — 财报 prepare 脚本**（主 Agent 自己后台跑，约需 10-30 分钟）
@@ -118,18 +149,18 @@ python -c "import pymupdf4llm; print(pymupdf4llm.VERSION)"
 > ```bash
 > python scripts/prepare_financial_report_skill.py --date cur_date --sync-first --json --include-quant-prefilter
 > ```
-> 
+>
 > 主要耗时是把新发的财报 PDF 转 Markdown（本地 pymupdf4llm 转换，数百页年报约 1-2 分钟），请设置足够的超时时间。
-> 
+>
 > 它是纯 Python、不派发任何 SubAgent，所以和 A/B 并行不占并发额度。
 
-### 4. 主 Agent 亲自做逐股财报深研（约需 10-40 分钟）
+#### 4. 主 Agent 亲自做逐股财报深研（约需 10-40 分钟）
 
 步骤 3 的三项全部结束后，由**主 Agent 直接执行** `financial-report-summary`，对 prepare 输出里 `ready_items` 的股票逐一深研。产出 `data/stock_info/{name}_{symbol}/financial_reports/*.md` 与 `summary_index.json`。当天没人发新财报时，"零新增"是合法结果。
 
 > **为什么财报不派给 SubAgent**：`financial-report-summary` 自己要为每只股票再派发 Industry Researcher / Expectation Scout / Financial Author / Research Challenger 四个角色，5 只股票就是 20 个。嵌套派发技术上能跑通（已实测，含无头模式），但并发账会算不清，而超过每批上限的失败方式是**静默空返回**——报告"完成"，文件却是空的。所以需要再派发一层的环节只能由主 Agent 做，且必须等 A/B 退出、并发腾空后再开始。每批最多 10 个 SubAgent。
 
-### 5. 生成全部 01-04 股票研究包
+#### 5. 生成全部 01-04 股票研究包
 
 步骤 4 完成后，运行：
 
@@ -150,28 +181,7 @@ data/skill_runs/YYYY-MM-DD/
 │   └── 04_stock_research/            # 固定池、持仓、短期量化股和长期候选的逐股研究包
 ```
 
-至此，当日全部数据和输入产物准备完毕，后续可按需触发交易 skill。
-
-### 6. 运行固定股池交易 Skill（后续步骤）
-
-```text
-/auto-trading-fixed-tracked     → fixed_tracked/05_decision.json
-```
-
-- **fixed_tracked**：主 Agent 先读 01-04 和 `_analysis_index.json` 挑出 P0 → 用户确认 → Bull/Bear → Rebuttal → 3 名 Juror → Finalizer，各阶段按每批最多 10 个 subagent 调度 → 聚合投票 → 用户二次确认 → 生成 `05_decision.json`
-- `12_quant_prefilter_short.csv` 只扩展 fixed_tracked 的 P0 候选范围，不继承旧 short_book 的 20 个交易日强制退出规则
-
-真实执行前需要人工确认 `05_decision.json`。
-
-### 7. 交易后处理
-
-人工确认后执行：
-
-```bash
-python scripts/run_post_trade.py --date cur_date --book-type fixed_tracked --signature book-fixed_tracked
-```
-
-后处理串联 `05 → 06-08`，写入 `data/skill_runs/YYYY-MM-DD/{book_type}/` 和 `data/agent_data/book-{book_type}/`。
+至此，当日全部数据和输入产物准备完毕。
 
 ## 投资理念
 
@@ -259,54 +269,57 @@ LLM 直接从全宇宙选股的方案，日常默认不跑：
 ## 目录结构
 
 ```text
-scripts/                        CLI 入口，仅做参数解析 + 调用 services
-├── refresh_all_for_date.py     一键刷数据 + 选股（日常入口）
+scripts/                        CLI 入口，仅参数解析 + 调用 services
+├── refresh_all_for_date.py     一键刷数据 + 选股（每日数据准备入口）
+├── cron_daily_data_prep.sh     定时触发 daily-data-preparation（crontab 21:03）
+├── basic_stock_info.py         个股基础快照子进程入口
 ├── manage_daily_data.py        数据刷新（单步）
 ├── prepare_financial_report_skill.py  财报深研环境准备
-├── run_daily_pipeline.py       01-04 输入产物生成
+├── run_daily_pipeline.py       生成 01-04 输入产物
 ├── merge_subagent_decisions.py 多 Agent 辩论结果聚合
 ├── manage_fixed_tracked_backtest.py  回测实验管理
+├── clean_logs.py               清理运行日志
 └── run_post_trade.py           交易后处理
 services/                       业务编排层
 ├── data_refresh/               一键刷新编排
 ├── pipeline/                   01-04 产出（daily_pipeline + steps/）
-├── prompting/                  system prompt 组装
+├── prompting/                  system prompt 组装（含 agent_prompt）
 ├── research/                   宏观、新闻、财报、个股研究
+├── news/                       公告抓取 / 原子摘要 / 战略审计
 ├── selection_system/           选股系统（universe / news / factors / prefilter）
 ├── snapshot/                   basic_snapshot
-├── trading/                    交易执行 + 06-08 后处理
+├── trading/                    交易执行 + 06-08 后处理（price_tools / trade_summary / ...）
 ├── industry_research/          月度行业研究
-└── backtest/                   回测引擎（实验/输入/账本/执行/度量）
+├── recommendation_dashboard/   本地推荐看板
+├── document_conversion/        PDF → Markdown
+└── backtest/                   回测引擎（实验 / 输入 / 账本 / 执行 / 度量）
 shared_data_access/             统一外部数据访问与缓存
 ├── data_access.py              SharedDataAccess.prepare_dataset() 唯一入口
 ├── cache_registry.py           缓存类型 / TTL / 路径登记
-├── market_calendar.py          交易日历（基于000001.IDX实际行情 + SSE日历）
+├── price_fetch.py              A股/港股/ETF/指数日线抓取与 canonical 归一化
+├── market_calendar.py          交易日历（000001.IDX 实际行情 + SSE 日历）
 ├── historical_prices.py        回测历史行情读取与校验
 ├── macro_objective_panel.py    宏观客观面板
+├── shared_financial_utils.py   财报后处理与股本工具
 └── ...
+indicator_library/              独立指标计算包（calculators/）
+commons/                        通用工具（SymbolInfo / parse_symbol / 交易日历 / 路径）
 core/                           通用基础设施
 ├── logging.py                  统一日志入口
 ├── run_context.py              回测运行上下文
 └── ...
 configs/
-├── stock_pool.py               TRACKED_A_STOCKS（固定池16只）
+├── stock_pool.py               TRACKED_A_STOCKS（固定池）
 ├── prompt_flow/fixed_tracked/  investment_policy / main_policy / stock_analysis_policy
 ├── prompt_flow/skill_flow*.json  short_book 兼容 Prompt flow
-├── research/                   财报输出 schema
+├── research/                   财报输出 schema / 搜索证据规则
 └── selection_system/           factor_scoring.yaml
-data/                           运行产物与缓存
-├── skill_runs/YYYY-MM-DD/      当前 fixed_tracked 01-08 产物（兼容旧账本目录）
-├── selection_runs/YYYY-MM-DD/  选股运行产物
-├── backtest_experiments/       回测实验目录（隔离）
-├── stock_info/{name}_{symbol}/ 逐股缓存（行情/财报/公告/研究）
-├── factor_store/               因子库
-├── agent_data/book-{type}/     交易归档（隔离账本）
-├── research_artifact_cache/    研究产物缓存
-└── macro_economy/              宏观总结
-logs/                           组件日志
-.codex/                         规则、skills、commands（主维护目录）
+data/                           运行产物与缓存（不进 git）
+logs/                           运行日志（logs/runs/<日期>/<流程>，不进 git）
+tests/                          回归测试网（已纳入 git）
+.codex/                         规则、skills、commands（主维护目录，.claude 为软链）
 ├── rules/                      pre_commit / code-style / shared-data-access / skill-pipeline
-├── skills/                     12 个日常运行 skills
+├── skills/                     日常运行 skills
 └── commands/                   review-skill-run
 docs/                           系统设计文档
 ```
@@ -325,6 +338,7 @@ docs/                           系统设计文档
 
 | Skill | 触发方式 | 产物 |
 | --- | --- | --- |
+| `daily-data-preparation` | 说"开始今天的数据准备"（已定时，周一至周五 21:03） | `data/skill_runs/<date>/` 下的 `01-04` |
 | `daily-macro-summary` | 说"更新今天宏观总结" | `data/macro_economy/YYYYMMDD.md` |
 | `gradual-hot-news-summary` | 说"更新今日热点主题总结" | `06_hot_news_state.json` |
 | `financial-report-summary` | 说"生成财报总结" | `financial_reports/*.md` |
@@ -350,6 +364,7 @@ docs/                           系统设计文档
 | `docs/trade_summary/README.md` | 交易后处理与历史决策合并 |
 | `docs/fundamental_research/README.md` | 财报深研文件约定 |
 | `docs/backtest/fixed_tracked_agent_backtest_design.md` | 回测系统设计 |
+| `docs/testing/README.md` | `tests/` 回归测试网定位、运行与约定 |
 | `.codex/rules/skill-pipeline.md` | 01-08 文件契约 |
 
 ## 安装与配置
