@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from configs.stock_pool import TRACKED_A_STOCKS
 from core.logging import get_logger
-from news.disclosures_builder import AnnouncementMeta, load_index
+from services.news.disclosures_builder import AnnouncementMeta, load_index
 from services.research.financial_report_summary_prompts import (
     FUTURE_OUTLOOK_PROMPT_TEMPLATE,
     REPORT_ANALYSIS_PROMPT_TEMPLATE,

@@ -350,7 +350,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
                 cmd = [
                     sys.executable,
                     "-u",
-                    "news/disclosures_builder.py",
+                    "services/news/disclosures_builder.py",
                     "--symbols",
                     *active_symbols,
                     "--model",
@@ -365,7 +365,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
                 disclosures_cmd = [
                     sys.executable,
                     "-u",
-                    "news/disclosures_builder.py",
+                    "services/news/disclosures_builder.py",
                     "--all",
                     "--model",
                     "qwen-doc-turbo",

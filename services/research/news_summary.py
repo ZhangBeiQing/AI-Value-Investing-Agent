@@ -182,7 +182,7 @@ def _filter_low_impact_noise(items: List[Dict[str, Any]], diagnostics: List[str]
 
 
 def _try_update_disclosures_for_stock(stock_code: str, lookback_days: int = 365) -> None:
-    from news.disclosures_builder import audit_news_json, update_disclosures_for_stock
+    from services.news.disclosures_builder import audit_news_json, update_disclosures_for_stock
 
     symbol_info = parse_symbol(stock_code)
     update_disclosures_for_stock(symbol_info, lookback_days=lookback_days)

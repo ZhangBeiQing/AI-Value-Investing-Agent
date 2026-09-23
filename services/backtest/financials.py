@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from core.logging import get_logger
-from news.disclosures_builder import sync_financial_reports_for_stock
+from services.news.disclosures_builder import sync_financial_reports_for_stock
 from services.backtest.experiment import BacktestExperiment
 from services.research.financial_report_skill import (
     build_stock_report_bundles,

@@ -27,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.logging import init_component_logger
 from core.network import install_network_timeouts
-from news.disclosures_builder import (
+from services.news.disclosures_builder import (
     AnnouncementMeta,
     _hash_key,
     _slugify,

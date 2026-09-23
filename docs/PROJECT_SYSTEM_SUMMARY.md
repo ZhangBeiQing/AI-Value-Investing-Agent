@@ -141,6 +141,7 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── pipeline/               # 01-04 产物生成（daily_pipeline.py + steps/）
 │   ├── prompting/              # system prompt 组装
 │   ├── research/               # 宏观/新闻/财报/个股研究的核心实现
+│   ├── news/                   # 公告抓取 / 原子摘要 / 战略审计（disclosures_builder.py）
 │   ├── industry_research/      # 半年结构扫描、月度领先指标监控、产业链深研
 │   ├── selection_system/       # 选股系统：universe / news / board_heat / factor_store / quant_prefilter / candidate_selection
 │   ├── backtest/               # fixed_tracked 隔离回测：实验、覆盖率、universe、账本、D+1 成交、净值
@@ -165,8 +166,6 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── network.py              # 网络超时设置
 │   ├── run_context.py          # live / backtest 运行上下文
 │   └── runtime_state.py
-├── news/                       # 公告 PDF 抓取 / 原子摘要 / 战略审计（disclosures_builder.py）
-├── fundamental/                # 财报基本面研究辅助（fundamental_research.py）
 ├── prompts/                    # 旧版 prompt 组装与财报深研 prompt 素材
 ├── indicator_library/          # 独立指标计算包（calculators/）
 ├── configs/

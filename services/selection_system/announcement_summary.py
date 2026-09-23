@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping
 
 from core.logging import get_logger
-from news.disclosures_builder import audit_news_json, update_disclosures_for_stock
+from services.news.disclosures_builder import audit_news_json, update_disclosures_for_stock
 from shared_data_access import SharedDataAccess
 from utlity.stock_utils import get_stock_data_dir
 

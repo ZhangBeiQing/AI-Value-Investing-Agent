@@ -305,7 +305,7 @@ data/                           运行产物与缓存
 └── macro_economy/              宏观总结
 logs/                           组件日志
 .codex/                         规则、skills、commands（主维护目录）
-├── rules/                      pre_commit / code-style / skill-pipeline / testing
+├── rules/                      pre_commit / code-style / shared-data-access / skill-pipeline
 ├── skills/                     12 个日常运行 skills
 └── commands/                   review-skill-run
 docs/                           系统设计文档

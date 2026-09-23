@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from core.logging import get_logger
-from news.disclosures_builder import (
+from services.news.disclosures_builder import (
     audit_news_json,
     index_path,
     load_index,

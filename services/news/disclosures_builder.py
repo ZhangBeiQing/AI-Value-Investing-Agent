@@ -19,7 +19,7 @@ import pandas as pd
 
 
 import sys
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = str(Path(__file__).resolve().parents[2])
 sys.path.insert(0, project_root)
 
 from core.logging import get_logger
