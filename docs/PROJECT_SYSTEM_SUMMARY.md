@@ -176,7 +176,7 @@ data/skill_runs/YYYY-MM-DD/
 │   └── selection_system/       # factor_scoring.yaml 等评分配置
 ├── data/                       # 运行产物与缓存
 ├── logs/                       # 组件日志
-├── tests/                      # 单元与集成测试
+├── tests/                      # 回归测试网（已纳入 git 跟踪）
 ├── .codex/                     # 项目规则、skills、commands（主维护目录）
 │   ├── rules/
 │   ├── skills/
@@ -366,6 +366,7 @@ data/skill_runs/YYYY-MM-DD/
 | `docs/fundamental_research/README.md` | 财报研究文件约定与 skill 入口 |
 | `docs/fundamental_research/quarterly_fundamental_deep_research_design.md` | 季度基本面深度研究系统详细设计（workdir / 预期差 / 产业链 / Challenger） |
 | `docs/fixed_tracked_debate_prompt_design.md` | fixed_tracked 多 Agent 辩论与 Prompt 分层详细设计 |
+| `docs/testing/README.md` | `tests/` 回归测试网的定位、运行方式、约定与覆盖范围 |
 | `docs/backtest/fixed_tracked_agent_backtest_design.md` | fixed_tracked 隔离多 Agent 历史回测系统详细设计 |
 
 ---
@@ -374,4 +375,5 @@ data/skill_runs/YYYY-MM-DD/
 
 - 任何修改 01-08 文件契约（字段、目录、文件名）、缓存策略、`shared_data_access` 入口、交易执行规则、`factor_scoring.yaml` 评分口径的改动，都应**先在对应 docs 中同步更新**，再提交代码；不要让设计文档与代码脱节。
 - 新增 skill / command / rule 时，更新本文「7. 规则与 skills 索引」表格；新增 docs 子目录时，更新「8. docs 子目录索引」表格。
+- 调整测试契约（产物结构、字段、评分口径）时，同一提交内同步更新 `tests/`，并运行 `python -m pytest tests -q` 确认全绿；测试网定位与约定见 `docs/testing/README.md`。
 - 重大主流程调整后，更新本文顶部的「更新日期」与「1. 日常主流程」章节。

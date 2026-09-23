@@ -382,6 +382,17 @@ pip install pymupdf4llm
 - `configs/selection_system/factor_scoring.yaml` — 量化初筛评分规则
 - `.env` — 模型 API Key、Base URL 等运行参数
 
+## 测试
+
+`tests/` 是长期维护的回归测试网，改代码后请重复运行以确认没有破坏既有行为：
+
+```bash
+source /home/zhangbeiqing/venv/ai_stock/bin/activate
+python -m pytest tests -q        # 约 30 秒，135 项应全部通过
+```
+
+覆盖行情归一化、增量刷新、API 节流、日志、财报深研、多 Agent 辩论、回测、行业研究、交易后处理等；约定与新增姿势见 `docs/testing/README.md`。
+
 ## License
 
 [MIT License](LICENSE)

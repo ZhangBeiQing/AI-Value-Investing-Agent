@@ -89,6 +89,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 | 数据访问 / 数据刷新 | 目标模块能 import / 运行；影响主链路时跑 `python scripts/manage_daily_data.py`，或 `python scripts/refresh_all_for_date.py --date YYYY-MM-DD` | 目标缓存 / 产物落盘 |
 | `01-04` 产物生成 | `python scripts/run_daily_pipeline.py --date YYYY-MM-DD --base-dir data/tmp_<name>` | 目标输出文件已生成 |
 | 交易后处理 | `python scripts/run_post_trade.py --date YYYY-MM-DD` | `06_execution_log.json`、`07_daily_summary.json`、`08_history_merge.json`、`data/agent_data/{signature}` |
+| 任意模块改动 / 重构 | `python -m pytest tests -q` | 全部通过；修 bug 或改契约时补复现测试 |
 
 ### Ask First
 
@@ -122,6 +123,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 | 调整交易后处理 | `scripts/run_post_trade.py`, `services/trading/`, `.codex/rules/skill-pipeline.md` |
 | 排查主链路失败 | `logs/runs/<日期>/<流程>/merged.log`, `logs/cron_daily_prep/latest_status.json` |
 | 统一日志接入 | `core/logging.py`, `.codex/rules/code-style.md` |
+| 改代码后回归验证 | `tests/`, `python -m pytest tests -q`, `docs/testing/README.md` |
 
 ## 数据与缓存规则
 
@@ -138,6 +140,14 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 统一使用 `core.logging`：`get_logger()`、`init_component_logger()`、`init_tool_logger()`
 - Logger 名称必须是业务语义明确的 PascalCase，如 `ManageDailyData`、`DailyPipeline`、`TradeSummary`
 - 详细规范见 `.codex/rules/code-style.md`
+
+## 测试
+
+- `tests/` 是长期维护的回归测试网，**不是一次性脚本**：每次改代码后都应重复运行，确认没有破坏既有行为。
+- 运行：`source /home/zhangbeiqing/venv/ai_stock/bin/activate && python -m pytest tests -q`（约 30 秒，135 项）。
+- 修 bug 或调整契约、产物结构、评分口径时，补一条能复现问题的回归测试；没有自动化测试覆盖的改动，必须在说明里写明实际跑过的命令与结果。
+- 约定：文件 `test_*.py`，函数 `test_<what>_<condition>_<expected>`，Arrange → Act → Assert。
+- `tests/` 已纳入 git 跟踪；详细说明（覆盖范围、约定、加测试姿势）见 `docs/testing/README.md`。
 
 ## 最终产物引用规则
 
