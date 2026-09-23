@@ -13,7 +13,7 @@ import pandas as pd
 
 from core.logging import get_logger
 from shared_data_access import update_hk_profit_forecast_cached
-from utlity import get_latest_trading_day, parse_symbol
+from commons import get_latest_trading_day, parse_symbol
 
 
 LOGGER = get_logger("FinancialReportContext")

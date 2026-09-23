@@ -35,7 +35,7 @@ from indicator_library.calculators.fundamental import calculate_rolling_ttm_prof
 from indicator_library.calculators.liquidity import liquidity_score
 from indicator_library.calculators.momentum import macd_indicator, rsi_indicator
 from shared_data_access.cache_registry import CacheKind, build_cache_dir
-from utlity.stock_utils import SymbolFormatError, get_stock_data_dir, parse_symbol
+from commons.stock_utils import SymbolFormatError, get_stock_data_dir, parse_symbol
 
 
 LOGGER = get_logger("SelectionFactorHistory")

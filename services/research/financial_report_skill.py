@@ -18,7 +18,7 @@ from services.research.financial_report_summary_prompts import (
     FUTURE_OUTLOOK_PROMPT_TEMPLATE,
     REPORT_ANALYSIS_PROMPT_TEMPLATE,
 )
-from utlity.stock_utils import parse_symbol
+from commons.stock_utils import parse_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

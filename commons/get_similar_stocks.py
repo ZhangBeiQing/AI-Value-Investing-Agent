@@ -1,4 +1,4 @@
-from utlity.stock_utils import SymbolInfo
+from commons.stock_utils import SymbolInfo
 import csv
 import json
 import os
@@ -13,7 +13,7 @@ import pandas as pd
 from core.logging import get_logger
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from utlity.stock_utils import resolve_base_dir, SymbolInfo
+from commons.stock_utils import resolve_base_dir, SymbolInfo
 
 load_dotenv()
 

@@ -21,7 +21,7 @@ from services.backtest.ledger import BacktestLedger
 from services.backtest.locking import locked_experiment_stage
 from services.backtest.universe import build_daily_universe
 from shared_data_access.historical_prices import close_on_or_before
-from utlity import parse_symbol
+from commons import parse_symbol
 from services.trading.trade_summary import (
     get_portfolio_historical_context,
     use_agent_data_root,

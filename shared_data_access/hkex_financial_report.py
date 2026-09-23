@@ -13,7 +13,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from core.logging import get_logger
-from utlity.stock_utils import SymbolInfo
+from commons.stock_utils import SymbolInfo
 
 
 LOGGER = get_logger("HkexFinancialReport")

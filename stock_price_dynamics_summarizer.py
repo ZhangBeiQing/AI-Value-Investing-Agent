@@ -62,8 +62,8 @@ from indicator_library import IndicatorBatchRequest, IndicatorLibrary, Indicator
 from indicator_library.calculators.risk import return_metrics_indicator
 from indicator_library.gateways import DataFrameGateway
 
-# 从utlity包导入缓存与股票工具
-from utlity import (
+# 从 commons 包导入缓存与股票工具
+from commons import (
     ensure_stock_subdir,
     get_latest_trading_day,
     get_next_trading_day,
@@ -73,7 +73,7 @@ from utlity import (
     SymbolInfo,
     is_cn_etf,
 )
-from utlity.get_similar_stocks import get_similar_stocks
+from commons.get_similar_stocks import get_similar_stocks
 
 # 设置pandas选项以避免FutureWarning
 pd.set_option('future.no_silent_downcasting', True)

@@ -18,7 +18,7 @@ from core.logging import get_logger
 from shared_data_access.paths import price_cache_dir
 from core.runtime_state import get_config_value
 from configs.stock_pool import TRACKED_SYMBOLS
-from utlity.stock_utils import get_latest_trading_day, parse_symbol
+from commons.stock_utils import get_latest_trading_day, parse_symbol
 
 TRACKED_SYMBOLS_LIST = TRACKED_SYMBOLS
 LOGGER = get_logger("PriceTools")
@@ -388,7 +388,7 @@ def get_yesterday_date(today_date: str, calendar_market: str = "CN") -> str:
     """
     获取“上一个交易日”的日期（严格早于 today_date），使用交易日历精确判断。
 
-    - 通过 `utlity.stock_utils.get_latest_trading_day` 在 `today_date - 1天` 的参考点向前寻找最近交易日
+    - 通过 `commons.stock_utils.get_latest_trading_day` 在 `today_date - 1天` 的参考点向前寻找最近交易日
     - 默认市场为中国A股（CN）
     """
     ref = datetime.strptime(today_date, "%Y-%m-%d").date() - timedelta(days=1)

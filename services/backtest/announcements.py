@@ -22,7 +22,7 @@ from services.selection_system.announcement_summary import (
     DEFAULT_DISCLOSURE_MODEL,
 )
 from shared_data_access import SharedDataAccess
-from utlity import is_etf_symbol, parse_symbol
+from commons import is_etf_symbol, parse_symbol
 
 
 LOGGER = get_logger("BacktestAnnouncements")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from utlity import SymbolInfo
+from commons import SymbolInfo
 
 
 def _normalize_turnover_pct(turnover_series: pd.Series, symbol_info: SymbolInfo) -> pd.Series:

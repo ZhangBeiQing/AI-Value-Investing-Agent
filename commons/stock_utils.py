@@ -26,7 +26,7 @@ from configs.stock_pool import (
 import numpy as np
 from requests import exceptions as requests_exceptions
 
-# 计算仓库根路径：stock_utils.py 位于 <repo>/utlity/，因而上移 1 级即可
+# 计算仓库根路径：stock_utils.py 位于 <repo>/commons/，因而上移 1 级即可
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = REPO_ROOT / "data"
 

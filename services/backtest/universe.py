@@ -11,7 +11,7 @@ from services.backtest.experiment import BacktestExperiment
 from services.backtest.ledger import BacktestLedger
 from services.selection_system.quant_prefilter import build_quant_prefilter_for_date
 from shared_data_access.historical_prices import known_not_listed_as_of
-from utlity import parse_symbol
+from commons import parse_symbol
 
 
 LOGGER = get_logger("BacktestUniverse")

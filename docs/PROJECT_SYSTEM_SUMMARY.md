@@ -181,7 +181,7 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── skills/
 │   └── commands/
 ├── docs/                       # 设计与系统文档（本文所在）
-├── utlity/                     # 通用工具函数（parse_symbol 等）
+├── commons/                     # 通用工具函数（parse_symbol 等）
 └── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py
                                 # 历史保留的顶层脚本，仍由 daily 链路调用，新逻辑不再继续堆在这里
 ```

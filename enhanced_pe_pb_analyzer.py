@@ -29,14 +29,14 @@ from indicator_library.calculators.fundamental import calculate_rolling_ttm_prof
 from shared_data_access.data_access import SharedDataAccess
 from shared_data_access.exceptions import CacheIntegrityError, DataUnavailableError
 from shared_data_access.models import PreparedData
-from utlity import (
+from commons import (
     SymbolInfo,
     ensure_stock_subdir,
     get_stock_data_dir,
     parse_symbol,
     resolve_base_dir,
 )
-from utlity.get_similar_stocks import get_similar_stocks
+from commons.get_similar_stocks import get_similar_stocks
 
 LOG_DIR = Path("logs") / "main_scripts" / "EnhancedPEPBAnalyzer"
 LOG_DIR.mkdir(parents=True, exist_ok=True)

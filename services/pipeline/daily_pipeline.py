@@ -22,7 +22,7 @@ from shared_data_access.market_calendar import (
     NonTradingDayError,
     inspect_market_session,
 )
-from utlity import parse_symbol
+from commons import parse_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

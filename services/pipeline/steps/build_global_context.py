@@ -8,7 +8,7 @@ from pathlib import Path
 from services.research.macro_summary import get_macro_summary
 from services.research.stock_analysis import analyze_stock_dynamics_and_valuation
 from shared_data_access.historical_prices import load_price_history
-from utlity import parse_symbol
+from commons import parse_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

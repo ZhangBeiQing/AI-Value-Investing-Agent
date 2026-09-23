@@ -11,7 +11,7 @@ from typing import Any, Dict, Mapping
 from core.logging import get_logger
 from services.news.disclosures_builder import audit_news_json, update_disclosures_for_stock
 from shared_data_access import SharedDataAccess
-from utlity.stock_utils import get_stock_data_dir
+from commons.stock_utils import get_stock_data_dir
 
 from .master_universe import load_master_universe
 from .paths import SelectionSystemPaths

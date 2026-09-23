@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-from utlity import SymbolInfo
+from commons import SymbolInfo
 
 @dataclass(frozen=True)
 class FinancialDataBundle:

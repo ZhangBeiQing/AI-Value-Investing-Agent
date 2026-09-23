@@ -24,7 +24,7 @@ from services.selection_system.models import MasterUniverseDocument, MasterUnive
 from services.selection_system.paths import SelectionSystemPaths
 from shared_data_access.stock_name_lookup import lookup_cached_stock_names
 from shared_data_access.market_calendar import inspect_market_session
-from utlity.stock_utils import normalize_symbol, parse_symbol
+from commons.stock_utils import normalize_symbol, parse_symbol
 
 
 LOGGER = get_logger("DashboardResearchJobs")
@@ -373,7 +373,7 @@ def run_job(data_dir: Path, job_id: str) -> None:
             cwd=PROJECT_ROOT, check=True,
         )
         from services.recommendation_dashboard.data import _price_points
-        from utlity.stock_utils import parse_symbol
+        from commons.stock_utils import parse_symbol
 
         closes, price_date, _ = _price_points(data_dir, symbol, parse_symbol(symbol).stock_name)
         if run_date not in closes:

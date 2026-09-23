@@ -10,7 +10,7 @@ from typing import Iterable
 import pandas as pd
 
 from shared_data_access.paths import price_cache_dir
-from utlity import SymbolInfo
+from commons import SymbolInfo
 
 
 DATE_COLUMN = "日期"

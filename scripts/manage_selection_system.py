@@ -633,7 +633,7 @@ def _handle_refresh_chip_distribution(
     max_workers: int,
 ) -> int:
     from shared_data_access.cache_registry import update_chip_distribution_cached
-    from utlity.stock_utils import SymbolFormatError, parse_symbol
+    from commons.stock_utils import SymbolFormatError, parse_symbol
 
     paths = _selection_paths(base_dir)
     requested = [item.strip().upper() for item in symbols.split(",") if item.strip()]

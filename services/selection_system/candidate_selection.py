@@ -19,7 +19,7 @@ from services.snapshot.basic_snapshot import (
     load_basic_snapshot_from_cache,
 )
 from shared_data_access.data_access import SharedDataAccess
-from utlity.stock_utils import parse_symbol
+from commons.stock_utils import parse_symbol
 
 from .master_universe import load_master_universe
 from .paths import SelectionSystemPaths

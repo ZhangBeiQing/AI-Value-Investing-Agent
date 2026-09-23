@@ -19,7 +19,7 @@ from services.research.financial_report_skill import (
     update_summary_index,
     validate_deep_research_artifacts,
 )
-from utlity.stock_utils import parse_symbol
+from commons.stock_utils import parse_symbol
 
 
 def _is_meaningful_summary(path: Path) -> bool:

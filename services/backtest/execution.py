@@ -21,7 +21,7 @@ from services.trading.trade_summary import (
     use_agent_data_root,
 )
 from shared_data_access.historical_prices import exact_price
-from utlity import parse_symbol
+from commons import parse_symbol
 
 
 LOGGER = get_logger("BacktestExecution")

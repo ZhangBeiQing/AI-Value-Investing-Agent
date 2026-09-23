@@ -20,7 +20,7 @@ from services.research.financial_report_skill import (
     load_tracked_items,
     synthesize_manual_item,
 )
-from utlity.stock_utils import parse_symbol
+from commons.stock_utils import parse_symbol
 
 
 def build_parser() -> argparse.ArgumentParser:

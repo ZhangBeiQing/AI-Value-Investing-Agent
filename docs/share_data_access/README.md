@@ -82,11 +82,11 @@ prepare_dataset(
   - 10 天重叠窗口用于识别前复权（qfq）基准变化：若重叠区间收盘价与旧缓存不一致，说明期间发生
     除权除息，自动回退为全量重抓，防止两段不同复权基准直接拼接
   - `requested_start_date` 元信息保留最早请求起点，保证上市日/覆盖判定不受增量刷新影响
-- 所有行情来源（新浪 / 东财 / ETF / 指数）在 `utlity/stock_utils.py:_finalize_price_frame` 统一出口归一，
+- 所有行情来源（新浪 / 东财 / ETF / 指数）在 `commons/stock_utils.py:_finalize_price_frame` 统一出口归一，
   固定输出 9 列 `日期, 开盘, 最高, 最低, 收盘, 成交量, 成交额, 换手率, 流通股本`，单位统一为
   成交量=股、成交额=元、换手率=小数比例、流通股本=股。东财接口的「手 / 百分数」在出口处换算，
   避免同一 `price.csv` 因回退切换出现列结构或单位（100 倍）不一致。
-- 所有 akshare 调用经 `utlity/stock_utils.py:api_call_with_delay` 统一节流：进程级锁 + 单调时钟在
+- 所有 akshare 调用经 `commons/stock_utils.py:api_call_with_delay` 统一节流：进程级锁 + 单调时钟在
   「调用前」预留时间片，保证跨线程的调用起点至少相隔默认 0.25s（聚合约 4 req/s），避免线程池各 worker
   各自 sleep 导致齐发（thundering herd）而触发限流；可用环境变量 `AKSHARE_MIN_INTERVAL_SECONDS`
   调整，应急降速时可调大（如 0.5~1.0）。
@@ -135,7 +135,7 @@ prepare_dataset(
 
 ```python
 from shared_data_access.data_access import SharedDataAccess
-from utlity import parse_symbol
+from commons import parse_symbol
 
 symbol = parse_symbol("600406.SH")
 accessor = SharedDataAccess(base_dir=None, logger=LOGGER)

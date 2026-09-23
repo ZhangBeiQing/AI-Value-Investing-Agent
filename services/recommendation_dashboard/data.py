@@ -15,7 +15,7 @@ from services.recommendation_dashboard.jobs import latest_jobs
 from services.selection_system.master_universe import load_master_universe
 from services.selection_system.paths import SelectionSystemPaths
 from shared_data_access.historical_prices import load_price_history
-from utlity.stock_utils import SymbolInfo
+from commons.stock_utils import SymbolInfo
 
 
 LOGGER = get_logger("RecommendationDashboard")

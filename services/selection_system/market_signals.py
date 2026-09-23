@@ -11,7 +11,7 @@ import akshare as ak
 import pandas as pd
 
 from core.logging import get_logger
-from utlity.stock_utils import SymbolFormatError, api_call_with_delay, normalize_symbol
+from commons.stock_utils import SymbolFormatError, api_call_with_delay, normalize_symbol
 from .paths import SelectionSystemPaths
 from .store import load_json_file, save_json_file
 

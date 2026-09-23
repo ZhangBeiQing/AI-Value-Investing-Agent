@@ -34,7 +34,7 @@ from shared_data_access.chip_distribution import build_latest_chip_distribution_
 from shared_data_access.data_access import SharedDataAccess
 from shared_data_access.exceptions import CacheIntegrityError, DataUnavailableError
 from shared_data_access.models import PreparedData, PriceDataBundle
-from utlity.stock_utils import SymbolFormatError, get_stock_data_dir, is_etf_symbol, parse_symbol
+from commons.stock_utils import SymbolFormatError, get_stock_data_dir, is_etf_symbol, parse_symbol
 
 
 LOGGER = get_logger("SelectionFactorStore")

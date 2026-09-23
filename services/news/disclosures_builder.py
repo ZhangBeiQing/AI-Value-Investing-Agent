@@ -23,7 +23,7 @@ project_root = str(Path(__file__).resolve().parents[2])
 sys.path.insert(0, project_root)
 
 from core.logging import get_logger
-from utlity import SymbolInfo, get_stock_data_dir, parse_symbol
+from commons import SymbolInfo, get_stock_data_dir, parse_symbol
 from configs.stock_pool import TRACKED_A_STOCKS
 from openai import OpenAI
 from shared_data_access.cache_registry import CacheKind, build_cache_dir

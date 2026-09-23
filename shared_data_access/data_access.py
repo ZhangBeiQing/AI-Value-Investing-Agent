@@ -15,7 +15,7 @@ from shared_financial_utils import (
     apply_dataframe_cutoff,
     filter_financial_abstract_by_cutoff,
 )
-from utlity import resolve_base_dir, SymbolInfo, is_etf_symbol
+from commons import resolve_base_dir, SymbolInfo, is_etf_symbol
 
 from .cache_registry import CacheKind, build_cache_dir, check_cache, ensure_symbol_data
 from .exceptions import (

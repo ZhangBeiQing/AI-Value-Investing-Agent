@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
-from utlity import SymbolInfo
+from commons import SymbolInfo
 
 
 def _normalize_turnover_pct(value: float | None, symbol_info: SymbolInfo | None) -> float | None:

@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from configs.stock_pool import TRACKED_A_STOCKS  # 添加导入
 from core.logging import init_component_logger
-from utlity import (  # type: ignore
+from commons import (  # type: ignore
     SymbolFormatError,
     SymbolInfo,
     get_latest_trading_day,

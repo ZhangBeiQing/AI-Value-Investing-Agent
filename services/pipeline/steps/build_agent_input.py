@@ -13,7 +13,7 @@ from services.prompting.system_prompt import (
     get_skill_system_prompt,
 )
 from services.snapshot.basic_snapshot import build_basic_snapshot
-from utlity.stock_utils import parse_symbol
+from commons.stock_utils import parse_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

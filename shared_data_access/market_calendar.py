@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas_market_calendars as mcal
 
 from shared_data_access.historical_prices import load_price_history
-from utlity import parse_symbol
+from commons import parse_symbol
 
 
 MARKET_CALENDAR_NAMES = {

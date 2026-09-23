@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 from configs.stock_pool import TRACKED_A_STOCKS
 from core.logging import init_component_logger
-from utlity import get_last_trading_day
+from commons import get_last_trading_day
 
 # --- 1. 文件路径定义 (模拟数据库) ---
 # 路径改造为按 signature 分目录，避免多 Agent 数据串扰

@@ -15,7 +15,7 @@ from core.logging import get_logger
 from services.selection_system.master_universe import load_master_universe
 from services.selection_system.paths import SelectionSystemPaths
 from services.selection_system.store import load_json_file, save_json_file
-from utlity.stock_utils import SymbolFormatError, get_stock_data_dir, parse_symbol
+from commons.stock_utils import SymbolFormatError, get_stock_data_dir, parse_symbol
 
 
 LOGGER = get_logger("SelectionQuantPrefilter")

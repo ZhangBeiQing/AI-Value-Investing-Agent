@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from core.logging import init_tool_logger
 from configs.stock_pool import TRACKED_A_STOCKS
-from utlity import is_etf_symbol, parse_symbol
+from commons import is_etf_symbol, parse_symbol
 
 
 load_dotenv()

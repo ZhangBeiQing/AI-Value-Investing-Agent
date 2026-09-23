@@ -9,7 +9,7 @@ from typing import Any
 
 from core.logging import get_logger
 from shared_data_access.historical_prices import close_on_or_before
-from utlity import parse_symbol
+from commons import parse_symbol
 
 
 LOGGER = get_logger("BacktestLedger")

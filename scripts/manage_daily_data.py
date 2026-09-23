@@ -30,7 +30,7 @@ from core.logging import init_component_logger  # type: ignore
 from core.network import install_network_timeouts  # type: ignore
 from shared_data_access.data_access import SharedDataAccess  # type: ignore
 from shared_data_access.exceptions import SymbolNotListedAsOfDateError  # type: ignore
-from utlity import ensure_stock_subdir, parse_symbol  # type: ignore
+from commons import ensure_stock_subdir, parse_symbol  # type: ignore
 
 LOG_DIR = PROJECT_ROOT / "logs" / "main_scripts" / "ManageDailyData"
 LOG_DIR.mkdir(parents=True, exist_ok=True)

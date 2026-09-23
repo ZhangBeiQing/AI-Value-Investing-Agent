@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from shared_data_access.cache_registry import CacheKind, build_cache_dir, SymbolInfo
-from utlity import get_stock_data_dir, resolve_base_dir
+from commons import get_stock_data_dir, resolve_base_dir
 
 
 def base_data_dir(base_dir: Path | str | None = None) -> Path:

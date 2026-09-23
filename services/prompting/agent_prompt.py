@@ -25,7 +25,7 @@ from services.trading.price_tools import (
 )
 from core.runtime_state import get_config_value
 from configs.stock_pool import TRACKED_SYMBOLS, TRACKED_A_STOCKS
-from utlity.stock_utils import parse_symbol
+from commons.stock_utils import parse_symbol
 
 all_stock_pool_symbols = TRACKED_SYMBOLS
 

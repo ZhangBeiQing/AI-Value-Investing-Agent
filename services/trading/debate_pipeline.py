@@ -12,7 +12,7 @@ from typing import Any
 
 from core.logging import get_logger
 from services.trading.decision_contract import validate_stock_decision_entry
-from utlity.stock_utils import parse_symbol, sanitize_stock_name
+from commons.stock_utils import parse_symbol, sanitize_stock_name
 
 
 LOGGER = get_logger("DebatePipeline")

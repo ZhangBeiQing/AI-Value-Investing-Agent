@@ -47,7 +47,7 @@ from services.research.financial_report_skill import (
     _resolve_fiscal_year,
 )
 from shared_data_access import SharedDataAccess
-from utlity.stock_utils import parse_symbol
+from commons.stock_utils import parse_symbol
 
 LOGGER = init_component_logger(
     "WarmFinancialReports",

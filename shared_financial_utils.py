@@ -11,7 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import akshare as ak  # type: ignore
 import pandas as pd  # type: ignore
-from utlity import api_call_with_delay, SymbolInfo
+from commons import api_call_with_delay, SymbolInfo
 from shared_data_access.cache_registry import build_cache_dir, CacheKind
 
 LOGGER = logging.getLogger(__name__)

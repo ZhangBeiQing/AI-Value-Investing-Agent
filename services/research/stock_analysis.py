@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"py_mini_
 
 from enhanced_pe_pb_analyzer import EnhancedPEPBAnalyzer
 from stock_price_dynamics_summarizer import stock_price_dynamics_summarizer
-from utlity import SymbolInfo, get_latest_trading_day, is_etf_symbol, parse_symbol, resolve_base_dir
+from commons import SymbolInfo, get_latest_trading_day, is_etf_symbol, parse_symbol, resolve_base_dir
 
 
 logger = init_tool_logger("stock_analysis")

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Mapping
 
-from utlity.stock_utils import normalize_symbol
+from commons.stock_utils import normalize_symbol
 
 
 def _as_clean_str(value: Any, *, field_name: str, required: bool) -> str:

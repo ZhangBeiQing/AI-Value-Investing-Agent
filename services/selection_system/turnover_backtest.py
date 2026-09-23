@@ -20,7 +20,7 @@ import pandas as pd
 
 from core.logging import get_logger
 from services.selection_system.paths import SelectionSystemPaths
-from utlity.stock_utils import get_stock_data_dir, parse_symbol
+from commons.stock_utils import get_stock_data_dir, parse_symbol
 
 LOGGER = get_logger("TurnoverBacktest")
 

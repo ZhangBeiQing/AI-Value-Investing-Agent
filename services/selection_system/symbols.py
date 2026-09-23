@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from utlity.stock_utils import SYMBOL_SUFFIX_INFO, SymbolInfo, normalize_symbol
+from commons.stock_utils import SYMBOL_SUFFIX_INFO, SymbolInfo, normalize_symbol
 
 from .models import MasterUniverseDocument, MasterUniverseStock
 

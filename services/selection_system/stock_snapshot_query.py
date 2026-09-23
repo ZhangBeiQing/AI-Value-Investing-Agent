@@ -10,7 +10,7 @@ import pandas as pd
 
 from core.logging import get_logger
 from services.snapshot.basic_snapshot import load_basic_snapshot_from_cache
-from utlity.stock_utils import normalize_symbol
+from commons.stock_utils import normalize_symbol
 
 from .master_universe import load_master_universe
 from .paths import SelectionSystemPaths
