@@ -184,9 +184,9 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── skills/
 │   └── commands/
 ├── docs/                       # 设计与系统文档（本文所在）
-├── agent_tools/, tools/        # 历史兼容层，新代码不再向此处沉淀
+├── tools/                      # 历史兼容层，新代码不再向此处沉淀
 ├── utlity/                     # 通用工具函数（parse_symbol 等）
-└── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py / tool_financial_report.py / trade_summary.py
+└── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py / trade_summary.py
                                 # 历史保留的顶层脚本，仍由 daily 链路调用，新逻辑不再继续堆在这里
 ```
 
@@ -297,13 +297,13 @@ data/skill_runs/YYYY-MM-DD/
 
 ### 6.1 兼容层现状
 
-- `agent_tools/` 与 `tools/` 仍保留少量历史导入路径兼容包装，真实业务实现已经迁移到 `services/` 与 `core/`
+- `tools/` 仍保留少量历史导入路径兼容包装，真实业务实现已经迁移到 `services/` 与 `core/`
 - 旧时代的 MCP 服务脚本（`start_mcp_services.py`、`tool_python.py`、`tool_math.py`）已经清理
-- `basic_stock_info.py`、`enhanced_pe_pb_analyzer.py`、`stock_price_dynamics_summarizer.py`、`shared_financial_utils.py`、`tool_financial_report.py` 仍位于仓库根目录，是历史保留的顶层脚本，仍被日常链路调用，但**不再继续在此沉淀新逻辑**
+- `basic_stock_info.py`、`enhanced_pe_pb_analyzer.py`、`stock_price_dynamics_summarizer.py`、`shared_financial_utils.py` 仍位于仓库根目录，是历史保留的顶层脚本，仍被日常链路调用，但**不再继续在此沉淀新逻辑**
 
 ### 6.2 日志规范
 
-- 禁止在 `services/`、`core/`、`shared_data_access/`、`agent_tools/` 等库代码里直接用 `print`
+- 禁止在 `services/`、`core/`、`shared_data_access/` 等库代码里直接用 `print`
 - 统一通过 `core.logging` 入口：`get_logger()` / `init_component_logger()` / `init_tool_logger()`
 - Logger 名必须是业务语义明确的 PascalCase（如 `ManageDailyData`、`DailyPipeline`、`TradeSummary`）
 - 运行日志按「日期 + 流程」聚合到 `logs/runs/<YYYY-MM-DD>/<flow>/`（同一流程一个目录 + 一个 `merged.log`），

@@ -52,7 +52,6 @@ description: Guide for adding a new cached dataset, external data source, or der
 - `services/research/`
 - `services/snapshot/`
 - `basic_stock_info.py`
-- 兼容层 `agent_tools/`
 
 不要跳过共享层，直接在上层复制一套抓取逻辑。
 

@@ -21,7 +21,7 @@
 
 本项目日志适配当前本地 `skill-only` 架构：运行日志按「日期 + 流程」聚合到 `logs/runs/`，调试日志扁平到 `logs/debug/`，不再按模型签名分层。
 
-- 禁止在 `services/`、`core/`、`shared_data_access/`、`agent_tools/` 这类库代码里直接使用 `print` 做运行日志。
+- 禁止在 `services/`、`core/`、`shared_data_access/` 这类库代码里直接使用 `print` 做运行日志。
 - 禁止新增裸 `logging.getLogger(__name__)` 或点路径风格 logger 名称。
 - 必须优先使用 `core.logging` 提供的统一入口：
   - `get_logger(...)`

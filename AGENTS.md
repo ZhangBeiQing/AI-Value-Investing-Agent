@@ -7,7 +7,7 @@
 - 当前日常交易口径：用户手动准备 `data/skill_runs/{date}/` 下的 `01-04` 输入产物，Agent 负责读取资料、完成逐股分析、生成 `05_decision.json`，并在人工确认后继续后续交易执行与总结归档
 - `manage_daily_data`、`run_daily_pipeline`、`run_post_trade` 仍是仓库内保留的脚本入口，但不再是“开始今天股票交易”这个 skill 的默认自动执行步骤
 - 当前主代码放在 `scripts/`、`services/`、`shared_data_access/`、`core/`
-- `agent_tools/`、`tools/` 仍保留少量兼容层，但不再是新代码主落点
+- `tools/` 仍保留少量兼容层，但不再是新代码主落点
 - 运行产物与缓存写入 `data/`，日志写入 `logs/`，规范与说明写入 `.codex/`、`docs/`
 
 ## WHY：设计目标
@@ -96,7 +96,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 删除或重命名会影响 `01-08` 文件契约的字段、文件名、目录结构
 - 修改 `configs/prompt_flow/skill_flow.json` 的语义而不保持旧产物兼容
 - 新增第三方依赖、外部 API、系统级运行前提
-- 大规模删除历史兼容层，尤其是 `agent_tools/`、`tools/` 中仍被调用的部分
+- 大规模删除历史兼容层，尤其是 `tools/` 中仍被调用的部分
 - 修改真实交易落地规则、仓位计算规则、价格引用规则
 - 在“开始今天股票交易”场景下，如 `01-04` 产物缺失或不完整，先和用户确认是否要补数据，不要直接代跑旧脚本链路
 

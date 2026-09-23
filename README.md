@@ -309,7 +309,7 @@ logs/                           组件日志
 ├── skills/                     12 个日常运行 skills
 └── commands/                   review-skill-run
 docs/                           系统设计文档
-agent_tools/, tools/            历史兼容层，新代码不再向此处沉淀
+tools/                          历史兼容层，新代码不再向此处沉淀
 ```
 
 ## 关键约定
