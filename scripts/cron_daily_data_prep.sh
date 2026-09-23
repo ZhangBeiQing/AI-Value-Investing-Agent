@@ -251,6 +251,13 @@ PROMPT="开始 ${RUN_DATE} 的数据准备。严格按 daily-data-preparation sk
   否则它内部的逐股角色派发会失去控制。
 - 五个阶段全部跑完后，输出一份包含各阶段状态、实际耗时和验收清单结果的最终报告。"
 
+# 清洗 agent 终端流：去掉 ANSI CSI/OSC 转义，并把 CR 还原成换行，便于人工阅读。
+# stdbuf 保持行缓冲，tail -f 时仍能近实时看到输出。
+_clean_agent_stream() {
+    stdbuf -oL sed -E \
+        's/\x1b\[[0-9;?]*[ -\/]*[@-~]//g; s/\x1b\][^\x07]*\x07//g; s/\x1b[@-Z\\-_]//g; s/\r/\n/g'
+}
+
 run_agent() {
     # $1=model。返回被调运行时的退出码。
     local model="$1"
@@ -264,15 +271,16 @@ run_agent() {
             --model "${model}" \
             --dir "${REPO_ROOT}" \
             "${PROMPT}" \
-            >>"${LOG_FILE}" 2>&1
+            2>&1 | _clean_agent_stream >>"${LOG_FILE}"
     else
         timeout --signal=TERM --kill-after=120 "${RUN_TIMEOUT_SECONDS}" \
             "${CLAUDE_BIN}" -p "${PROMPT}" \
             --dangerously-skip-permissions \
             --verbose \
-            >>"${LOG_FILE}" 2>&1
+            2>&1 | _clean_agent_stream >>"${LOG_FILE}"
     fi
-    local rc=$?
+    # 取 timeout 的退出码（管道首段），而非清洗工具的退出码
+    local rc=${PIPESTATUS[0]}
     set -e
     return ${rc}
 }
