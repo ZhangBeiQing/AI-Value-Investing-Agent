@@ -73,7 +73,7 @@ from commons import (
     SymbolInfo,
     is_cn_etf,
 )
-from commons.get_similar_stocks import get_similar_stocks
+from commons.similar_stocks import get_similar_stocks
 
 # 设置pandas选项以避免FutureWarning
 pd.set_option('future.no_silent_downcasting', True)

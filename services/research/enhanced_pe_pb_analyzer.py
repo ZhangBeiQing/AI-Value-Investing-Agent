@@ -36,7 +36,7 @@ from commons import (
     parse_symbol,
     resolve_base_dir,
 )
-from commons.get_similar_stocks import get_similar_stocks
+from commons.similar_stocks import get_similar_stocks
 
 LOG_DIR = Path("logs") / "main_scripts" / "EnhancedPEPBAnalyzer"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
