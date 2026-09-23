@@ -154,7 +154,6 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── market_calendar.py      # 交易日历（000001.IDX + SSE 回退）
 │   ├── chip_distribution.py    # 筹码分布抓取/回退计算
 │   ├── board_metrics.py        # 板块行情/历史
-│   ├── indicator_library.py    # 统一指标库
 │   ├── macro_objective_panel.py
 │   ├── industry_catalog.py     # 申万行业目录缓存
 │   ├── industry_financial_panel.py # 全A行业财务扩散验证

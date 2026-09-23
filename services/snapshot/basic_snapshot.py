@@ -25,7 +25,7 @@ from utlity import (  # type: ignore
 )
 
 from shared_data_access import SharedDataAccess
-from shared_data_access.indicator_library import (
+from indicator_library import (
     IndicatorLibrary,
     IndicatorBatchRequest,
     IndicatorSpec,
