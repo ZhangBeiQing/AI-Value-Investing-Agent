@@ -67,6 +67,10 @@ prepare_dataset(
 
 完整 `CacheKind` 与 TTL 见 `docs/cache/cache_registry_design.md`。
 
+港股正式财报仍由公告同步入口统一落入 `disclosures/pdfs/` 和
+`disclosures/md/`。当巨潮提供的港股附件地址不可用时，财报同步会按股票、公告日和标题到
+港交所披露易匹配官方中文 PDF；该回退仅用于财报附件，不改变普通公告的抓取逻辑。
+
 ## 4. 回测友好的缓存策略
 
 - 所有 `update_*` 函数始终面向「真实世界的当前时间」抓取足量数据

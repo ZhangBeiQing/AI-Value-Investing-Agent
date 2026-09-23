@@ -28,6 +28,7 @@ from configs.stock_pool import TRACKED_A_STOCKS
 from openai import OpenAI
 from shared_data_access.cache_registry import CacheKind, build_cache_dir
 from shared_data_access.data_access import SharedDataAccess
+from shared_data_access.hkex_financial_report import fetch_hkex_financial_report_pdf
 from shared_data_access.stockstar_financial_report import fetch_stockstar_financial_report_markdown
 from services.document_conversion import (
     PDFMarkdownConverter,
@@ -1396,6 +1397,21 @@ def sync_financial_reports_for_stock(
             file_name = f"{date}__{stock_code}__{meta.announcement_id}__{_slugify(title)}.pdf"
             out = pdfs_dir(symbol_info) / file_name
             ok = download_pdf(url, out)
+            if not ok and symbol_info.symbol.endswith(".HK"):
+                try:
+                    fallback_pdf = fetch_hkex_financial_report_pdf(
+                        symbol_info,
+                        title=title,
+                        announcement_date=date,
+                        output_path=out,
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    LOGGER.warning("港交所官方财报 PDF 备用获取失败: %s %s", title, exc)
+                    fallback_pdf = None
+                if fallback_pdf:
+                    ok = True
+                    meta.content_source = "hkex_official_pdf"
+                    meta.content_source_url = fallback_pdf[1]
             if ok:
                 meta.pdf_path = str(out)
                 meta.downloaded = True
