@@ -164,3 +164,61 @@ def test_missing_cache_uses_full_lookback(tmp_path: Path, monkeypatch) -> None:
     )
 
     assert calls == [(base - timedelta(days=1800)).strftime("%Y%m%d")]
+
+
+def test_insufficient_history_triggers_full_backfill(tmp_path: Path, monkeypatch) -> None:
+    """覆盖不足且非数据源上限时，必须全量回补早期历史，且第二次调用不再抓取。
+
+    回归：旧实现只做增量合并、requested_start_date 又停留在旧值，导致判定每天为真、
+    每天对同一批股票空刷一次价格 API。
+    """
+    base = pd.Timestamp.now().normalize()
+    recent_dates = [base - timedelta(days=offset) for offset in (4, 3, 2, 1)]
+    _write_price_cache(
+        tmp_path,
+        _price_rows(recent_dates, [10.0, 11.0, 12.0, 13.0]),
+        requested_start=(base - timedelta(days=5)).strftime("%Y%m%d"),
+    )
+
+    full_start = base - timedelta(days=1800)
+    full_dates = [full_start, base - timedelta(days=1), base]
+    calls: list[str] = []
+
+    def fake_fetch(symbol_info, start_date, end_date, logger):
+        calls.append(start_date)
+        return _price_rows(full_dates, [5.0, 6.0, 7.0])
+
+    monkeypatch.setattr(cache_registry, "_fetch_daily_price_frame", fake_fetch)
+
+    result = cache_registry.update_price_data_cached(
+        _symbol_info(),
+        lookback_days=1800,
+        force_refresh=False,
+        base_data_dir=tmp_path,
+        logger=LOGGER,
+    )
+
+    # 走全量回补（起点=full lookback），而不是只抓最近窗口
+    assert calls == [full_start.strftime("%Y%m%d")]
+    assert result["日期"].min() == full_start.strftime("%Y-%m-%d")
+
+    cache_dir = cache_registry.build_cache_dir(
+        _symbol_info(),
+        cache_registry.CacheKind.PRICE_SERIES,
+        base_dir=tmp_path,
+    )
+    assert cache_registry._load_meta(cache_dir)["requested_start_date"] == full_start.strftime(
+        "%Y%m%d"
+    )
+
+    # 回补后覆盖满足，第二次调用不应再触发抓取
+    calls.clear()
+    cache_registry.update_price_data_cached(
+        _symbol_info(),
+        lookback_days=1800,
+        force_refresh=False,
+        base_data_dir=tmp_path,
+        logger=LOGGER,
+    )
+    assert calls == []
+

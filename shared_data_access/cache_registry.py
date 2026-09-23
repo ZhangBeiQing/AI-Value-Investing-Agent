@@ -1185,14 +1185,16 @@ def update_price_data_cached(
 
     # 检查缓存是否需要刷新
     need_refresh = should_refresh(price_cache_dir, CacheKind.PRICE_SERIES, force_refresh)
-    if not need_refresh and price_file.exists():
+    # 历史覆盖是否不足：不足时必须「全量回补」，否则增量刷新永远补不上早期历史，
+    # 且 requested_start_date 会停留在旧值，导致判定每天为真、空刷 API。
+    coverage_insufficient = False
+    if price_file.exists():
         try:
             existing = pd.read_csv(price_file, usecols=["日期"])
             existing["日期"] = pd.to_datetime(existing["日期"], errors="coerce")
             existing = existing.dropna(subset=["日期"])
             required_start = datetime.now() - timedelta(days=lookback_days - 7)
-            
-            # 检查是否有数据覆盖不足的情况
+
             if existing.empty or existing["日期"].min() > required_start:
                 # 检查是否是因为历史请求记录表明我们已经尽力请求了更早的数据
                 # 如果上次请求的 start_date 已经早于或等于我们需要的时间，说明数据源本身就没有更早的数据
@@ -1210,9 +1212,24 @@ def update_price_data_cached(
                                 logger.info(f"{symbolInfo.symbol} 数据覆盖不足但上次已请求至 {prev_req_str}，跳过刷新")
                     except Exception:
                         pass
-                
+
                 if not bypass_refresh:
+                    # 覆盖不足且数据源可能有更早数据 → 需要刷新，且必须走全量回补
+                    coverage_insufficient = True
                     need_refresh = True
+                    if logger:
+                        earliest = (
+                            existing["日期"].min().date().isoformat()
+                            if not existing.empty
+                            else "空"
+                        )
+                        logger.info(
+                            "%s %s 历史覆盖不足（最早 %s > 需要 %s），改为全量回补",
+                            symbolInfo.stock_name,
+                            symbolInfo.symbol,
+                            earliest,
+                            required_start.date().isoformat(),
+                        )
         except Exception:
             need_refresh = True
 
@@ -1225,7 +1242,7 @@ def update_price_data_cached(
 
             existing_frame = _normalize_price_frame(_read_cached_dataframe(price_file))
             incremental_start: Optional[datetime] = None
-            if not existing_frame.empty:
+            if not coverage_insufficient and not existing_frame.empty:
                 last_date = existing_frame["日期"].max().to_pydatetime()
                 if last_date >= floor_date - timedelta(days=PRICE_INCREMENTAL_OVERLAP_DAYS):
                     incremental_start = max(
