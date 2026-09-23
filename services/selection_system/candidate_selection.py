@@ -928,14 +928,8 @@ def _build_context_maps(
     announcements_payload: Mapping[str, Any],
 ) -> Dict[str, Any]:
     theme_map: dict[str, list[str]] = defaultdict(list)
-    for theme in hot_news_state.get("active_themes", []) if isinstance(hot_news_state, Mapping) else []:
-        if not isinstance(theme, Mapping):
-            continue
-        theme_name = str(theme.get("theme_name") or "").strip()
-        for symbol in theme.get("linked_symbols_in_universe", []) or []:
-            normalized_symbol = str(symbol or "").strip()
-            if normalized_symbol and theme_name:
-                theme_map[normalized_symbol].append(theme_name)
+    # 06 hot-news 主题已不再输出 symbol 级映射（linked_symbols_in_universe 已删除），
+    # 主题相关性由下游 agent 直接阅读主题文字判断，这里保持空映射以兼容打分接口。
 
     board_map: dict[str, list[str]] = defaultdict(list)
     for board in board_heat_state.get("boards", []) if isinstance(board_heat_state, Mapping) else []:

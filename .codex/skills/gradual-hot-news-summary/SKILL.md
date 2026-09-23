@@ -23,6 +23,7 @@ description: >
 ## 输出路径
 
 - 主输出：`data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`（`YYYY-MM-DD` = 要分析的交易日）
+- 轻量摘要：`data/selection_runs/YYYY-MM-DD/06_hot_news_digest.json`（由 CLI 从主输出确定性派生，供下游 AI 与人工速览）
 
 当前 skill 按 "上游准备步骤 + file-only 的总结步骤" 方式工作：
 
@@ -118,6 +119,19 @@ description: >
 - 禁止在一条 Write 工具调用中写入完整 JSON（必定截断）
 - 禁止在 bash heredoc 中拼装完整 JSON（必定截断）
 - 禁止在 Write 的 content 参数中堆砌超过 3000 行的 JSON 文本
+
+### 5. 生成轻量 digest（供下游读取）
+
+`06_hot_news_state.json` 生成并校验通过后，运行：
+
+```bash
+python scripts/build_hot_news_digest.py --date YYYY-MM-DD
+```
+
+该命令从主输出确定性派生 `06_hot_news_digest.json`（只保留 theme_name / strength /
+current_state / why_it_matters / key_risks / next_day_watchlist /
+outside_universe_names_to_check）。下游 AI 与人工速览默认读 digest，完整
+`06_hot_news_state.json` 仅作存档；不要手工编写 digest。
 
 ## 强制要求
 

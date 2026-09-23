@@ -204,3 +204,17 @@
 主题层不直接负责最终选股，也不在手写股票列表。`history_anchor`、`today_update`、`current_state` 中的文字描述已包含足够信息，下游 agent 可据此自行推断关联板块和个股。
 
 如需显式提示，在 `outside_universe_names_to_check` 中列出宇宙外值得关注的标的，触发 agent 在宇宙外搜索新的龙头或弹性股。
+
+## 7. 轻量 digest（`06_hot_news_digest.json`）
+
+`06_hot_news_state.json` 是权威存档；下游 AI 与人工速览默认读取由
+`python scripts/build_hot_news_digest.py --date YYYY-MM-DD` 从它确定性派生的
+`06_hot_news_digest.json`：
+
+- `active_themes` 每主题只保留 `theme_name` / `strength` / `current_state`（≤240 字）/
+  `why_it_matters`（≤120 字）/ `key_risks`（`risk` + `probability_band`，最多 3 条）/
+  `next_day_watchlist` / `outside_universe_names_to_check`
+- `cooling_themes` / `new_themes` 只保留 `theme_name` / `current_state`
+- 不包含 `history_anchor` / `scenarios` / `today_update` / `status` 等长字段
+- digest 不手工编辑，随主输出重新生成即可
+

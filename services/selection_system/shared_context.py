@@ -10,6 +10,11 @@ from typing import Any, Mapping
 from core.logging import get_logger
 
 from .announcement_summary import load_or_build_recent_company_announcements
+from .hot_news_digest import (
+    load_or_build_hot_news_digest,
+    render_hot_news_digest_markdown,
+    write_hot_news_digest,
+)
 from .master_universe import load_master_universe
 from .paths import SelectionSystemPaths
 from .store import load_json_file
@@ -40,6 +45,7 @@ def build_shared_selection_context(
         announcement_limit=announcement_limit,
         announcements_payload_override=announcements,
     )
+    write_hot_news_digest(run_date, base_dir=base_dir)
     target = paths.run_shared_selection_context_path(run_date)
     target.write_text(content, encoding="utf-8")
     LOGGER.info("shared selection context 已写入: %s", target)
@@ -55,7 +61,6 @@ def render_shared_selection_context(
 ) -> str:
     paths = SelectionSystemPaths.from_base_dir(base_dir)
     universe = load_master_universe(paths)
-    hot_news_state = load_json_file(paths.run_hot_news_state_path(run_date), default={}) or {}
     board_heat_digest = load_json_file(paths.run_board_heat_digest_path(run_date), default={}) or {}
     board_heat_state = load_json_file(paths.run_board_heat_state_path(run_date), default={}) or {}
     announcements = announcements_payload_override or load_json_file(paths.run_recent_company_announcements_path(run_date), default={}) or {}
@@ -93,15 +98,15 @@ def render_shared_selection_context(
         lines.append("```")
     lines.append("")
 
-    lines.append("## 3. 主题主线全文")
+    lines.append("## 3. 主题主线摘要")
     lines.append("")
-    active_themes = hot_news_state.get("active_themes") if isinstance(hot_news_state, Mapping) else []
+    digest = load_or_build_hot_news_digest(run_date, base_dir=base_dir)
+    active_themes = digest.get("active_themes") if isinstance(digest, Mapping) else []
     if isinstance(active_themes, list) and active_themes:
-        lines.append(f"- active_theme_count: {len(active_themes)}")
-        lines.append("- source: 06_hot_news_state.json.active_themes")
-        lines.append("```json")
-        lines.append(json.dumps(active_themes, ensure_ascii=False, indent=2))
-        lines.append("```")
+        lines.append(
+            "- source: 06_hot_news_digest.json（完整主题记忆见 06_hot_news_state.json）"
+        )
+        lines.append(render_hot_news_digest_markdown(digest))
     else:
         lines.append("- 未找到 active_themes。")
     lines.append("")

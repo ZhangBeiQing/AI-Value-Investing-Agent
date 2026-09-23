@@ -38,7 +38,8 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 ```text
 1. /daily-macro-summary            → data/macro_economy/YYYYMMDD.md
-2. /gradual-hot-news-summary       → data/selection_runs/YYYY-MM-DD/06_hot_news_state.json
+2. /gradual-hot-news-summary       → data/selection_runs/YYYY-MM-DD/06_hot_news_state.json（完整存档）
+                                      + 06_hot_news_digest.json（由 scripts/build_hot_news_digest.py 派生的轻量摘要，供下游 AI/人工读取）
 ```
 
 - 宏观总结是新闻主题状态的上游校准器；渐进式新闻主题状态是后续 03_agent_input 与各 subagent 的核心研究输入。
@@ -249,7 +250,7 @@ data/skill_runs/YYYY-MM-DD/
 1. `master_universe` → `data/universe/master_universe.json`（选股股票宇宙，由 `bootstrap` 子命令初始化）
 2. `run-news` → 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json`
 3. `build-board-heat-state` → 板块热度研究 → `05_board_heat_state.json` / `05_board_heat_digest.json`
-4. `/daily-macro-summary` + `/gradual-hot-news-summary` → 宏观总结 + 渐进式主题状态 → `06_hot_news_state.json`
+4. `/daily-macro-summary` + `/gradual-hot-news-summary` → 宏观总结 + 渐进式主题状态 → `06_hot_news_state.json`（存档）与 `06_hot_news_digest.json`（轻量，下游默认读）
 5. `build-factor-store` → `data/factor_store/by_symbol/*` 与 `by_date/{date}.*` + `data/selection_runs/{date}/12_factor_snapshot.*`
 6. `build-factor-scores` → `13_factor_scores.{csv,json}`（按 `factor_scoring.yaml` 配置生成 short_score / long_score）
 7. `build-quant-prefilter` → `12_quant_prefilter.csv` + `12_quant_prefilter_short.csv` + `12_quant_prefilter_long.csv`
