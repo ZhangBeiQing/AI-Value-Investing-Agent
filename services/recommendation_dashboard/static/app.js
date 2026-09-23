@@ -14,6 +14,79 @@ function text(tag, value, className = '') {
   return node;
 }
 
+function appendMarkdownInline(parent, value) {
+  const source = String(value || '');
+  const pattern = /(`[^`\n]+`|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|\*\*[^*\n]+\*\*|~~[^~\n]+~~|\*[^*\n]+\*)/g;
+  let cursor = 0;
+  for (const match of source.matchAll(pattern)) {
+    if (match.index > cursor) parent.append(document.createTextNode(source.slice(cursor, match.index)));
+    const token = match[0];
+    if (token.startsWith('`')) parent.append(text('code', token.slice(1, -1)));
+    else if (token.startsWith('**')) parent.append(text('strong', token.slice(2, -2)));
+    else if (token.startsWith('~~')) parent.append(text('del', token.slice(2, -2)));
+    else if (token.startsWith('*')) parent.append(text('em', token.slice(1, -1)));
+    else {
+      const parts = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+      if (parts) {
+        const link = text('a', parts[1]); link.href = parts[2]; link.target = '_blank'; link.rel = 'noopener noreferrer'; parent.append(link);
+      } else parent.append(document.createTextNode(token));
+    }
+    cursor = match.index + token.length;
+  }
+  if (cursor < source.length) parent.append(document.createTextNode(source.slice(cursor)));
+}
+
+function markdownBlock(value) {
+  const root = document.createElement('div'); root.className = 'markdown-body';
+  const lines = String(value || '').replace(/\r\n?/g, '\n').split('\n');
+  const isSpecial = (line, next = '') => /^(```|#{1,4}\s|>\s?|[-*+]\s+|\d+[.)]\s+|---+$)/.test(line) || (/^\|/.test(line) && /^\|?\s*:?-{3,}/.test(next));
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) { index += 1; continue; }
+    if (line.startsWith('```')) {
+      const language = line.slice(3).trim(); const codeLines = []; index += 1;
+      while (index < lines.length && !lines[index].startsWith('```')) { codeLines.push(lines[index]); index += 1; }
+      if (index < lines.length) index += 1;
+      const pre = document.createElement('pre'); const code = text('code', codeLines.join('\n'));
+      if (language) code.dataset.language = language; pre.append(code); root.append(pre); continue;
+    }
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) { const node = document.createElement(`h${heading[1].length + 2}`); appendMarkdownInline(node, heading[2]); root.append(node); index += 1; continue; }
+    if (/^---+$/.test(line.trim())) { root.append(document.createElement('hr')); index += 1; continue; }
+    if (line.startsWith('>')) {
+      const quote = document.createElement('blockquote'); const content = [];
+      while (index < lines.length && lines[index].startsWith('>')) { content.push(lines[index].replace(/^>\s?/, '')); index += 1; }
+      appendMarkdownInline(quote, content.join('\n')); root.append(quote); continue;
+    }
+    const listMatch = line.match(/^\s*([-*+]|\d+[.)])\s+(.+)$/);
+    if (listMatch) {
+      const ordered = /^\d/.test(listMatch[1]); const list = document.createElement(ordered ? 'ol' : 'ul');
+      while (index < lines.length) {
+        const item = lines[index].match(/^\s*([-*+]|\d+[.)])\s+(.+)$/);
+        if (!item || /^\d/.test(item[1]) !== ordered) break;
+        const li = document.createElement('li'); appendMarkdownInline(li, item[2]); list.append(li); index += 1;
+      }
+      root.append(list); continue;
+    }
+    if (line.includes('|') && index + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[index + 1])) {
+      const rows = [];
+      const cells = (row) => row.trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim());
+      rows.push(cells(line)); index += 2;
+      while (index < lines.length && lines[index].includes('|') && lines[index].trim()) { rows.push(cells(lines[index])); index += 1; }
+      const wrap = document.createElement('div'); wrap.className = 'markdown-table-wrap'; const table = document.createElement('table');
+      rows.forEach((row, rowIndex) => { const tr = document.createElement('tr'); row.forEach((cell) => { const node = document.createElement(rowIndex ? 'td' : 'th'); appendMarkdownInline(node, cell); tr.append(node); }); (rowIndex ? table.append(tr) : table.append(tr)); });
+      wrap.append(table); root.append(wrap); continue;
+    }
+    const paragraphLines = [line]; index += 1;
+    while (index < lines.length && lines[index].trim() && !isSpecial(lines[index], lines[index + 1] || '')) { paragraphLines.push(lines[index]); index += 1; }
+    const paragraph = document.createElement('p');
+    paragraphLines.forEach((item, itemIndex) => { if (itemIndex) paragraph.append(document.createElement('br')); appendMarkdownInline(paragraph, item); });
+    root.append(paragraph);
+  }
+  return root;
+}
+
 function pct(value) {
   if (value == null) return '—';
   return `${value > 0 ? '+' : ''}${Number(value).toFixed(2)}%`;
@@ -430,7 +503,7 @@ function renderDetail(detail, row) {
 }
 
 async function renderChat(symbol, body) {
-  const block = section('与 OpenCode 继续讨论', body, '自动带入最新决策、辩论、最近两份研究包及分析日组合输入；仅问答，不改动交易文件');
+  const block = section('与 OpenCode 继续讨论', body, '自动带入最新决策、辩论、最新完整研究包及分析日组合输入；仅问答，不改动交易文件');
   const controls = document.createElement('div'); controls.className = 'chat-controls';
   const model = document.createElement('select'); model.setAttribute('aria-label', 'OpenCode 模型');
   const send = text('button', '发送', 'secondary-button'); send.type = 'button';
@@ -450,7 +523,9 @@ async function renderChat(symbol, body) {
       messages.replaceChildren();
       for (const item of chat.messages || []) {
         const entry = document.createElement('div'); entry.className = `chat-message ${item.role}`;
-        entry.append(text('div', item.role === 'user' ? '你' : 'OpenCode', 'chat-role'), text('div', item.content, 'chat-content'));
+        const content = document.createElement('div'); content.className = 'chat-content';
+        content.append(item.role === 'assistant' ? markdownBlock(item.content) : document.createTextNode(item.content));
+        entry.append(text('div', item.role === 'user' ? '你' : 'OpenCode', 'chat-role'), content);
         messages.append(entry);
       }
       busy = chat.status === 'running'; send.disabled = busy; model.disabled = busy; reset.disabled = busy;
@@ -512,6 +587,39 @@ function closeDetail() {
   document.body.style.overflow = '';
 }
 
+function initDrawerResize() {
+  const drawer = $('drawer'); const handle = $('drawerResizer'); const storageKey = 'recommendationDrawerWidth';
+  const limits = () => ({ min: Math.min(520, window.innerWidth), max: Math.max(520, window.innerWidth - 36) });
+  const applyWidth = (value, persist = false) => {
+    if (window.innerWidth <= 620) return;
+    const { min, max } = limits(); const width = Math.round(Math.min(max, Math.max(min, Number(value) || 750)));
+    drawer.style.setProperty('--drawer-width', `${width}px`); handle.setAttribute('aria-valuenow', String(width));
+    if (persist) localStorage.setItem(storageKey, String(width));
+  };
+  applyWidth(localStorage.getItem(storageKey));
+  handle.addEventListener('pointerdown', (event) => {
+    if (window.innerWidth <= 620) return;
+    event.preventDefault(); handle.setPointerCapture(event.pointerId); handle.classList.add('dragging'); document.body.style.userSelect = 'none'; document.body.style.cursor = 'ew-resize';
+  });
+  handle.addEventListener('pointermove', (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) return;
+    applyWidth(window.innerWidth - event.clientX);
+  });
+  const finish = (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) return;
+    handle.releasePointerCapture(event.pointerId); handle.classList.remove('dragging'); document.body.style.userSelect = ''; document.body.style.cursor = '';
+    applyWidth(parseFloat(getComputedStyle(drawer).width), true);
+  };
+  handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish);
+  handle.addEventListener('dblclick', () => applyWidth(750, true));
+  handle.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
+    event.preventDefault(); const current = parseFloat(getComputedStyle(drawer).width);
+    applyWidth(event.key === 'Home' ? 750 : current + (event.key === 'ArrowLeft' ? 40 : -40), true);
+  });
+  window.addEventListener('resize', () => applyWidth(parseFloat(getComputedStyle(drawer).width)));
+}
+
 async function load() {
   $('refreshBtn').disabled = true;
   $('refreshBtn').textContent = '刷新中…';
@@ -567,6 +675,7 @@ for (const button of document.querySelectorAll('[data-filter]')) button.addEvent
 $('closeDrawer').addEventListener('click', closeDetail);
 $('drawerBackdrop').addEventListener('click', closeDetail);
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('drawer').hidden) closeDetail(); });
+initDrawerResize();
 load();
 loadJobs();
 setInterval(async () => {
