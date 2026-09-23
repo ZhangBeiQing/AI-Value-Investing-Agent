@@ -327,7 +327,6 @@ data/skill_runs/YYYY-MM-DD/
 | `code-style.md` | Python 代码风格 + 统一日志规范 |
 | `shared-data-access.md` | 缓存 / 时间截断 / SymbolInfo / 数据访问统一入口 |
 | `skill-pipeline.md` | 01-08 产物契约、脚本分层、交易后处理约束 |
-| `testing.md` | evidence-first 调试、最小复现、主链路验证要求 |
 
 ### 7.3 Skills（`.codex/skills/`）
 

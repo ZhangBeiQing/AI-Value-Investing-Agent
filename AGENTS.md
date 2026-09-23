@@ -81,6 +81,15 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 改主链路后至少给出对应验证证据：日志、输出文件或失败现场
 - 新增或修改核心组件时使用统一日志入口，不要直接散落 `print`
 - 需要联网搜索时优先使用 `WebSearch` 工具，不要使用 `WebFetch` 或其他工具
+- 出 bug 时先拿失败现场再改代码，复杂问题先缩成最小复现，不要一上来全链路硬跑
+
+### 修改后最低验证标准
+
+| 改动类型 | 最低验证 | 需检查 |
+| --- | --- | --- |
+| 数据访问 / 数据刷新 | 目标模块能 import / 运行；影响主链路时跑 `python scripts/manage_daily_data.py`，或 `python scripts/refresh_all_for_date.py --date YYYY-MM-DD` | 目标缓存 / 产物落盘 |
+| `01-04` 产物生成 | `python scripts/run_daily_pipeline.py --date YYYY-MM-DD --base-dir data/tmp_<name>` | 目标输出文件已生成 |
+| 交易后处理 | `python scripts/run_post_trade.py --date YYYY-MM-DD` | `06_execution_log.json`、`07_daily_summary.json`、`08_history_merge.json`、`data/agent_data/{signature}` |
 
 ### Ask First
 
@@ -112,7 +121,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 | 增加研究/快照字段 | `services/research/`, `services/snapshot/`, `.codex/rules/shared-data-access.md` |
 | 增加外部数据缓存 | `shared_data_access/`, `shared_financial_utils.py`, `.codex/skills/extend-shared-data-access/SKILL.md` |
 | 调整交易后处理 | `scripts/run_post_trade.py`, `services/trading/`, `.codex/rules/skill-pipeline.md` |
-| 排查主链路失败 | `logs/`, `latest_status.json`, `.codex/rules/testing.md` |
+| 排查主链路失败 | `logs/runs/<日期>/<流程>/merged.log`, `logs/cron_daily_prep/latest_status.json` |
 | 统一日志接入 | `core/logging.py`, `.codex/rules/code-style.md` |
 
 ## 数据与缓存规则
@@ -144,7 +153,6 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - `code-style.md`：代码风格与统一日志规范
 - `shared-data-access.md`：缓存、时间截断、SymbolInfo、数据访问统一入口
 - `skill-pipeline.md`：`01-08` 产物契约、脚本分层与交易后处理约束
-- `testing.md`：evidence-first 调试、最小复现、主链路验证要求
 
 上述规则以 `.codex/rules/` 为主维护目录。
 

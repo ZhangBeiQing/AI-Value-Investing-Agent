@@ -288,7 +288,7 @@ python scripts/run_daily_pipeline.py --date <cur_date> --max-workers 6 --all-boo
 - Step 3 的 A / B 两路：重新派发同一个 subagent 提示词。
 - Step 4：只对失败的那几只股票重新派发角色，已经落盘并注册的股票不要重做。
 
-排查顺序：先读 `logs/` 下对应组件日志的**最新一份**和 `merged.log`，再看 `latest_status.json`，最后才动代码。遵守 `.codex/rules/testing.md` 的 evidence-first 原则：**先拿到失败现场，再改东西**。
+排查顺序：先读 `logs/runs/<日期>/<流程>/` 下对应组件日志和 `merged.log`，再看 `logs/cron_daily_prep/latest_status.json`，最后才动代码。遵守 evidence-first 原则：**先拿到失败现场，再改东西**。
 
 ## 九、完成后的报告
 
