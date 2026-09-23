@@ -18,7 +18,14 @@ import pandas as pd
 import akshare as ak
 import pickle
 from core.logging import get_logger
-from commons import *
+from commons import (
+    SymbolInfo,
+    api_call_with_delay,
+    ensure_stock_subdir,
+    get_stock_data_dir,
+    is_etf_symbol,
+    resolve_base_dir,
+)
 import logging
 import numpy as np
 import requests
@@ -26,8 +33,7 @@ from urllib.parse import quote
 
 from shared_data_access.chip_distribution import build_chip_distribution_from_price_csv
 
-# 导入ETF数据获取函数
-from commons import is_etf_symbol
+# 行情抓取（价格簇已下沉到 price_fetch）
 from shared_data_access.price_fetch import (
     fetch_cn_a_daily_with_fallback,
     fetch_cn_etf_daily,

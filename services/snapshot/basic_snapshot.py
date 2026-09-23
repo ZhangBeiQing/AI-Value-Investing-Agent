@@ -46,7 +46,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def setup_main_logger():
-    """设置主脚本日志器，将日志输出到 logs/main_scripts/BasicStockInfo/ 目录"""
+    """设置主脚本日志器：运行目录为 logs/runs/<日期>/<流程>/，独立运行时落 logs/debug/main_scripts/BasicStockInfo/"""
     return init_component_logger(
         "BasicStockInfo",
         group="main_scripts",

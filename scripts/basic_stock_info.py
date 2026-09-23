@@ -11,14 +11,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.network import install_network_timeouts
-from services.snapshot.basic_snapshot import *  # noqa: F401,F403
-
-# 本脚本会直接跑在子进程里抓取外部数据；未设超时的 socket 读一旦卡住会永久挂起。
-install_network_timeouts()
+from services.snapshot.basic_snapshot import _main
 
 
 if __name__ == "__main__":
-    from services.snapshot.basic_snapshot import _main
-
+    # 本进程直接抓取外部数据；未设超时的 socket 读一旦卡住会永久挂起。
+    install_network_timeouts()
     _main()
-

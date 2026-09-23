@@ -58,6 +58,7 @@ from typing import List, Dict, Any, Optional, Tuple, Iterable
 import logging
 import sys
 
+from core.logging import init_component_logger
 from indicator_library import IndicatorBatchRequest, IndicatorLibrary, IndicatorSpec
 from indicator_library.calculators.risk import return_metrics_indicator
 from indicator_library.gateways import DataFrameGateway
@@ -80,51 +81,12 @@ pd.set_option('future.no_silent_downcasting', True)
 
 # API调用延迟配置（秒）
 API_DELAY = 0.5  # 建议1秒延迟，既能避免频率限制又不会过度影响性能
-# 配置独立的日志系统（非MCP工具）
-LOG_ENV_KEY = "STOCK_ANALYZER_LOG_FILE"
-
-
-def setup_main_logger(log_level=logging.INFO):
-    """配置主脚本日志系统，保证整个进程复用同一个日志文件。"""
-
-    logger = logging.getLogger('StockAnalyzer')
-    if logger.handlers:
-        logger.setLevel(log_level)
-        return logger
-
-    log_dir = Path('logs') / 'main_scripts' / 'StockAnalyzer'
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    existing_path = os.environ.get(LOG_ENV_KEY)
-    if existing_path:
-        log_filename = Path(existing_path)
-    else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_filename = (log_dir / f'stock_analyzer_{timestamp}.log').resolve()
-        os.environ[LOG_ENV_KEY] = str(log_filename)
-
-    logger.setLevel(log_level)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
-    file_handler = logging.FileHandler(log_filename, encoding='utf-8')
-    file_handler.setLevel(log_level)
-    file_handler.setFormatter(formatter)
-
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
-    console_handler.setFormatter(formatter)
-
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-
-    logger.info(f"主脚本日志系统初始化完成，日志文件: {log_filename}")
-    return logger
-
-# 初始化全局logger
-logger = setup_main_logger()
+# 统一接入 core.logging：运行目录为 logs/runs/<日期>/<流程>/，否则落 logs/debug/
+logger = init_component_logger(
+    "StockAnalyzer",
+    group="services/research",
+    filename_prefix="stock_price_dynamics_summarizer",
+)
 
 class DataValidationError(RuntimeError):
     """关键行情数据缺失或无效时抛出，避免产生错误结论。"""

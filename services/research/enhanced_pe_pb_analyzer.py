@@ -25,6 +25,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+from core.logging import init_component_logger
 from indicator_library.calculators.fundamental import calculate_rolling_ttm_profit
 from shared_data_access.data_access import SharedDataAccess
 from shared_data_access.exceptions import CacheIntegrityError, DataUnavailableError
@@ -38,34 +39,14 @@ from commons import (
 )
 from commons.similar_stocks import get_similar_stocks
 
-LOG_DIR = Path("logs") / "main_scripts" / "EnhancedPEPBAnalyzer"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
 HK_PROFIT_NOTE = "港股的净利润增速没有扣除非经营损益，仅供参考，详细数据请查看财报接口返回的财报分析结果"
 
 
-def setup_logger() -> logging.Logger:
-    logger = logging.getLogger("enhanced_pe_pb_analyzer")
-    if logger.handlers:
-        return logger
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
-
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_handler = logging.FileHandler(
-        LOG_DIR / f"enhanced_pe_pb_analyzer_{timestamp}.log", encoding="utf-8"
-    )
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    return logger
-
-
-LOGGER = setup_logger()
+LOGGER = init_component_logger(
+    "EnhancedPEPBAnalyzer",
+    group="services/research",
+    filename_prefix="enhanced_pe_pb_analyzer",
+)
 
 
 class DataQualityError(RuntimeError):
