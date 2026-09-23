@@ -19,7 +19,7 @@
 
 ## 3. 日志系统总则
 
-本项目日志设计参考了 `AReaL` 的理念，但适配了当前本地 `skill-only` 架构。
+本项目日志适配当前本地 `skill-only` 架构：运行日志按「日期 + 流程」聚合到 `logs/runs/`，调试日志扁平到 `logs/debug/`，不再按模型签名分层。
 
 - 禁止在 `services/`、`core/`、`shared_data_access/`、`agent_tools/` 这类库代码里直接使用 `print` 做运行日志。
 - 禁止新增裸 `logging.getLogger(__name__)` 或点路径风格 logger 名称。
@@ -47,7 +47,7 @@
 - 不推荐：
   - `__name__`
   - `shared_data_access.cache_registry`
-  - `mcp.unknown_model.stock_analysis`
+  - `services.trading.trade_summary`
 
 如果是带 rank / worker 标识的动态名字，使用：
 

@@ -30,14 +30,12 @@
 ### 示例
 
 ```
-feat(roi): 实现基于分位数的统一裁剪尺寸
+feat(data): 价格缓存支持增量刷新
 
-为 VLM 输入实现基于分位数的 bbox 归一化，替代黑色填充方案。
+为缩短每日刷新耗时，price 缓存改为在既有数据上增量抓取最近窗口，不再每天全量重抓。
 
 主要改动：
-- 添加 compute_percentile_size() 计算目标尺寸
-- 添加 normalize_bbox_to_target() 调整 bbox 到统一尺寸
-- 在 BBox 类中添加 with_size() 和 center_x/center_y 属性
-- 在 engine 中实现两遍处理：先收集 bbox，再用统一尺寸裁剪
-
-BREAKING CHANGE: ROI 裁剪尺寸现在使用基于分位数的方案
+- shared_data_access/cache_registry.py 增加重叠窗口校验与增量合并
+- 统一 price.csv 的成交量、换手率口径
+- 新增 tests/test_price_incremental_refresh.py
+```
