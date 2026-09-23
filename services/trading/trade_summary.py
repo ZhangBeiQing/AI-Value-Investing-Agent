@@ -533,7 +533,6 @@ def _project_decision_memory(entry: dict) -> dict:
         "inferences": entry.get("inferences"),
         "key_risks": entry.get("key_risks"),
         "current_position_pct": entry.get("current_position_pct"),
-        "sizing_reason": entry.get("sizing_reason"),
     }
 
     court = entry.get("court")

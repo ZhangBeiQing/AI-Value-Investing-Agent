@@ -561,6 +561,7 @@ BUY, SELL, FLAT -> 无多数
 - 只保留最后一次投资逻辑总结，不再把所有历史 BUY/SELL 全文注入下一轮 Prompt；
 - 保留上轮待核验事项；
 - 排除历史 `recommended_action`、`price_target` 和其他过期执行计划；
+- 排除历史 `sizing_reason`，避免上一轮的数量依据锚定下一轮的仓位判断；
 - 旧格式 `court.verdict` 可能混有价格和加仓指令，因此只保留其 `court.pro/con`；新格式 verdict 按新职责可进入长期记忆。
 
 这样保留最近一次完整逻辑和下一轮核验线索，同时避免旧 BUY/SELL 论证反复累积、稀释当天证据或把一周前的价格条件机械当成今日纪律。
