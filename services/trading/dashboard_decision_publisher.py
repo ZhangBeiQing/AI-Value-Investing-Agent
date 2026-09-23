@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from core.logging import get_logger
+from services.trading.analysis_index import update_analysis_index
 from services.trading.decision_contract import validate_stock_decision_entry
 from services.trading.post_trade_pipeline import (
     execute_trade_from_decision,
@@ -116,6 +117,13 @@ def publish_dashboard_verdict(
             }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         merge_trade_summary(
             run_date, output_dir=workspace, signature=SIGNATURE, book_type="fixed_tracked"
+        )
+        update_analysis_index(
+            decision,
+            "fixed_tracked",
+            run_date,
+            data_dir / "skill_runs",
+            snapshot_root=workspace.parent.parent,
         )
         LOGGER.info("网页单股裁决已并入正式虚拟账本: %s %s action=%s previous=%s",
                     run_date, symbol, action, prior)

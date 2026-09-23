@@ -32,6 +32,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from services.trading.decision_contract import validate_stock_decision_entry
 from services.trading.debate_pipeline import validate_debate_artifacts
+from services.trading.analysis_index import update_analysis_index
 
 BOOK_TYPES = ("fixed_tracked", "short_book", "long_book")
 
@@ -127,77 +128,6 @@ def merge_decisions(
     baseline["stock_decisions"] = decisions
     return baseline, replaced, appended, errors
 
-
-def _snapshot_price_map(base_dir: Path, book_type: str, date: str) -> dict[str, float]:
-    """从某交易日的 02_basic_snapshot_payload.json 读取 symbol -> 当日收盘价。"""
-    snapshot_path = base_dir / date / book_type / "02_basic_snapshot_payload.json"
-    if not snapshot_path.exists():
-        return {}
-    try:
-        with open(snapshot_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
-    stocks = payload.get("stocks", {}) or {}
-    price_map: dict[str, float] = {}
-    for symbol, fields in stocks.items():
-        price = fields.get("latest_price")
-        if isinstance(price, (int, float)):
-            price_map[symbol] = float(price)
-    return price_map
-
-
-def update_analysis_index(merged: dict, book_type: str, date: str, base_dir: Path) -> None:
-    """更新持久化分析索引，让主 agent 跨交易日知道每只股票的最后分析日期、当日股价与价格印象。
-
-    索引条目字段：
-    - deep_analysis_date：最近一次深度分析的交易日
-    - last_deep_analysis_price：该次分析当天的收盘价（来自当日 02_basic_snapshot_payload.json 的 latest_price）
-    - price_impression：该次分析的价格印象
-    - confidence_score：置信度
-
-    历史已有条目若缺失 last_deep_analysis_price，会按各自的 deep_analysis_date 从当日快照回填。
-    """
-    index_path = base_dir / "_analysis_index.json"
-    if index_path.exists():
-        with open(index_path, "r", encoding="utf-8") as f:
-            index = json.load(f)
-    else:
-        index = {}
-
-    if book_type not in index:
-        index[book_type] = {}
-
-    today_price_map = _snapshot_price_map(base_dir, book_type, date)
-
-    for entry in merged.get("stock_decisions", []):
-        symbol = entry.get("symbol", "")
-        if not symbol:
-            continue
-        index[book_type][symbol] = {
-            "deep_analysis_date": date,
-            "last_deep_analysis_price": today_price_map.get(symbol),
-            "price_impression": entry.get("price_impression", ""),
-            "confidence_score": entry.get("confidence_score", 0),
-            "sizing_reason": entry.get("sizing_reason", ""),
-        }
-
-    # 回填历史缺失的 last_deep_analysis_price（按各自分析日快照）
-    for symbol, entry in index[book_type].items():
-        if entry.get("last_deep_analysis_price") is not None:
-            continue
-        historical_date = entry.get("deep_analysis_date")
-        if not historical_date:
-            continue
-        historical_price = _snapshot_price_map(base_dir, book_type, historical_date).get(
-            symbol
-        )
-        if historical_price is not None:
-            entry["last_deep_analysis_price"] = historical_price
-
-    with open(index_path, "w", encoding="utf-8") as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
-    print(f"  分析索引已更新: {index_path} ({book_type} -> {len(index[book_type])} 只)")
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="合并 subagent 单股 decision 到 05_decision.json")
