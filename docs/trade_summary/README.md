@@ -20,7 +20,7 @@ AI 在每日做决策时容易丢掉历史上下文，会出现：
 
 ## 2. 文件布局
 
-每个账本一套，路径形如 `data/agent_data/book-{book_type}/`（`book_type ∈ {fixed_tracked, short_book, long_book}`）。
+每个账本一套，路径形如 `data/agent_data/book-{book_type}/`（当前 `book_type = fixed_tracked`）。
 
 ```text
 data/agent_data/book-fixed_tracked/

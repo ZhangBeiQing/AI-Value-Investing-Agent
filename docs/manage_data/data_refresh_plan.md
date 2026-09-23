@@ -88,7 +88,7 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 ### 4.5 量化初筛
 
-由 `selection.build-factor-store` → `build-factor-scores` → `build-quant-prefilter` 三步负责，输出 `12_quant_prefilter_short.csv` 与 `12_quant_prefilter_long.csv`。其中短期量化初筛股票直接并入 fixed_tracked；长期候选也按现有规则并入 fixed_tracked，不再自动生成独立 short_book/long_book。
+由 `selection.build-factor-store` → `build-factor-scores` → `build-quant-prefilter` 三步负责，输出 `12_quant_prefilter_short.csv` 与 `12_quant_prefilter_long.csv`。其中短期量化初筛股票直接并入 fixed_tracked；长期候选也按现有规则并入 fixed_tracked，不再自动生成独立交易账本。
 
 `--no-generate-prefilter` 可跳过。
 

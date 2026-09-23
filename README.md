@@ -42,7 +42,7 @@ fixed_tracked 账本采用中心化管理 + 逐股多 Agent 辩论：
 | --- | --- | --- |
 | `fixed_tracked` | 静态池 + 实际持仓 + `12_quant_prefilter_short.csv` + 长期候选 | 主 Agent 筛选 P0 后执行多 Agent 辩论 |
 
-旧 `short_book` / `long_book` 的 Skill 与 Prompt flow 已移除；当前日常只用综合 `fixed_tracked`。
+旧的多账本交易 skill 与 Prompt flow 已移除；当前日常只用综合 `fixed_tracked`。
 
 ## 当前日常流程
 

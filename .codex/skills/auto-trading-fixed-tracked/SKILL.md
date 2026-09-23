@@ -50,7 +50,7 @@ data/skill_runs/_analysis_index.json
 
 可选文件缺失时记录为无此输入，不因此终止。
 
-`fixed_tracked` 已包含固定股票池、真实持仓和长期候选；不要再单独运行 `long_book` Skill。
+`fixed_tracked` 已包含固定股票池、真实持仓和长期候选；当前只需运行本 skill 这一个交易账本。
 
 ## 3. 规则唯一来源
 

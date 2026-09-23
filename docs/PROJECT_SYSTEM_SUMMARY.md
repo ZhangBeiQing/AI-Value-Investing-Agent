@@ -70,10 +70,10 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 - **fixed_tracked** 取自 `configs/stock_pool.py` 的 `TRACKED_A_STOCKS`
 - **实际持仓**来自 `book-fixed_tracked` 的人工持仓覆盖，必须纳入 fixed_tracked
-- **短期量化候选**直接读取 `12_quant_prefilter_short.csv` 并入 fixed_tracked，不再生成独立 short_book
+- **短期量化候选**直接读取 `12_quant_prefilter_short.csv` 并入 fixed_tracked，不再生成独立交易账本
 - **长期候选**优先取 `09_long_book_candidates.json`，缺失时回退 `12_quant_prefilter_long.csv`，随后并入 fixed_tracked
 
-短期量化候选进入 fixed_tracked 后只代表扩大 P0 候选范围，统一使用 fixed-tracked 的投资策略、仓位约束和多 Agent 辩论；不继承旧 short_book 的 20 个交易日强制退出规则。
+短期量化候选进入 fixed_tracked 后只代表扩大 P0 候选范围，统一使用 fixed-tracked 的投资策略、仓位约束和多 Agent 辩论；不再有旧的「20 个交易日强制退出」规则。
 
 输出目录：
 
@@ -229,7 +229,7 @@ data/skill_runs/YYYY-MM-DD/
 - 每只股票一个目录：`data/stock_info/{stock_name}_{symbol}/`，下含 `prices/`、`financials_cache/`、`share_info/`、`disclosures/`、`news/`、`analysis/`、`pe_pb_analysis/`、`chip_distribution/`、`financial_reports/`、`forecast/` 等子目录
 - 全局缓存：`data/global_cache/`（板块、宏观、相似股、symbol 映射等）
 - 选股运行产物：`data/selection_runs/YYYY-MM-DD/`
-- 当前自动运行产物：`data/skill_runs/YYYY-MM-DD/fixed_tracked/`；`short_book`、`long_book` 目录仅保留历史或自定义 manifest 兼容。
+- 当前自动运行产物：`data/skill_runs/YYYY-MM-DD/fixed_tracked/`。
 - 交易归档：`data/agent_data/book-{book_type}/`
 
 ---

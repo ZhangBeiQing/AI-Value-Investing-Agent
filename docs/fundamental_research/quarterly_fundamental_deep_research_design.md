@@ -370,11 +370,7 @@ data/skill_runs/{pre_market_date}/{book_type}/04_stock_research/
 {stock_name}_{symbol}_{pre_market_date}_research.md
 ```
 
-如果同一股票在多个账本存在研究包，价格、估值和一致预期本身不依赖账本，可按以下顺序选择：
-
-1. `fixed_tracked`
-2. `long_book`
-3. `short_book`
+价格、估值和一致预期本身不依赖账本，当前统一以 `fixed_tracked` 账本的研究包为准。
 
 不得读取研究包中的：
 

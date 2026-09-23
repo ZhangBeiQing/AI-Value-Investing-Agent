@@ -26,7 +26,7 @@ subagent_result/{stock_name}_{symbol}_{date}_decision.json
 
 随后 `scripts/merge_subagent_decisions.py` 将单股结果合并成 `05_decision.json`。
 
-固定跟踪池已经吸收长期候选池；本设计不恢复独立的 `long_book` 交易流程。`short_book` 暂不迁移到本文的辩论模式。
+固定跟踪池已经吸收长期候选池，当前只有综合 `fixed_tracked` 一个交易账本。
 
 ## 3. 现状问题
 
@@ -84,8 +84,6 @@ Bull、Bear、Juror 等个股角色不应读取 P0 调度和用户交互规则�
 
 - 不引入 LangGraph。
 - 不新增第三方依赖。
-- 不迁移 `short_book`。
-- 不恢复独立 `long_book`。
 - 不修改真实交易执行、仓位计算、成交价格和最小交易单位规则。
 - 不让投票按模型自报置信度加权。
 - 不建立 `manifest.json` 或动态 Prompt 插件系统。
@@ -582,7 +580,6 @@ BUY, SELL, FLAT -> 无多数
 - Prompt 配置路径使用函数显式参数，不再通过进程级环境变量切换。
 - fixed_tracked 默认从 Markdown policy 生成。
 - 每日同时写出主 Agent 输入和个股共同输入。
-- short_book 和旧 JSON prompt 配置继续可用。
 
 ### 13.2 Debate 管理
 
@@ -620,7 +617,6 @@ BUY, SELL, FLAT -> 无多数
 - 现有 `01-04` 主文件名。
 - `05_decision.json` 顶层格式。
 - 真实交易脚本消费字段。
-- `short_book` 旧流程。
 - `merge_subagent_decisions.py` 默认读取 `subagent_result`。
 
 ### 14.2 新增
