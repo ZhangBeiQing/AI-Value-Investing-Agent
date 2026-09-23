@@ -152,6 +152,7 @@ data/skill_runs/YYYY-MM-DD/
 ├── shared_data_access/         # 统一外部数据访问与缓存
 │   ├── data_access.py          # SharedDataAccess.prepare_dataset() 唯一入口
 │   ├── cache_registry.py       # 缓存类型 / TTL / 路径登记
+│   ├── price_fetch.py          # A股/港股/ETF/指数日线抓取与 canonical 归一化
 │   ├── market_calendar.py      # 交易日历（000001.IDX + SSE 回退）
 │   ├── chip_distribution.py    # 筹码分布抓取/回退计算
 │   ├── board_metrics.py        # 板块行情/历史

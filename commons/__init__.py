@@ -21,12 +21,9 @@ from .stock_utils import (
     is_cache_expired,
     resolve_base_dir,
     get_last_trading_day,
-    fetch_cn_a_daily_with_fallback,
-    fetch_hk_a_daily_with_fallback,
     is_cn_etf,
     is_cn_etf_symbol,
     is_etf_symbol,
-    CANONICAL_PRICE_COLUMNS,
 )
 
 __all__ = [
@@ -48,9 +45,6 @@ __all__ = [
     "is_cn_etf",
     "is_cn_etf_symbol",
     "is_etf_symbol",
-    "fetch_cn_a_daily_with_fallback",
-    "fetch_hk_a_daily_with_fallback",
-    "CANONICAL_PRICE_COLUMNS",
 ]
 
 __version__ = "1.0.0"

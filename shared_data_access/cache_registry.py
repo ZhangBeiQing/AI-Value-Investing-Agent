@@ -27,7 +27,13 @@ from urllib.parse import quote
 from shared_data_access.chip_distribution import build_chip_distribution_from_price_csv
 
 # 导入ETF数据获取函数
-from commons.stock_utils import fetch_cn_etf_daily, fetch_cn_index_daily, is_etf_symbol
+from commons import is_etf_symbol
+from shared_data_access.price_fetch import (
+    fetch_cn_a_daily_with_fallback,
+    fetch_cn_etf_daily,
+    fetch_cn_index_daily,
+    fetch_hk_a_daily_with_fallback,
+)
 
 
 HK_METADATA_COLUMNS: tuple[str, ...] = (
