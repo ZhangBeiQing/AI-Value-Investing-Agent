@@ -16,14 +16,14 @@ from core.logging import get_logger
 from pydantic import BaseModel, Field, field_validator
 
 # Add project root directory to Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = str(Path(__file__).resolve().parents[2])
 sys.path.insert(0, project_root)
-from tools.price_tools import (
+from services.trading.price_tools import (
     compute_total_value,
     compute_position_costs_and_profit,
     get_latest_position,
 )
-from tools.general_tools import get_config_value
+from core.runtime_state import get_config_value
 from configs.stock_pool import TRACKED_SYMBOLS, TRACKED_A_STOCKS
 from utlity.stock_utils import parse_symbol
 
@@ -394,7 +394,7 @@ def build_agent_prompt_context(
     # 历史总结改为读取昨日JSON，如无则回退占位文本
     try:
         # 延迟导入，避免循环依赖
-        from trade_summary import get_portfolio_historical_context
+        from services.trading.trade_summary import get_portfolio_historical_context
         # 读取股票池最近N次（默认1）合并后的操作摘要
         portfolio_hist = get_portfolio_historical_context(signature, target_symbols, n=1)
         historical_summary_value = json.dumps(portfolio_hist, ensure_ascii=False, indent=2)

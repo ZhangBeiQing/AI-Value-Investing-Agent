@@ -25,7 +25,7 @@ AI 在每日做决策时容易丢掉历史上下文，会出现：
 ```text
 data/agent_data/book-fixed_tracked/
 ├── position/
-│   ├── position.jsonl                # 每日仓位记录（追加写入），由 tools.price_tools 维护
+│   ├── position.jsonl                # 每日仓位记录（追加写入），由 services.trading.price_tools 维护
 │   └── manual_position_override.json # 人工干预入口
 ├── stock_decisions.json              # 原始逐股决策表
 ├── decision_summary.json             # 合并后的决策摘要

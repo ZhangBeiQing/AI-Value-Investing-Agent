@@ -288,12 +288,12 @@ class RecommendationDashboardTest(unittest.TestCase):
         manual = position_dir / "manual_position_override.json"
         manual.write_text('{"as_of_date":"2026-09-17","cash":5000,"positions":{"中国联通":{"shares":500,"avg_cost":10}}}', encoding="utf-8")
         manual_before = manual.read_bytes()
-        fake_module_path = self.data_dir / "tools" / "price_tools.py"
+        fake_module_path = self.data_dir / "services" / "trading" / "price_tools.py"
         with use_agent_data_root(data_root / "agent_data"), \
              patch("services.trading.dashboard_decision_publisher.PROJECT_DATA", data_root), \
              patch("services.trading.post_trade_pipeline.PROJECT_ROOT", self.data_dir), \
              patch("services.trading.trade_executor.PROJECT_ROOT", self.data_dir), \
-             patch("tools.price_tools.__file__", str(fake_module_path)), \
+             patch("services.trading.price_tools.__file__", str(fake_module_path)), \
              patch("services.trading.trade_executor.get_prev_close_prices", return_value={"600050.SH_price": 10.0}), \
              patch("services.trading.trade_executor.compute_total_value", return_value=1000.0), \
              patch.dict(os.environ, {"RUNTIME_ENV_PATH": str(workspace / "runtime_env.json")}):
@@ -322,14 +322,14 @@ class RecommendationDashboardTest(unittest.TestCase):
 
     def test_virtual_position_lookup_ignores_manual_override(self) -> None:
         from datetime import datetime
-        from tools.price_tools import get_latest_virtual_position
+        from services.trading.price_tools import get_latest_virtual_position
 
         record = {
             "date": "2026-09-16", "_parsed_date": datetime(2026, 9, 16).date(),
             "id": 7, "positions": {"CASH": 900, "600050.SH": 100},
         }
-        with patch("tools.price_tools._load_position_records", return_value=[record]), \
-             patch("tools.price_tools._load_manual_position_override", side_effect=AssertionError("不得读取人工持仓")):
+        with patch("services.trading.price_tools._load_position_records", return_value=[record]), \
+             patch("services.trading.price_tools._load_manual_position_override", side_effect=AssertionError("不得读取人工持仓")):
             positions, record_id = get_latest_virtual_position("2026-09-17", "book-fixed_tracked")
         self.assertEqual(positions["600050.SH"], 100)
         self.assertEqual(record_id, 7)

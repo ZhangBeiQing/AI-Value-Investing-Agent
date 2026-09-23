@@ -11,12 +11,12 @@ import sys
 import pandas as pd
 
 # 将项目根目录加入 Python 路径，便于从子目录直接运行本文件
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = str(Path(__file__).resolve().parents[2])
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 from core.logging import get_logger
 from shared_data_access.paths import price_cache_dir
-from tools.general_tools import get_config_value
+from core.runtime_state import get_config_value
 from configs.stock_pool import TRACKED_SYMBOLS
 from utlity.stock_utils import get_latest_trading_day, parse_symbol
 
@@ -66,7 +66,7 @@ def _load_position_records(position_file: Path) -> List[Dict]:
 
 
 def _manual_position_override_file(modelname: str) -> Path:
-    base_dir = Path(__file__).resolve().parents[1]
+    base_dir = Path(__file__).resolve().parents[2]
     return (
         base_dir
         / "data"
@@ -119,7 +119,7 @@ def _stock_name_to_code_map() -> Dict[str, str]:
     """构建 股票名称 → 股票代码 的映射表（以 master_universe.json 为准）。"""
     from pathlib import Path as _Path
     import json as _json
-    universe_path = _Path(__file__).resolve().parents[1] / "data" / "universe" / "master_universe.json"
+    universe_path = _Path(__file__).resolve().parents[2] / "data" / "universe" / "master_universe.json"
     name_map: Dict[str, str] = {}
     if universe_path.exists():
         try:
@@ -245,7 +245,7 @@ def _resolve_position_state_on_or_before(
     *,
     preferred_dates: Optional[List[str]] = None,
 ) -> Tuple[Dict[str, float], int, Optional[date], str]:
-    base_dir = Path(__file__).resolve().parents[1]
+    base_dir = Path(__file__).resolve().parents[2]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
 
     records = _load_position_records(position_file)
@@ -543,7 +543,7 @@ def get_prev_trading_day_total_value(today_date: str, modelname: str) -> Optiona
         except Exception:
             return None
 
-    base_dir = Path(__file__).resolve().parents[1]
+    base_dir = Path(__file__).resolve().parents[2]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
     if not position_file.exists():
         return None
@@ -593,7 +593,7 @@ def get_latest_position(today_date: str, modelname: str) -> Dict[str, float]:
 
 def get_latest_virtual_position(today_date: str, modelname: str) -> Tuple[Dict[str, float], int]:
     """Read the Agent paper ledger only; never substitute the user's real holdings."""
-    position_file = Path(__file__).resolve().parents[1] / "data" / "agent_data" / modelname / "position" / "position.jsonl"
+    position_file = Path(__file__).resolve().parents[2] / "data" / "agent_data" / modelname / "position" / "position.jsonl"
     latest = _pick_latest_record_on_or_before(_load_position_records(position_file), today_date)
     if latest is None:
         return {}, -1
@@ -617,7 +617,7 @@ def add_no_trade_record(today_date: str, modelname: str):
     save_item["this_action"] = {"action":"no_trade","symbol":"","amount":0}
     
     save_item["positions"] = current_position
-    base_dir = Path(__file__).resolve().parents[1]
+    base_dir = Path(__file__).resolve().parents[2]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
 
     # 计算 total_value 并写入
@@ -655,7 +655,7 @@ def compute_position_costs_and_profit(
         LOGGER.info("compute_position_costs_and_profit 使用 manual_position_override: signature=%s, today=%s", modelname, today_date)
         return manual_override_result
 
-    base_dir = Path(__file__).resolve().parents[1]
+    base_dir = Path(__file__).resolve().parents[2]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
     if not position_file.exists():
         return {}, {}

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from typing import Dict, Optional, Sequence
 
-from prompts.agent_prompt import (
+from services.prompting.agent_prompt import (
     build_agent_prompt_context,
     get_agent_system_prompt,
 )

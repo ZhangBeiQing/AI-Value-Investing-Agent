@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 from core.logging import init_tool_logger
 from core.runtime_state import get_config_value, write_config_value
-from tools.price_tools import compute_total_value, get_latest_virtual_position, get_prev_close_prices
+from services.trading.price_tools import compute_total_value, get_latest_virtual_position, get_prev_close_prices
 from utlity.stock_utils import parse_symbol, SymbolFormatError
 
 

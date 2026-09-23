@@ -166,7 +166,6 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── network.py              # 网络超时设置
 │   ├── run_context.py          # live / backtest 运行上下文
 │   └── runtime_state.py
-├── prompts/                    # 旧版 prompt 组装与财报深研 prompt 素材
 ├── indicator_library/          # 独立指标计算包（calculators/）
 ├── configs/
 │   ├── stock_pool.py           # TRACKED_A_STOCKS（fixed_tracked 静态池）
@@ -182,9 +181,8 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── skills/
 │   └── commands/
 ├── docs/                       # 设计与系统文档（本文所在）
-├── tools/                      # 历史兼容层，新代码不再向此处沉淀
 ├── utlity/                     # 通用工具函数（parse_symbol 等）
-└── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py / trade_summary.py
+└── basic_stock_info.py / shared_financial_utils.py / stock_price_dynamics_summarizer.py / enhanced_pe_pb_analyzer.py
                                 # 历史保留的顶层脚本，仍由 daily 链路调用，新逻辑不再继续堆在这里
 ```
 
@@ -273,7 +271,7 @@ data/skill_runs/YYYY-MM-DD/
 
 `data/agent_data/book-{book_type}/`：
 
-- `position/position.jsonl` — 每日仓位记录，由 `tools.price_tools` 写入；包含 `IF_TRADE` 标记
+- `position/position.jsonl` — 每日仓位记录，由 `services.trading.price_tools` 写入；包含 `IF_TRADE` 标记
 - `position/manual_position_override.json` — 人工干预入口
 - `stock_decisions.json` — 原始逐股决策表（追加写入）
 - `decision_summary.json` — 合并后的决策摘要（连续 HOLD/FLAT 序列合并为一条）
@@ -295,7 +293,7 @@ data/skill_runs/YYYY-MM-DD/
 
 ### 6.1 兼容层现状
 
-- `tools/` 仍保留少量历史导入路径兼容包装，真实业务实现已经迁移到 `services/` 与 `core/`
+- 历史兼容层（`agent_tools/`、`tools/`、`prompts/`）已清理：真实实现统一位于 `services/` 与 `core/`，不再保留旧导入路径包装
 - 旧时代的 MCP 服务脚本（`start_mcp_services.py`、`tool_python.py`、`tool_math.py`）已经清理
 - `basic_stock_info.py`、`enhanced_pe_pb_analyzer.py`、`stock_price_dynamics_summarizer.py`、`shared_financial_utils.py` 仍位于仓库根目录，是历史保留的顶层脚本，仍被日常链路调用，但**不再继续在此沉淀新逻辑**
 
