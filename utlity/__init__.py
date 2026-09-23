@@ -45,6 +45,7 @@ from .stock_utils import (
     is_cn_etf,
     is_cn_etf_symbol,
     is_etf_symbol,
+    CANONICAL_PRICE_COLUMNS,
 )
 
 # 定义包的公开接口
@@ -80,7 +81,8 @@ __all__ = [
     'is_etf_symbol',
     # 行情回退函数
     'fetch_cn_a_daily_with_fallback',
-    'fetch_hk_a_daily_with_fallback'
+    'fetch_hk_a_daily_with_fallback',
+    'CANONICAL_PRICE_COLUMNS'
 ]
 
 # 包版本信息

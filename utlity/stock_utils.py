@@ -786,6 +786,71 @@ def get_stock_name(symbol: str, logger: Optional[logging.Logger] = None) -> str:
         raise ValueError(error_msg)
 
 
+CANONICAL_PRICE_COLUMNS = (
+    "日期",
+    "开盘",
+    "最高",
+    "最低",
+    "收盘",
+    "成交量",
+    "成交额",
+    "换手率",
+    "流通股本",
+)
+
+_PRICE_COLUMN_ALIASES = {
+    "date": "日期",
+    "open": "开盘",
+    "high": "最高",
+    "low": "最低",
+    "close": "收盘",
+    "volume": "成交量",
+    "amount": "成交额",
+    "turnover": "换手率",
+    "outstanding_share": "流通股本",
+}
+
+
+def _finalize_price_frame(
+    df: pd.DataFrame,
+    *,
+    volume_in_lots: bool = False,
+    turnover_in_percent: bool = False,
+) -> pd.DataFrame:
+    """Return a canonical daily-price frame shared by every data source.
+
+    Canonical units: 成交量=股, 成交额=元, 换手率=小数比例, 流通股本=股。
+    东财接口（``stock_zh_a_hist`` / ``stock_hk_hist``）的成交量以「手」、换手率以百分数
+    返回，调用方需显式声明 ``volume_in_lots`` / ``turnover_in_percent`` 完成换算；新浪
+    接口已是目标口径，无需换算。所有来源统一裁剪为固定列集合，避免同一 ``price.csv``
+    因回退切换而出现列结构或单位不一致。
+    """
+    if df is None or df.empty:
+        return pd.DataFrame(columns=list(CANONICAL_PRICE_COLUMNS))
+
+    frame = df.rename(columns=_PRICE_COLUMN_ALIASES).copy()
+    if "日期" not in frame.columns:
+        return pd.DataFrame(columns=list(CANONICAL_PRICE_COLUMNS))
+
+    frame["日期"] = pd.to_datetime(frame["日期"], errors="coerce")
+    frame = frame.dropna(subset=["日期"])
+    if frame.empty:
+        return pd.DataFrame(columns=list(CANONICAL_PRICE_COLUMNS))
+
+    for column in CANONICAL_PRICE_COLUMNS[1:]:
+        if column not in frame.columns:
+            frame[column] = np.nan
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+
+    if volume_in_lots:
+        frame["成交量"] = frame["成交量"] * 100
+    if turnover_in_percent:
+        frame["换手率"] = frame["换手率"] / 100
+
+    frame = frame.sort_values("日期").reset_index(drop=True)
+    return frame[list(CANONICAL_PRICE_COLUMNS)]
+
+
 def _fetch_via_stock_zh_a_daily(ak_symbol: str, start_date: str, end_date: str, adjust: str, logger) -> pd.DataFrame:
     import time as _time
     max_attempts = 3
@@ -829,20 +894,7 @@ def fetch_cn_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end
 
     try:
         df = _fetch_via_stock_zh_a_daily(ak_symbol, start_date, end_date, adjust, logger)
-        df = df.rename(
-            columns={
-                "date": "日期",
-                "open": "开盘",
-                "high": "最高",
-                "low": "最低",
-                "close": "收盘",
-                "volume": "成交量",
-                "amount": "成交额",
-                "turnover": "换手率",
-                "outstanding_share": "流通股本",
-            }
-        )
-        return df
+        return _finalize_price_frame(df)
     except Exception as exc:
         logger.warning(
             "stock_zh_a_daily 获取 %s 失败(已重试)，改用 stock_zh_a_hist: %s",
@@ -860,9 +912,10 @@ def fetch_cn_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end
         logger=logger
     )
     if df_hist is not None and not df_hist.empty:
-        if "流通股本" not in df_hist.columns:
-            df_hist["流通股本"] = np.nan
-        return df_hist
+        # 东财成交量单位为「手」、换手率为百分数，换算到新浪口径
+        return _finalize_price_frame(
+            df_hist, volume_in_lots=True, turnover_in_percent=True
+        )
     raise ValueError("stock_zh_a_hist 返回空数据")
 
 
@@ -879,29 +932,8 @@ def fetch_cn_etf_daily(symbol_info: SymbolInfo, start_date: str, end_date: str, 
         
         if df is None or df.empty:
             raise ValueError(f"fund_etf_hist_sina 未返回 {symbol_info.symbol} 数据")
-        
-        # 重命名列名以保持一致性
-        df = df.rename(
-            columns={
-                "date": "日期",
-                "open": "开盘",
-                "high": "最高",
-                "low": "最低",
-                "close": "收盘",
-                "volume": "成交量",
-                "amount": "成交额",
-                "turnover": "换手率",
-                "outstanding_share": "流通股本",
-            }
-        )
-        
-        # 添加缺失的列
-        if "换手率" not in df.columns:
-            df["换手率"] = np.nan
-        if "流通股本" not in df.columns:
-            df["流通股本"] = np.nan
-        
-        return df
+
+        return _finalize_price_frame(df)
     except Exception as exc:
         logger.warning(
             "fund_etf_hist_sina 获取 %s ETF数据失败: %s",
@@ -924,28 +956,8 @@ def fetch_cn_index_daily(symbol_info: SymbolInfo, logger: logging.Logger = None)
         
         if df is None or df.empty:
             raise ValueError(f"stock_zh_index_daily 未返回 {symbol_info.symbol} 数据")
-        
-        # 重命名列名以保持一致性
-        df = df.rename(
-            columns={
-                "date": "日期",
-                "open": "开盘",
-                "high": "最高",
-                "low": "最低",
-                "close": "收盘",
-                "volume": "成交量",
-                "amount": "成交额",
-                "outstanding_share": "流通股本",
-            }
-        )
-        
-        # 添加缺失的列
-        if "换手率" not in df.columns:
-            df["换手率"] = np.nan
-        if "流通股本" not in df.columns:
-            df["流通股本"] = np.nan
-        
-        return df
+
+        return _finalize_price_frame(df)
     except Exception as exc:
         logger.warning(
             "stock_zh_index_daily 获取 %s 指数数据失败: %s",
@@ -1040,7 +1052,9 @@ def _fetch_hk_hist_from_eastmoney(
             normalized = _normalize_hk_daily_frame(df, start_date, end_date)
             if normalized.empty:
                 raise ValueError(f"stock_hk_hist 未返回 {symbol_info.symbol} 数据")
-            return normalized
+            return _finalize_price_frame(
+                normalized, volume_in_lots=True, turnover_in_percent=True
+            )
         except Exception as exc:
             last_error = exc
             retryable = isinstance(
@@ -1087,7 +1101,7 @@ def _fetch_hk_daily_from_sina(
     normalized = _normalize_hk_daily_frame(df, start_date, end_date)
     if normalized.empty:
         raise ValueError(f"stock_hk_daily 未返回 {symbol_info.symbol} 数据")
-    return normalized
+    return _finalize_price_frame(normalized)
 
 
 def fetch_hk_a_daily_with_fallback(symbol_info: SymbolInfo, start_date: str, end_date: str, adjust: str = "qfq", logger: logging.Logger = None) -> pd.DataFrame:

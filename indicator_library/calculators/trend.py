@@ -8,10 +8,12 @@ from utlity import SymbolInfo
 
 
 def _normalize_turnover_pct(turnover_series: pd.Series, symbol_info: SymbolInfo) -> pd.Series:
-    """统一换手率为百分数口径，A 股缓存是小数，港股缓存通常已是百分数。"""
+    """统一换手率到百分数口径。
+
+    所有来源的 price.csv 现在统一存小数比例（见 ``_finalize_price_frame``），
+    因此这里只需 ×100；``symbol_info`` 保留仅为兼容既有调用签名。
+    """
     numeric_series = pd.to_numeric(turnover_series, errors="coerce")
-    if symbol_info.is_hk_market():
-        return numeric_series
     return numeric_series * 100
 
 def price_snapshot_indicator(

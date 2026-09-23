@@ -1044,6 +1044,111 @@ def update_financial_data_cached(
     return
 
 
+PRICE_INCREMENTAL_OVERLAP_DAYS = 10
+
+
+def _normalize_price_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """Parse 日期, drop invalid rows, and sort ascending by date."""
+    if frame is None or frame.empty or "日期" not in frame.columns:
+        return pd.DataFrame()
+    normalized = frame.copy()
+    normalized["日期"] = pd.to_datetime(normalized["日期"], errors="coerce")
+    normalized = normalized.dropna(subset=["日期"])
+    if normalized.empty:
+        return pd.DataFrame()
+    return normalized.sort_values("日期").reset_index(drop=True)
+
+
+def _requested_start_date(cache_dir: Path) -> Optional[str]:
+    meta = _load_meta(cache_dir)
+    if meta and meta.get("requested_start_date"):
+        return str(meta["requested_start_date"])
+    return None
+
+
+def _overlap_is_consistent(
+    existing: pd.DataFrame,
+    fresh: pd.DataFrame,
+    overlap_start: datetime,
+) -> bool:
+    """Return True when overlapping closes match, i.e. no ex-rights re-basing.
+
+    With 前复权 (qfq) data any new dividend/split re-bases the whole history, so
+    a pure append would mix two bases. Comparing the overlapping window detects
+    that and lets the caller fall back to a full refresh.
+    """
+    if existing.empty or fresh.empty:
+        return True
+    if "收盘" not in existing.columns or "收盘" not in fresh.columns:
+        return True
+    old = existing.loc[existing["日期"] >= overlap_start, ["日期", "收盘"]]
+    new = fresh.loc[fresh["日期"] >= overlap_start, ["日期", "收盘"]]
+    merged = old.merge(new, on="日期", suffixes=("_old", "_new"))
+    if merged.empty:
+        return True
+    merged = merged.dropna(subset=["收盘_old", "收盘_new"])
+    if merged.empty:
+        return True
+    old_close = pd.to_numeric(merged["收盘_old"], errors="coerce")
+    new_close = pd.to_numeric(merged["收盘_new"], errors="coerce")
+    return bool(((old_close - new_close).abs() <= 1e-4).all())
+
+
+def _merge_price_frames(existing: pd.DataFrame, fresh: pd.DataFrame) -> pd.DataFrame:
+    """Merge cached history with a fresh increment; fresh rows win on conflicts."""
+    if existing.empty:
+        return fresh.copy()
+    if fresh.empty:
+        return existing.copy()
+    columns = list(existing.columns) + [
+        column for column in fresh.columns if column not in existing.columns
+    ]
+    combined = pd.concat(
+        [existing.reindex(columns=columns), fresh.reindex(columns=columns)],
+        ignore_index=True,
+    )
+    combined["日期"] = pd.to_datetime(combined["日期"], errors="coerce")
+    combined = combined.dropna(subset=["日期"])
+    combined = combined.drop_duplicates(subset=["日期"], keep="last")
+    return combined.sort_values("日期").reset_index(drop=True)
+
+
+def _fetch_daily_price_frame(
+    symbolInfo: SymbolInfo,
+    start_date: str,
+    end_date: str,
+    logger: logging.Logger | None,
+) -> pd.DataFrame:
+    """Fetch daily prices for one symbol, dispatching by market/security type."""
+    if symbolInfo.is_hk_market():
+        return fetch_hk_a_daily_with_fallback(
+            symbol_info=symbolInfo,
+            start_date=start_date,
+            end_date=end_date,
+            adjust="qfq",
+            logger=logger,
+        )
+    if symbolInfo.is_cn_market() or symbolInfo.market == "CN_INDEX":
+        if symbolInfo.market == "CN_INDEX":
+            return fetch_cn_index_daily(symbol_info=symbolInfo, logger=logger)
+        if symbolInfo.is_cn_market() and is_etf_symbol(symbolInfo):
+            return fetch_cn_etf_daily(
+                symbol_info=symbolInfo,
+                start_date=start_date,
+                end_date=end_date,
+                logger=logger,
+            )
+        return fetch_cn_a_daily_with_fallback(
+            symbol_info=symbolInfo,
+            start_date=start_date,
+            end_date=end_date,
+            adjust="qfq",
+            logger=logger,
+        )
+    logger.warning(f"暂不支持{symbolInfo.market}市场的价格数据获取")
+    return pd.DataFrame()
+
+
 def update_price_data_cached(
     symbolInfo: SymbolInfo,
     lookback_days: int, 
@@ -1051,7 +1156,11 @@ def update_price_data_cached(
     base_data_dir: str | Path = 'data',
     logger: logging.Logger | None = None,
 ) -> pd.DataFrame:
-    """获取价格数据（使用PRICE_SERIES缓存）"""
+    """获取价格数据（使用PRICE_SERIES缓存）
+
+    每日刷新只抓取缓存末尾到当前的增量区间（含少量重叠用于识别复权基准
+    变化），避免每次都重复拉取完整 lookback 历史。
+    """
 
     # 构建价格缓存目录
     price_cache_dir = build_cache_dir(
@@ -1099,57 +1208,61 @@ def update_price_data_cached(
         try:
             logger.info(f"正在获取{symbolInfo.stock_name} {symbolInfo.symbol}历史股价数据...")
             end_date = datetime.now().strftime("%Y%m%d")
-            start_date = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y%m%d")
+            floor_date = datetime.now() - timedelta(days=lookback_days)
+            full_start_date = floor_date.strftime("%Y%m%d")
 
-            if symbolInfo.is_hk_market():
-                df = fetch_hk_a_daily_with_fallback(
-                    symbol_info=symbolInfo,
-                    start_date=start_date,
-                    end_date=end_date,
-                    adjust="qfq",
-                    logger=logger,
-                )
-            elif symbolInfo.is_cn_market() or symbolInfo.market == "CN_INDEX":
-                # 判断是否为指数
-                if symbolInfo.market == "CN_INDEX":
-                    # 使用指数专用函数获取数据
-                    df = fetch_cn_index_daily(
-                        symbol_info=symbolInfo,
-                        logger=logger,
+            existing_frame = _normalize_price_frame(_read_cached_dataframe(price_file))
+            incremental_start: Optional[datetime] = None
+            if not existing_frame.empty:
+                last_date = existing_frame["日期"].max().to_pydatetime()
+                if last_date >= floor_date - timedelta(days=PRICE_INCREMENTAL_OVERLAP_DAYS):
+                    incremental_start = max(
+                        last_date - timedelta(days=PRICE_INCREMENTAL_OVERLAP_DAYS),
+                        floor_date,
+                    )
+
+            start_date = (
+                incremental_start.strftime("%Y%m%d")
+                if incremental_start is not None
+                else full_start_date
+            )
+
+            df = _fetch_daily_price_frame(symbolInfo, start_date, end_date, logger)
+
+            requested_start = full_start_date
+            if not df.empty and incremental_start is not None:
+                fresh_frame = _normalize_price_frame(df)
+                if _overlap_is_consistent(existing_frame, fresh_frame, incremental_start):
+                    df = _merge_price_frames(existing_frame, fresh_frame)
+                    requested_start = (
+                        _requested_start_date(price_cache_dir) or full_start_date
                     )
                 else:
-                    # 判断是否为ETF（A股ETF代码通常以51、58、15、16、50、53等开头）
-                    is_etf = symbolInfo.is_cn_market() and is_etf_symbol(symbolInfo)
-                    
-                    if is_etf:
-                        # 使用ETF专用函数获取数据
-                        df = fetch_cn_etf_daily(
-                            symbol_info=symbolInfo,
-                            start_date=start_date,
-                            end_date=end_date,
-                            logger=logger,
-                        )
-                    else:
-                        # 使用普通A股函数获取数据
-                        df = fetch_cn_a_daily_with_fallback(
-                            symbol_info=symbolInfo,
-                            start_date=start_date,
-                            end_date=end_date,
-                            adjust="qfq",
-                            logger=logger,
-                        )
-            else:
-                logger.warning(f"暂不支持{symbolInfo.market}市场的价格数据获取")
-                return pd.DataFrame()
+                    logger.info(
+                        "%s %s 检测到前复权基准变化，改为全量刷新",
+                        symbolInfo.stock_name,
+                        symbolInfo.symbol,
+                    )
+                    df = _fetch_daily_price_frame(
+                        symbolInfo, full_start_date, end_date, logger
+                    )
 
-            if not df.empty:  
-                # 对"换手率"列进行四舍五入，保留小数点后4位
-                df["换手率"] = df["换手率"].round(4)
-                
-                # 按日期保存价格文件（YYYYMMDD.csv）
-                price_file = price_cache_dir / f"price.csv"
+            if not df.empty:
+                df = _normalize_price_frame(df)
+                # 换手率统一为小数口径，保留 6 位以减少小盘股精度损失
+                if "换手率" in df.columns:
+                    df["换手率"] = pd.to_numeric(
+                        df["换手率"], errors="coerce"
+                    ).round(6)
+                # 统一日期格式，保证与既有缓存一致
+                df["日期"] = pd.to_datetime(df["日期"]).dt.strftime("%Y-%m-%d")
+                df = df.sort_values("日期").reset_index(drop=True)
+
+                price_file = price_cache_dir / "price.csv"
                 df.to_csv(price_file, index=False)
-                record_cache_refresh(price_cache_dir, requested_start_date=start_date)
+                record_cache_refresh(
+                    price_cache_dir, requested_start_date=requested_start
+                )
                 logger.info(f"已缓存{symbolInfo.stock_name} {symbolInfo.symbol}价格数据到 {price_file}")
                 return df
             else:
