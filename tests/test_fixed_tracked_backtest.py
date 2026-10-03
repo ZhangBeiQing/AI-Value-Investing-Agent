@@ -889,6 +889,51 @@ def test_price_history_without_coverage_meta_is_not_mislabeled(
     assert not isinstance(captured.value, SymbolNotListedAsOfDateError)
 
 
+def test_backtest_price_delta_report_does_not_fall_back_to_live_index(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from services.pipeline.steps import build_agent_input
+
+    live_index = tmp_path / "live_analysis_index.json"
+    live_index.write_text(
+        json.dumps(
+            {
+                "fixed_tracked": {
+                    "600150.SH": {
+                        "last_deep_analysis_price": 36.33,
+                        "deep_analysis_date": "2026-09-14",
+                        "price_impression": "合理偏贵",
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        build_agent_input, "DEFAULT_ANALYSIS_INDEX_REF", str(live_index)
+    )
+
+    snapshot = {
+        "stocks": {"600150.SH": {"stock_name": "中国船舶", "latest_price": 38.98}}
+    }
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    missing_backtest_index = tmp_path / "backtest" / "_analysis_index.json"
+
+    result = build_agent_input.write_price_delta_report(
+        "2026-06-01",
+        out_dir,
+        snapshot,
+        analysis_index_ref=str(missing_backtest_index),
+    )
+
+    assert result is not None
+    content = (out_dir / "price_delta_report.md").read_text(encoding="utf-8")
+    assert "2026-09-14" not in content
+    assert "无可用上次深研价记录" in content
+
+
 def test_backtest_universe_excludes_pre_listing_symbols(tmp_path: Path) -> None:
     source_root = tmp_path / "source_data"
     target = price_cache_dir(parse_symbol("00100.HK"), base_dir=source_root)

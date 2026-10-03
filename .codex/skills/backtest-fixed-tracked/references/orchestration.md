@@ -47,6 +47,8 @@ python scripts/manage_fixed_tracked_backtest.py no-trade-day \
 
 每只 P0 固定使用 6 个逻辑角色：Bull、Bear、Juror 01、Juror 02、Juror 03、finalizer；Bull/Bear rebuttal 必须复用 opening 的原会话。
 
+**agent 类型（回测模式）**：所有 Bull/Bear/Juror/finalizer 一律使用 `subagent_type=general`（通用 agent）
+
 同一阶段最多 10 个 subagent。超过时只按并发上限拆批；上一批目标文件全部落盘并通过 JSON/schema 校验后才启动下一批。不同股票可并行，同一股票严格按：
 
 ```text

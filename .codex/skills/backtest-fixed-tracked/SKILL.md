@@ -40,6 +40,7 @@ configs/prompt_flow/fixed_tracked/stock_decision.schema.json
 
 ## 3. 绝对约束
 
+- 禁止使用 `find /`、`find / -name ...`、`locate` 或任何从根目录 / 全盘递归搜索的命令；在 WSL 下这类命令会遍历 `/mnt/c`、`/proc`、`/sys` 等，极慢并常伪装成卡死。需要查找文件时用 `rg --files`，或限定目录并加 `-maxdepth`，或直接使用已知的绝对路径；skill 已给出所需文件路径时不要再去搜索。
 - 激活环境：`source /home/zhangbeiqing/venv/ai_stock/bin/activate`。
 - `decision_date` 是 D 日收盘后；可用信息截止 D 日 `23:59:59 +08:00`；成交只能发生在紧邻交易日 D+1 的开盘价。
 - 交易日只能由实验程序解析。禁止按自然日、周末或工作日自行猜测；禁止把区间最后一个交易日当作决策日。
@@ -48,7 +49,8 @@ configs/prompt_flow/fixed_tracked/stock_decision.schema.json
 - 共享写入只允许两类例外：按公告日、通过日期因果门禁的 `data/stock_info/*/financial_reports/` 深度基本面总结；以及由正常日期接口按 D 日重建的 `data/stock_info/*/{analysis,pe_pb_analysis}` 派生中间结果。两者都不得包含回测仓位、交易动作或 D 日之后的信息。
 - 不得因为共享目录没有现成历史 Markdown 就让 04 输出空估值；必须走正常日期接口重建并在读取时按 D 日截断。
 - `12_quant_prefilter_long.csv` 只扩展当日研究范围，不能直接形成交易动作。
-- 回测没有日常交易 Skill 的两次人工暂停：P0、05 和模拟成交自动推进；但**绝不**调用真实模式的 `run_post_trade.py`。
+- 回测与日常交易 Skill 的人工暂停差异：**P0 选股结果必须先交用户评审并获得明确确认**，确认前禁止派发任何 Bull/Bear/Juror/finalizer subagent；待确认的重点股清单要先展示给用户；05 和模拟成交则自动推进。任何情况下**绝不**调用真实模式的 `run_post_trade.py`。
+- 回测模式下所有个股 subagent（Bull/Bear/Juror/finalizer）一律用 `subagent_type=general`
 - 联网只在实验 `network_mode=guarded_web` 下允许，并严格执行 [联网防穿越规则](references/guarded-web-policy.md)。
 
 ## 4. 目录和文件所有权
@@ -121,6 +123,7 @@ READY
   → PREPARED
   → FINANCIAL_GATE_PASSED
   → P0_READY
+  → P0_APPROVED_BY_USER （必须用户明确确认后才可继续）
   → DEBATE_COMPLETE 或 NO_TRADE_05
   → DECISION_05_VALID
   → EXECUTED_D_PLUS_1
@@ -183,7 +186,9 @@ python scripts/manage_fixed_tracked_backtest.py prepare-day \
 
 ### 6.3 P0 与空 P0
 
-主 Agent只读 `{root}/00`、`01`、`02`、`03`、`{experiment_root}/agent_data/backtest-{experiment_id}/latest_decision_snapshot.json`（存在时）和存在时的市场级文件；不得打开 `04_stock_research/*`。快照仅用于上次结论、待验证事实和遗留风险的历史上下文，不能替代当天资料或形成直接交易指令。按当天 `03_agent_input.md` 选择 P0。回测自动接受该 P0，不等待用户确认。
+主 Agent只读 `{root}/00`、`01`、`02`、`03`、`{experiment_root}/agent_data/backtest-{experiment_id}/latest_decision_snapshot.json`（存在时）和存在时的市场级文件；不得打开 `04_stock_research/*`。快照仅用于上次结论、待验证事实和遗留风险的历史上下文，不能替代当天资料或形成直接交易指令。按当天 `03_agent_input.md` 选择 P0。
+
+**P0 选出后必须暂停并把候选清单提交用户评审**：展示每只股票、入选理由与建议方向（BUY/SELL/HOLD/FLAT），等用户明确确认或给出增删修改后，才可进入 6.4 派发辩论。用户未确认前，禁止启动任何 Bull/Bear/Juror/finalizer subagent。
 
 若 P0 为空，只生成显式空 05：
 

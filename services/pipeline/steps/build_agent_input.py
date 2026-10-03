@@ -272,7 +272,10 @@ def write_price_delta_report(
     到 `output_dir` 下的 `price_delta_report.md`。
     """
     index_path: Optional[Path] = None
-    for candidate in (analysis_index_ref, DEFAULT_ANALYSIS_INDEX_REF):
+    # 回测场景下 analysis_index_ref 明确指向实验目录内的冻结索引；该索引不存在时
+    # 必须按冷启动处理，严禁回退到日常共享索引，否则会读到未来日期的深研记录。
+    candidates = [analysis_index_ref] if analysis_index_ref else [DEFAULT_ANALYSIS_INDEX_REF]
+    for candidate in candidates:
         if not candidate:
             continue
         p = Path(candidate)
@@ -282,13 +285,13 @@ def write_price_delta_report(
             index_path = p
             break
     if index_path is None:
-        return None
-
-    try:
-        with open(index_path, "r", encoding="utf-8") as f:
-            index = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return None
+        index: Dict[str, Any] = {}
+    else:
+        try:
+            with open(index_path, "r", encoding="utf-8") as f:
+                index = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            index = {}
 
     book_index = index.get(book_type, {}) or {}
     stocks = snapshot_payload.get("stocks", {}) or {}
