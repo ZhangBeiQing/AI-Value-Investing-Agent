@@ -282,11 +282,12 @@ python scripts/manage_debate.py aggregate \
   --position-shares {当前实际持股数量}
 ```
 
-聚合规则：
+聚合规则（严格闸门）：
 
-- 任一动作获得至少两票：多数动作；
-- 三票分散且无人达到两票：`no_majority`；
-- 本地脚本根据多数票和 `position_shares` 写出唯一 `resolved_action`；
+- **买入需全票**：只有三名 Juror 全投 `BUY`，才会锁定 `BUY`；
+- **卖出任一票**：只要任一 Juror 投 `SELL`（且有持仓），即锁定 `SELL`；
+- 其余情况（无全票 BUY、也无 SELL）为 `no_majority`，按持仓回退为 `HOLD`（有持仓）或 `FLAT`（无持仓）；
+- 本地脚本按上述规则和 `position_shares` 写出唯一 `resolved_action`；
 - 本地脚本把三名 Juror 的 `price_impression` 原样保存到 `price_impression_votes`，不计算多数、中位数或最终价格标签；
 - 不按自报置信度加权；
 - Agent无权手写或修改 `vote_summary.json`。
@@ -355,7 +356,7 @@ python scripts/manage_debate.py validate \
 主 Agent可以提出组合层 `action_num` 调整建议，但不得重写双方论点、Juror 票数、最终动作或个股事实。向用户展示：
 
 - 每只股票三票分布；
-- 多数状态；
+- 聚合状态（全票 BUY / 出现 SELL / `no_majority`）；
 - final action、数量和主要理由；
 - `no_majority` 项；
 - 建议的组合层数量调整。

@@ -31,6 +31,27 @@ JUROR_IDS = ("juror_01", "juror_02", "juror_03")
 _SAFE_SYMBOL = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
+def resolve_jury_action(
+    counts: "Counter[str]",
+    position_shares: float,
+) -> tuple[str, bool]:
+    """按严格闸门规则裁决动作。
+
+    规则：
+    - 任一 Juror 投 SELL（且有持仓）→ SELL；
+    - 仅当三名 Juror 全投 BUY → BUY；
+    - 其余情况 → HOLD（有持仓）/ FLAT（无持仓）。
+
+    返回 (resolved_action, decided)，decided 表示是否由 BUY/SELL 明确决出。
+    """
+    if counts.get("SELL", 0) >= 1 and position_shares > 0:
+        return "SELL", True
+    if counts.get("BUY", 0) >= len(JUROR_IDS):
+        return "BUY", True
+    fallback = "HOLD" if position_shares > 0 else "FLAT"
+    return fallback, False
+
+
 def normalize_debate_symbol(symbol: str) -> str:
     normalized = (symbol or "").strip().upper()
     if not normalized or not _SAFE_SYMBOL.fullmatch(normalized):
@@ -296,17 +317,12 @@ def aggregate_jury_votes(
         )
 
     counts = Counter(vote["action_type"] for vote in votes)
-    majority_action = next(
-        (action for action in VALID_ACTIONS if counts[action] >= 2),
-        None,
-    )
-    resolved_action = majority_action or (
-        "HOLD" if position_shares > 0 else "FLAT"
-    )
+    resolved_action, decided = resolve_jury_action(counts, position_shares)
+    majority_action = resolved_action if decided else None
     summary: dict[str, Any] = {
         "symbol": normalized_symbol,
         "position_shares": position_shares,
-        "status": "majority" if majority_action else "no_majority",
+        "status": "majority" if decided else "no_majority",
         "majority_action": majority_action,
         "resolved_action": resolved_action,
         "counts": {
@@ -434,16 +450,15 @@ def validate_debate_artifacts(
                 errors.append(
                     f"{vote_summary_path}: counts 与实际 ballot 不一致"
                 )
-            expected_majority = next(
-                (
-                    action
-                    for action in VALID_ACTIONS
-                    if expected_counts[action] >= 2
-                ),
-                None,
+            expected_resolved, expected_decided = resolve_jury_action(
+                expected_counts,
+                position_shares,
+            )
+            expected_majority = (
+                expected_resolved if expected_decided else None
             )
             expected_status = (
-                "majority" if expected_majority else "no_majority"
+                "majority" if expected_decided else "no_majority"
             )
             if vote_summary.get("majority_action") != expected_majority:
                 errors.append(
@@ -457,9 +472,6 @@ def validate_debate_artifacts(
                 position_shares,
                 bool,
             ):
-                expected_resolved = expected_majority or (
-                    "HOLD" if position_shares > 0 else "FLAT"
-                )
                 if resolved_action != expected_resolved:
                     errors.append(
                         f"{vote_summary_path}: resolved_action "
@@ -486,7 +498,7 @@ def validate_debate_artifacts(
                     and verdict.get("action_type") != resolved_action
                 ):
                     errors.append(
-                        f"{verdict_path}: action_type 必须服从多数票或回退结果 "
+                        f"{verdict_path}: action_type 必须服从锁定动作 "
                         f"{resolved_action}"
                     )
 
@@ -503,6 +515,7 @@ __all__ = [
     "debate_symbol_dir",
     "normalize_debate_symbol",
     "prepare_debate_directories",
+    "resolve_jury_action",
     "validate_ballot",
     "validate_debate_artifacts",
     "validate_opening",

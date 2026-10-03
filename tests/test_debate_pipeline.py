@@ -118,7 +118,7 @@ def test_prepare_debate_directories_assigns_unique_role_paths(
     assert not list(symbol_dir.rglob("*.json"))
 
 
-def test_aggregate_jury_votes_two_votes_produce_majority(
+def test_aggregate_jury_votes_two_buy_votes_do_not_buy(
     tmp_path: Path,
 ) -> None:
     book_dir = tmp_path / "fixed_tracked"
@@ -133,9 +133,9 @@ def test_aggregate_jury_votes_two_votes_produce_majority(
     )
 
     assert summary_path.exists()
-    assert summary["status"] == "majority"
-    assert summary["majority_action"] == "BUY"
-    assert summary["resolved_action"] == "BUY"
+    assert summary["status"] == "no_majority"
+    assert summary["majority_action"] is None
+    assert summary["resolved_action"] == "HOLD"
     assert summary["counts"]["BUY"] == 2
     assert summary["price_impression_votes"] == [
         {
@@ -154,13 +154,69 @@ def test_aggregate_jury_votes_two_votes_produce_majority(
     assert "resolved_price_impression" not in summary
 
 
-def test_aggregate_jury_votes_three_different_actions_has_no_majority(
+def test_aggregate_jury_votes_unanimous_buy_resolves_buy(
+    tmp_path: Path,
+) -> None:
+    book_dir = tmp_path / "fixed_tracked"
+    book_dir.mkdir()
+    prepare_debate_directories(book_dir, SYMBOL)
+    _write_ballots(book_dir, ("BUY", "BUY", "BUY"))
+
+    _, summary = aggregate_jury_votes(
+        book_dir,
+        SYMBOL,
+        position_shares=100,
+    )
+
+    assert summary["status"] == "majority"
+    assert summary["majority_action"] == "BUY"
+    assert summary["resolved_action"] == "BUY"
+
+
+def test_aggregate_jury_votes_any_sell_resolves_sell(
     tmp_path: Path,
 ) -> None:
     book_dir = tmp_path / "fixed_tracked"
     book_dir.mkdir()
     prepare_debate_directories(book_dir, SYMBOL)
     _write_ballots(book_dir, ("BUY", "SELL", "HOLD"))
+
+    _, summary = aggregate_jury_votes(
+        book_dir,
+        SYMBOL,
+        position_shares=100,
+    )
+
+    assert summary["status"] == "majority"
+    assert summary["majority_action"] == "SELL"
+    assert summary["resolved_action"] == "SELL"
+
+
+def test_aggregate_jury_votes_buy_sell_hold_sell_wins(
+    tmp_path: Path,
+) -> None:
+    book_dir = tmp_path / "fixed_tracked"
+    book_dir.mkdir()
+    prepare_debate_directories(book_dir, SYMBOL)
+    _write_ballots(book_dir, ("HOLD", "SELL", "HOLD"))
+
+    _, summary = aggregate_jury_votes(
+        book_dir,
+        SYMBOL,
+        position_shares=100,
+    )
+
+    assert summary["status"] == "majority"
+    assert summary["resolved_action"] == "SELL"
+
+
+def test_aggregate_jury_votes_all_hold_has_no_majority(
+    tmp_path: Path,
+) -> None:
+    book_dir = tmp_path / "fixed_tracked"
+    book_dir.mkdir()
+    prepare_debate_directories(book_dir, SYMBOL)
+    _write_ballots(book_dir, ("HOLD", "HOLD", "HOLD"))
 
     _, summary = aggregate_jury_votes(
         book_dir,
@@ -246,7 +302,7 @@ def test_validate_debate_artifacts_rejects_verdict_overriding_majority(
             symbol_dir / "advocates" / side / "rebuttal.json",
             {"rebuttals": []},
         )
-    _write_ballots(book_dir, ("BUY", "BUY", "HOLD"))
+    _write_ballots(book_dir, ("BUY", "BUY", "BUY"))
     aggregate_jury_votes(
         book_dir,
         SYMBOL,
@@ -264,7 +320,7 @@ def test_validate_debate_artifacts_rejects_verdict_overriding_majority(
     )
 
     assert any(
-        "action_type 必须服从多数票或回退结果 BUY" in error
+        "action_type 必须服从锁定动作 BUY" in error
         for error in errors
     )
 
