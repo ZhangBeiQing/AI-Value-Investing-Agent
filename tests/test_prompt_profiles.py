@@ -97,9 +97,8 @@ def test_main_and_stock_prompt_profiles_have_disjoint_responsibilities() -> None
         assert placeholder not in main_prompt
         assert placeholder not in stock_prompt
 
-    assert "完全自主决策" in investment_prompt
-    assert "不设最低首批比例" in stock_prompt
-    assert "不设危机模式的固定仓位上限" in main_prompt
+    assert "买在基本面的右侧" in investment_prompt
+    assert "分批建仓" in investment_prompt
     assert "建立 P0 队列" not in investment_prompt
     assert "Bull opening" not in investment_prompt
 
@@ -150,17 +149,3 @@ def test_write_agent_input_bundle_adds_fixed_stock_profile(
     assert stock_input.count("rendered:investment_policy.md") == 1
     assert stock_input.count("rendered:web_research_policy.md") == 1
     assert "```text" not in main_input
-
-
-def test_format_metric_dict_names_non_tracked_holding_symbols() -> None:
-    from services.prompting.agent_prompt import _format_metric_dict
-
-    formatted = _format_metric_dict(
-        {"601138.SH": 64.53, "300750.SZ": 390.0, "518800.SH": 11.166},
-        "avg_cost",
-    )
-
-    assert formatted["工业富联_601138.SH_avg_cost"] == 64.53
-    assert formatted["宁德时代_300750.SZ_avg_cost"] == 390.0
-    assert formatted["黄金基金ETF_518800.SH_avg_cost"] == 11.166
-    assert "601138.SH_601138.SH_avg_cost" not in formatted

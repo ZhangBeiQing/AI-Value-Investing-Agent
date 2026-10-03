@@ -352,7 +352,7 @@ def build_markdown_prompt(
 def _format_metric_dict(raw: Dict[str, float], suffix: str) -> Dict[str, float]:
     formatted: Dict[str, float] = {}
     for symbol, value in raw.items():
-        name = _display_name(symbol)
+        name = NAME_BY_SYMBOL.get(symbol, symbol)
         formatted[f"{name}_{symbol}_{suffix}"] = value
     return formatted
 

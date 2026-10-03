@@ -526,6 +526,8 @@ def _project_decision_memory(entry: dict) -> dict:
     """把完整历史记录投影为可供下一轮研究读取的长期投资记忆。"""
     projected = {
         "operation_date": entry.get("operation_date"),
+        "action_type": entry.get("action_type"),
+        "action_num": entry.get("action_num"),
         "delta_summary": entry.get("delta_summary"),
         "key_facts": entry.get("key_facts"),
         "inferences": entry.get("inferences"),
