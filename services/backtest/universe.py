@@ -73,12 +73,13 @@ def build_daily_universe(
     prefilter_path = materialize_long_prefilter(experiment, run_date)
     long_symbols = _read_symbols(prefilter_path) if prefilter_path else []
     held_symbols = ledger.held_symbols(on_or_before=run_date)
+    excluded = set(experiment.excluded_symbols)
     ordered: list[str] = []
     not_listed: list[dict[str, str]] = []
     held_set = set(held_symbols)
     for group in (experiment.base_universe, long_symbols, held_symbols):
         for symbol in group:
-            if not symbol or symbol in ordered:
+            if not symbol or symbol in ordered or symbol in excluded:
                 continue
             cached_first_date = known_not_listed_as_of(
                 parse_symbol(symbol),

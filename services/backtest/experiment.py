@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from configs.stock_pool import TRACKED_A_STOCKS
 from core.logging import get_logger
@@ -95,6 +95,11 @@ class BacktestExperiment:
     def signature(self) -> str:
         return f"backtest-{self.experiment_id}"
 
+    @property
+    def excluded_symbols(self) -> tuple[str, ...]:
+        raw = self.payload.get("excluded_symbols") or []
+        return tuple(str(symbol).strip() for symbol in raw if str(symbol).strip())
+
 
 def create_backtest_experiment(
     *,
@@ -103,6 +108,7 @@ def create_backtest_experiment(
     initial_cash: float = 500000.0,
     experiment_id: str = "",
     network_mode: str = "guarded_web",
+    excluded_symbols: Iterable[str] = (),
     source_data_root: str | Path = DEFAULT_DATA_ROOT,
     backtests_root: str | Path = DEFAULT_BACKTESTS_ROOT,
 ) -> BacktestExperiment:
@@ -130,6 +136,11 @@ def create_backtest_experiment(
 
     commit, dirty = _git_metadata()
     base_universe = tuple(entry.symbol for entry in TRACKED_A_STOCKS)
+    normalized_excluded = tuple(
+        dict.fromkeys(
+            str(symbol).strip() for symbol in excluded_symbols if str(symbol).strip()
+        )
+    )
     payload: dict[str, Any] = {
         "schema_version": 1,
         "experiment_id": resolved_id,
@@ -139,6 +150,7 @@ def create_backtest_experiment(
         "initial_cash": float(initial_cash),
         "initial_positions": {},
         "base_universe": list(base_universe),
+        "excluded_symbols": list(normalized_excluded),
         "universe_mode": "frozen_current_tracked_plus_daily_quant_long",
         "long_candidate_policy": "daily_12_quant_prefilter_long",
         "survivorship_bias": True,

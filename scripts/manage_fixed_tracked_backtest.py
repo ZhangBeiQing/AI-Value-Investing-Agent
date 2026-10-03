@@ -55,6 +55,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("guarded_web", "disabled"),
         default="guarded_web",
     )
+    prepare.add_argument(
+        "--exclude-symbols",
+        default="",
+        help="逗号分隔的排除股票列表；这些股票既不入固定底池，也不进入量化长候选研究范围。",
+    )
 
     status = subparsers.add_parser("status", help="查看实验配置和覆盖率。")
     status.add_argument("--experiment-id", required=True)
@@ -123,12 +128,18 @@ def _next_date(experiment, decision_date: str) -> str:
 def main() -> int:
     args = _build_parser().parse_args()
     if args.command == "prepare":
+        excluded_symbols = [
+            symbol.strip()
+            for symbol in (args.exclude_symbols or "").split(",")
+            if symbol.strip()
+        ]
         experiment = create_backtest_experiment(
             start_date=args.start_date,
             end_date=args.end_date,
             initial_cash=args.initial_cash,
             experiment_id=args.experiment_id,
             network_mode=args.network_mode,
+            excluded_symbols=excluded_symbols,
         )
         coverage = audit_experiment_coverage(experiment)
         print(
