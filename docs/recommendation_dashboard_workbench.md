@@ -24,7 +24,7 @@ Compatibility Notes: 不调用会清理整日目录的 `run_daily_pipeline`；�
 
 中文名称先在 `master_universe.json` 查找，再查本地 `symbol_stock_name_mapping.csv`，最后复用已有的板块行情快照及全 A 财务横截面原始缓存；此查询只读、不联网、不强刷缓存。唯一匹配可直接添加并启动；同名多代码由用户选定；没有可靠映射时不猜证券代码。新增股票在任务区立即出现，完整裁决通过校验及发布后才进入“已分析股票”列表。
 
-网页任务选取当天已完成的公共研究输入；如果当天尚未准备完成，选上一个交易日已完成的输入，并在任务列表显示实际分析日。任务必须有该分析日的准确收盘价，不会拿其他日期价格顶替。Agent 阶段默认调用 `opencode run --auto --model deepseek/deepseek-v4-flash`；启动网页服务前设置 `DASHBOARD_RESEARCH_MODEL` 可覆盖模型。
+网页任务选取当天已完成的公共研究输入；如果当天尚未准备完成，选上一个交易日已完成的输入，并在任务列表显示实际分析日。任务必须有该分析日的准确收盘价，不会拿其他日期价格顶替。Agent 阶段默认调用 `opencode run --auto --model deepseek/deepseek-flash`（DeepSeek-V4.1-Flash）；启动网页服务前设置 `DASHBOARD_RESEARCH_MODEL` 可覆盖模型。
 
 任务状态为 `queued → preparing_data → financial_research（有新财报时）→ building_research → debating → validating → publishing → complete`；任一环节失败转为 `failed`。辩论阶段按 9 份角色/汇总文件统计进度。浏览器每 5 秒查询活动任务，服务端仅返回日志末尾，任务进程独立于浏览器请求运行。
 

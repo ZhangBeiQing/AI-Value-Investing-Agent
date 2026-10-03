@@ -20,7 +20,7 @@ from services.recommendation_dashboard.research import SYMBOL_RE, read_research_
 
 
 LOGGER = get_logger("RecommendationDashboardChat")
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+DEFAULT_MODEL = "deepseek/deepseek-flash"
 SESSION_RE = re.compile(r"^ses_[A-Za-z0-9]+$")
 _LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

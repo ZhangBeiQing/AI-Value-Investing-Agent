@@ -366,7 +366,7 @@ def run_job(data_dir: Path, job_id: str) -> None:
         opencode = shutil.which("opencode")
         if not opencode:
             raise RuntimeError("没有找到 opencode CLI，无法运行 Agent 深研与辩论")
-        model = os.environ.get("DASHBOARD_RESEARCH_MODEL", "deepseek/deepseek-v4-flash")
+        model = os.environ.get("DASHBOARD_RESEARCH_MODEL", "deepseek/deepseek-flash")
         _set_stage(data_dir, job, "preparing_data", "准备该股票的行情、财报与公告缓存")
         subprocess.run(
             [sys.executable, "scripts/manage_daily_data.py", "--date", run_date, "--symbols", symbol],

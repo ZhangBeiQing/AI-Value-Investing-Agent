@@ -238,7 +238,7 @@ data/skill_runs/<cur_date>/
 3 21 * * 1-5 /home/zhangbeiqing/programer/AI-Value-Investing-Agent/scripts/cron_daily_data_prep.sh
 ```
 
-- 包装脚本：`scripts/cron_daily_data_prep.sh`，默认用 `opencode run --auto --model deepseek/deepseek-v4-flash` 无头运行（换回 Claude：`RUNTIME=claude`；换模型：`OPENCODE_MODEL=openai/gpt-5.6`）。
+- 包装脚本：`scripts/cron_daily_data_prep.sh`，默认用 `opencode run --auto --model deepseek/deepseek-flash`（DeepSeek-V4.1-Flash）无头运行（换回 Claude：`RUNTIME=claude`；换模型：`OPENCODE_MODEL=openai/gpt-5.6`）。
   - **不要把默认模型换成 `openai/gpt-5.6`。** 它在无头模式下有 50% 概率把首条回复发到 final 频道、导致 turn 立刻结束零产物（见下），不适合无人值守主路径。要用就手动指定。
 - 脚本内有**交易日历门禁**：非交易日（含节假日）直接 SKIP，不会拉起 agent 空跑，所以 crontab 的 `1-5` 只是少几次无用唤醒。
 - 还有**收盘门禁**：`RUN_DATE` 是当天且当前不到 16:00 时直接 SKIP，避免基于还没产生的收盘数据跑一轮垃圾。

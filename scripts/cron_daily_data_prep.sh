@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 每晚定时触发 daily-data-preparation skill 的 cron 包装脚本。
 #
-# 默认用 opencode + deepseek-v4-flash 跑。
+# 默认用 opencode + deepseek-v4.1-flash 跑（opencode 模型 ID 为 deepseek/deepseek-flash）。
 # 需要临时换回 claude 时：RUNTIME=claude scripts/cron_daily_data_prep.sh
 # 需要换模型时：      OPENCODE_MODEL=openai/gpt-5.6 scripts/cron_daily_data_prep.sh
 #
@@ -39,10 +39,12 @@ CLAUDE_BIN="${NODE_BIN}/claude"
 # 为什么默认不是 gpt-5.6：它在无头 `opencode run` 下会间歇性把首条回复发到 final 频道，
 # turn 立刻结束、后续工具调用全被丢弃，十几秒 exit 0 且零产物。实测 4 轮中了 2 轮
 # （2026-08-21、2026-08-24），50% 失败率，不适合放在无人值守主路径上。
-# deepseek-v4-flash 在 2026-08-17 跑出过完整 01-04，且便宜约两个数量级。
+# deepseek-v4.1-flash（DeepSeek 官方 API 现模型 ID 为 deepseek-flash）在 2026-08-17 系
+# 模型上跑出过完整 01-04，且便宜约两个数量级。旧的 deepseek-v4-flash ID 已下线，
+# 调它会得到 UnknownError，故这里钉到当前的 deepseek/deepseek-flash。
 # 想手动用 gpt-5.6：OPENCODE_MODEL=openai/gpt-5.6 （注意别写成 openai/gpt-5.6-sol，
 # 那是 config 里另一个独立条目，额度账不一样）。
-OPENCODE_MODEL="${OPENCODE_MODEL:-deepseek/deepseek-v4-flash}"
+OPENCODE_MODEL="${OPENCODE_MODEL:-deepseek/deepseek-flash}"
 
 # cron 只给一个极简 PATH，这里显式补齐 node（opencode/claude 都依赖）与常规系统路径。
 export PATH="${NODE_BIN}:${VENV}/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
