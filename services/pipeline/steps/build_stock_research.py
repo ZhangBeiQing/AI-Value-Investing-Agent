@@ -436,13 +436,17 @@ def build_research_markdown(
             "计划性操作条件和历史 verdict 不会进入本轮 Prompt。"
         )
         lines.append("")
-        latest_review = memory_context.get("latest_thesis_review") or {}
+        latest_review = {
+            key: value
+            for key, value in (memory_context.get("latest_thesis_review") or {}).items()
+            if key not in {"action_type", "action_num"}
+        }
         if latest_review:
             lines.append("### 4.1 最近一次投资逻辑总结")
             lines.append("")
             lines.append(
-                "> 这里只保留最后一条历史总结。其中 action_type/action_num "
-                "记录当时决策，不是今天应重复执行的指令；当前真实持仓以当天输入为准。"
+                "> 这里只保留最后一条历史总结的投资逻辑，不包含历史交易动作和数量；"
+                "当前真实持仓以当天输入为准。"
             )
             lines.append("")
             lines.append("```json")
