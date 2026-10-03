@@ -102,6 +102,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 ### Never Do
 
+- 不要使用 `find /`、`find / -name ...`、`locate` 或任何从根目录 / 全盘递归搜索的命令（在 WSL 下会扫 `/mnt/c`、`/proc`、`/sys`，极慢且常伪装成卡死）。需要查找文件时用 `rg --files`，或限定目录并加 `-maxdepth`，或直接使用已知的绝对路径
 - 不要在 `services/`、`shared_data_access/`、`core/` 中直接访问 akshare 之外的散乱数据源而不经统一封装
 - 不要用 `as_of_date` 裁剪抓取窗口，只能在读取阶段做时间截断
 - 不要把运行产物、临时调试文件、日志直接塞进源码目录
