@@ -83,6 +83,8 @@ def test_memory_context_keeps_only_latest_summary_and_hides_expired_plans(
     assert "recommended_action" not in serialized
     assert "price_target" not in serialized
     assert "sizing_reason" not in serialized
+    assert "action_type" not in serialized
+    assert "action_num" not in serialized
     assert "跌到某价格继续加仓" not in serialized
     assert "业绩预告确认增长" not in serialized
 
@@ -131,6 +133,8 @@ def test_stock_research_renders_only_memory_projection(monkeypatch) -> None:
     assert "### 4.1 最近一次投资逻辑总结" in markdown
     assert "最后一次总结依据" in markdown
     assert "核验正式财报" in markdown
-    assert "不是今天应重复执行的指令" in markdown
+    assert "不包含历史交易动作和数量" in markdown
+    assert '"action_type"' not in markdown
+    assert '"action_num"' not in markdown
     assert "recommended_action" in markdown
     assert "过期的 recommended_action" in markdown

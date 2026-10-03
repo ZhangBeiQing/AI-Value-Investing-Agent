@@ -1,4 +1,6 @@
-更新日期：2026-09-24
+更新日期：2026-10-01
+
+fixed_tracked 当前采用模型自主决策策略：主 Agent 自主选择 P0，不设置固定仓位上限、涨跌触发阈值或强制研究周期；个股角色自主决定估值方法、动作、数量与执行节奏。输入文件、决策字段、事实核验与执行校验保持兼容。研究包的历史投资逻辑记忆不包含 `action_type`、`action_num` 和历史 verdict；正式决策与交易账本仍保留完整记录。策略源更新后需重新生成当天 03 输入才会应用到后续分析。
 
 # AI-Value-Investing-Agent 项目系统白皮书
 
@@ -100,7 +102,7 @@ data/skill_runs/YYYY-MM-DD/
 ```
 
 - fixed_tracked 主 agent 不读取所有研究包，而是先根据今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0。用户确认后，每只 P0 使用 Bull、Bear、三名 Juror 和唯一 finalizer；辩论产物写入互不冲突的路径，第二次人工确认后通过 `scripts/merge_subagent_decisions.py --source debate` 生成 `05_decision.json`。
-- fixed_tracked 的买入规则采用“严格准入、分批建仓、有效初仓、证伪退出”：基本面、估值和逻辑先过关；买点不要求完美，时点不确定性通过分批处理；初仓和目标仓位必须按真实总资产计算并具有实际意义；确认后加仓，逻辑证伪后退出。Bull、Bear、Rebuttal、Juror 和 finalizer 必须利用月度经营公告、产销/交付、订单、价格、排产及产业链数据完成下一报告期盈利推演；财报是最终验证而非默认等待点。产业爆发框架 B 默认禁用，仅当最新财报深研同时确认行业总量爆发、供需错配、最受益环节、龙头地位、公司基本面右侧和折价后估值空间时才能启用；普通科技成长不得自动套用。
+- fixed_tracked 的 Bull、Bear、Rebuttal、Juror 和 finalizer 必须利用月度经营公告、产销/交付、订单、价格、排产及产业链数据完成下一报告期盈利推演；财报是最终验证而非默认等待点。产业爆发框架 B 默认禁用，仅当最新财报深研同时确认行业总量爆发、供需错配、最受益环节、龙头地位、公司基本面右侧和折价后估值空间时才能启用；普通科技成长不得自动套用。
 - 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md`。
 
 ### 1.6 人工确认后执行后处理
