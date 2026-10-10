@@ -555,7 +555,7 @@ class EnhancedPEPBAnalyzer:
             return None
         row = work.iloc[-1]
         equity_value = None
-        for key in ("TOTAL_EQUITY", "TOTAL_PARENT_EQUITY"):
+        for key in ("TOTAL_PARENT_EQUITY", "TOTAL_EQUITY"):
             if key in row and pd.notna(row[key]) and row[key] > 0:
                 equity_value = float(row[key])
                 break
