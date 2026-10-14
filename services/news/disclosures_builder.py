@@ -1768,7 +1768,7 @@ def main() -> int:
     parser.add_argument("--lookback", type=int, default=120, help="首次入池回溯天数，默认365")
     parser.add_argument("--all", action="store_true", help="批量更新 TRACKED_A_STOCKS")
     parser.add_argument("--model", type=str, default="qwen-doc-turbo", help="用于原子摘要的AI模型")
-    parser.add_argument("--audit-model", default="deepseek-v4-flash", type=str, help="（可选）用于战略审计的AI模型，提供此参数将触发审计流程")
+    parser.add_argument("--audit-model", default="deepseek-v4.1-flash", type=str, help="（可选）用于战略审计的AI模型，提供此参数将触发审计流程")
     parser.add_argument("--max-workers", type=int, default=4, help="批量更新/审计时的最大并发数")
     args = parser.parse_args()
 

@@ -186,7 +186,7 @@ def _try_update_disclosures_for_stock(stock_code: str, lookback_days: int = 365)
 
     symbol_info = parse_symbol(stock_code)
     update_disclosures_for_stock(symbol_info, lookback_days=lookback_days)
-    audit_news_json(symbol_info, "deepseek-v4-flash")
+    audit_news_json(symbol_info, "deepseek-v4.1-flash")
 
 
 def search_stock_news(

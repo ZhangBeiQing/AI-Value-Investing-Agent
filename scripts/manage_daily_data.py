@@ -356,7 +356,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
                     "--model",
                     "qwen-doc-turbo",
                     "--audit-model",
-                    "deepseek-v4-flash",
+                    "deepseek-v4.1-flash",
                     "--max-workers",
                     str(args.max_workers),
                 ]
@@ -370,7 +370,7 @@ def manage_daily_data(args: argparse.Namespace) -> int:
                     "--model",
                     "qwen-doc-turbo",
                     "--audit-model",
-                    "deepseek-v4-flash",
+                    "deepseek-v4.1-flash",
                     "--max-workers",
                     str(args.max_workers),
                 ]
