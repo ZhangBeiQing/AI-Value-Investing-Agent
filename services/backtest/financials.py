@@ -267,7 +267,7 @@ def inspect_backtest_financial_research(
         ),
         "note": (
             "required_items 必须完整执行 financial-report-summary 的 "
-            "Industry/Expectation/Author/Challenger/Author修订流程并注册，"
+            "Industry/Expectation/Author一次撰写流程并注册，"
             "然后重新运行 prepare-day。"
         ),
     }

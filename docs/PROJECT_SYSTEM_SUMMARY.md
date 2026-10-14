@@ -55,7 +55,7 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 ```
 
 - `prepare_financial_report_skill.py` 会同步公告 PDF、整理待生成清单，并为每股生成相互隔离的财报前市场上下文与分析日价格/增强估值上下文；它复用底层股票研究服务，不调用整个 `run_daily_pipeline.py`。
-- `/financial-report-summary` 按细分产业链协调 Industry Researcher，并为每股协调 Expectation Scout、Financial Author 和 Research Challenger；Author 修订后写入 `financial_reports/`，主 agent 通过质量门禁再注册 `summary_index.json`。
+- `/financial-report-summary` 按细分产业链协调 Industry Researcher，并为每股协调 Expectation Scout 和 Financial Author；Author 一次撰写直接写入 `financial_reports/`，主 agent 通过质量门禁再注册 `summary_index.json`。
 - 财报前预期严格按公告时点截断；年度同花顺预测不能冒充季度一致预期。外部搜索强制百炼优先，重大数字回到原始来源核验。
 - 详见 `.codex/skills/financial-report-summary/SKILL.md`。
 
@@ -364,7 +364,7 @@ data/skill_runs/YYYY-MM-DD/
 | `docs/news/README.md` | 上市公司公告新闻系统设计 |
 | `docs/trade_summary/README.md` | 每日操盘总结 JSON 契约与处理流程 |
 | `docs/fundamental_research/README.md` | 财报研究文件约定与 skill 入口 |
-| `docs/fundamental_research/quarterly_fundamental_deep_research_design.md` | 季度基本面深度研究系统详细设计（workdir / 预期差 / 产业链 / Challenger） |
+| `docs/fundamental_research/quarterly_fundamental_deep_research_design.md` | 季度基本面深度研究系统详细设计（workdir / 预期差 / 产业链；历史设计） |
 | `docs/fixed_tracked_debate_prompt_design.md` | fixed_tracked 多 Agent 辩论与 Prompt 分层详细设计 |
 | `docs/testing/README.md` | `tests/` 回归测试网的定位、运行方式、约定与覆盖范围 |
 | `docs/backtest/fixed_tracked_agent_backtest_design.md` | fixed_tracked 隔离多 Agent 历史回测系统详细设计 |

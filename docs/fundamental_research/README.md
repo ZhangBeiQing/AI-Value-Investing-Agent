@@ -1,18 +1,16 @@
 # 季度基本面深度研究系统
 
-更新日期：2026-08-03
+更新日期：2026-10-14
 
 ## 1. 定位
 
-`financial-report-summary` 已从“一只股票一个 Agent 一次性写完”，升级为：
+`financial-report-summary` 当前执行流程为：
 
 ```text
 Python 时间隔离准备
 → 细分产业链研究
 → 财报前预期重建
-→ Financial Author 初稿
-→ Research Challenger 审计与补搜
-→ 原 Author 修订
+→ Financial Author 一次撰写（初稿即最终报告）
 → 主 Agent 质量门禁与注册
 ```
 
@@ -24,7 +22,7 @@ data/stock_info/{stock_name}_{symbol}/financial_reports/YYYYMMDD.md
 
 `summary_index.json` 字段契约不变。系统不生成真实交易动作，也不修改交易 `01-08`。
 
-完整设计见 [季度财报与全面基本面深度研究系统详细设计](quarterly_fundamental_deep_research_design.md)。
+历史设计（质询与修订流程已停用，当前执行以 Skill 为准）见 [季度财报与全面基本面深度研究系统详细设计](quarterly_fundamental_deep_research_design.md)。
 
 ## 2. 准备命令
 
@@ -64,7 +62,7 @@ manifest.json
 research_outputs/
 ```
 
-`05_agent_input.md` 同时声明当前公司的 `disclosures/md/` 与 `disclosures/pdfs/` 只读目录。正常研究不批量加载多年报告；只有最近两年趋势缺少可比期、口径变化、重大异常追溯或 Challenger 明确提出历史缺口时才回溯。先用 `find`/`rg` 在 Markdown 中定位，目标报告没有 Markdown 时再读取对应 PDF；本流程不会为历史回溯自动调用 PDF 转换（pymupdf4llm）。
+`05_agent_input.md` 同时声明当前公司的 `disclosures/md/` 与 `disclosures/pdfs/` 只读目录。正常研究不批量加载多年报告；只有最近两年趋势缺少可比期、口径变化、重大异常追溯或 Author 发现明确历史缺口时才回溯。先用 `find`/`rg` 在 Markdown 中定位，目标报告没有 Markdown 时再读取对应 PDF；本流程不会为历史回溯自动调用 PDF 转换（pymupdf4llm）。
 
 ## 3. 两个时间切面
 
@@ -114,15 +112,12 @@ configs/research/
 ```text
 research_outputs/
 ├── industry_chain_research.md
-├── pre_announcement_expectations.md
-├── draft_v1.md
-└── challenge_round_01.md
+└── pre_announcement_expectations.md
 ```
 
 - Industry Researcher 写产业链研究；
 - Expectation Scout 写财报前预期；
-- Financial Author 写初稿，并在读取质询后直接写最终报告；
-- Challenger 写质询及条件复核；
+- Financial Author 一次撰写直接写最终报告；
 - 主 Agent 通过脚本更新 `summary_index.json`。
 
 ## 7. 注册

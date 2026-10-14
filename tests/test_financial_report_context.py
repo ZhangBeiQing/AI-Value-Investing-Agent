@@ -184,55 +184,31 @@ def test_enhanced_valuation_uses_latest_available_dated_output(
     assert result["analysis_json_path"] == str(json_path)
 
 
-def test_quality_gate_accepts_direct_final_after_single_challenge(
-    tmp_path: Path,
-) -> None:
+def test_quality_gate_accepts_author_report_without_draft_or_challenge(tmp_path: Path) -> None:
     outputs = {
         "pre_announcement_expectations": tmp_path / "expectation.md",
+        "industry_chain_research": tmp_path / "industry.md",
+        # Older manifests may still declare these unused paths.
         "draft_v1": tmp_path / "draft_v1.md",
         "challenge_round_01": tmp_path / "challenge.md",
     }
-    outputs["pre_announcement_expectations"].write_text(
-        "公告前预期研究" * 50,
-        encoding="utf-8",
-    )
-    outputs["draft_v1"].write_text(
-        "有效研究内容" * 50
-        + "\n\n## 18. 未解决问题与披露限制\n草稿过程记录"
-        + "\n\n## 19. 证据与来源\n草稿来源记录",
-        encoding="utf-8",
-    )
-    outputs["challenge_round_01"].write_text(
-        "## 问题：现金流背离\n\n严重度：high\n\n" + "审计证据" * 50,
-        encoding="utf-8",
-    )
+    for name in ("pre_announcement_expectations", "industry_chain_research"):
+        outputs[name].write_text("有效研究内容" * 50, encoding="utf-8")
     final_report = tmp_path / "final.md"
-    final_report.write_text(
-        "## 16. 风险、替代解释与证伪条件\n现金流背离风险已经核验。\n\n"
-        "## 17. 下一季度验证清单\n继续检查现金流。\n\n"
-        + "最终基本面研究" * 50,
-        encoding="utf-8",
-    )
+    final_report.write_text("最终基本面研究" * 50, encoding="utf-8")
     manifest = tmp_path / "manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "output_path": str(final_report),
-                "research_output_paths": {
-                    key: str(path)
-                    for key, path in outputs.items()
-                },
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+    manifest.write_text(json.dumps({
+        "output_path": str(final_report),
+        "research_output_paths": {key: str(path) for key, path in outputs.items()},
+    }), encoding="utf-8")
+    assert validate_deep_research_artifacts(
+        manifest_path=manifest, final_report_path=final_report,
+    ) == []
+    outputs["industry_chain_research"].unlink()
     errors = validate_deep_research_artifacts(
-        manifest_path=manifest,
-        final_report_path=final_report,
+        manifest_path=manifest, final_report_path=final_report,
     )
-    assert not any("closure_review" in error for error in errors)
-    assert errors == []
+    assert any("industry.md" in error for error in errors)
 
 
 def test_quality_gate_rejects_process_appendices_in_final_report(
@@ -240,8 +216,7 @@ def test_quality_gate_rejects_process_appendices_in_final_report(
 ) -> None:
     outputs = {
         "pre_announcement_expectations": tmp_path / "expectation.md",
-        "draft_v1": tmp_path / "draft_v1.md",
-        "challenge_round_01": tmp_path / "challenge.md",
+        "industry_chain_research": tmp_path / "industry.md",
     }
     for path in outputs.values():
         path.write_text("有效研究内容" * 50, encoding="utf-8")
@@ -294,7 +269,7 @@ def test_quality_gate_rejects_urls_and_markdown_links_in_final_report(tmp_path: 
                 "output_path": str(final_report),
                 "research_output_paths": {
                     "pre_announcement_expectations": str(expectation),
-                    "draft_v1": str(draft),
+                    "industry_chain_research": str(draft),
                     "challenge_round_01": str(challenge),
                 },
             },
@@ -329,7 +304,7 @@ def test_quality_gate_rejects_skipped_expectation_search(tmp_path: Path) -> None
                 "output_path": str(final_report),
                 "research_output_paths": {
                     "pre_announcement_expectations": str(expectation),
-                    "draft_v1": str(draft),
+                    "industry_chain_research": str(draft),
                     "challenge_round_01": str(challenge),
                 },
             },
@@ -364,7 +339,7 @@ def test_quality_gate_rejects_denial_when_broker_consensus_exists(tmp_path: Path
                 "output_path": str(final_report),
                 "research_output_paths": {
                     "pre_announcement_expectations": str(expectation),
-                    "draft_v1": str(draft),
+                    "industry_chain_research": str(draft),
                     "challenge_round_01": str(challenge),
                 },
             },
@@ -516,7 +491,13 @@ def test_prepare_workdir_writes_run_paths_and_policy_copy(tmp_path: Path, monkey
     assert manifest["pre_announcement_market_date"] == "2026-07-31"
     assert "draft_v1" in manifest["research_output_paths"]
     assert "draft_v2" not in manifest["research_output_paths"]
+    assert manifest["research_output_paths"]["final_report"] == str(bundle.output_path)
     agent_input = (target_workdir / "05_agent_input.md").read_text(encoding="utf-8")
+    assert "Financial Author 一次撰写直接交付最终报告" in agent_input
+    assert "Research Challenger" not in agent_input
+    assert "draft_v1.md" not in agent_input
+    assert "challenge_round_01.md" not in agent_input
+    assert str(bundle.output_path) in agent_input
     assert "历史披露按需回溯（只读）" in agent_input
     assert str(tmp_path / "disclosures" / "md") in agent_input
     assert str(tmp_path / "disclosures" / "pdfs") in agent_input

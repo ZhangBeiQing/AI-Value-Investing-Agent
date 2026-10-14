@@ -83,9 +83,9 @@ Step 1 与 Step 2 在同一条消息里一起发出；Step 3 的两个 subagent 
 
 ### 为什么财报不派给 subagent（重要，不要"优化"回去）
 
-`financial-report-summary` 自己就要为**每只股票**派发 Industry Researcher / Expectation Scout / Financial Author / Research Challenger 四个角色。5 只股票就是 20 个 subagent。
+`financial-report-summary` 自己就要为**每只股票**派发 Industry Researcher / Expectation Scout / Financial Author 三个角色（同链行业研究可复用）。5 只股票最多需要 15 个 subagent。
 
-嵌套派发在技术上是能跑通的（已实测，含无头模式），但**并发账会算不清**：财报那 20 个 + 宏观 + 新闻同时在跑，会超过平台每批的并发上限，而超限的失败方式是**静默空返回**——subagent 报告"完成"，文件却是空的或没写。`auto-trading-fixed-tracked` 里那条「每批最多 10 个，不得超过，以避免任务空返回、写错日期目录或文件缺失」就是同一个坑。
+嵌套派发在技术上是能跑通的（已实测，含无头模式），但**并发账会算不清**：财报最多 15 个 + 宏观 + 新闻同时在跑，会超过平台每批的并发上限，而超限的失败方式是**静默空返回**——subagent 报告"完成"，文件却是空的或没写。`auto-trading-fixed-tracked` 里那条「每批最多 10 个，不得超过，以避免任务空返回、写错日期目录或文件缺失」就是同一个坑。
 
 所以规则是：**需要再派发一层 subagent 的环节，只能由主 agent 直接做。** 财报研究必须留在主 agent 手里，且必须等 A/B 两路结束、并发腾空之后才开始。
 

@@ -4,7 +4,7 @@ Step 3 只派发**两个** subagent（A 宏观、B 新闻），和财报 prepare
 
 派发工具随运行时不同：Claude Code 是 `Agent`（`subagent_type: claude`），opencode 是 `task`（用默认 agent，不要指定 `fixed-tracked-*` 那些专用角色）。
 
-**财报总结不在这里派发。** 它由主 agent 在 Step 4 亲自执行——因为 `financial-report-summary` 自己要为每只股票再派发 4 个角色，塞进 subagent 会让并发账算不清，而超限的失败方式是静默空返回。详见 SKILL.md「阶段总览」下的说明。
+**财报总结不在这里派发。** 它由主 agent 在 Step 4 亲自执行——因为 `financial-report-summary` 自己要为每只股票再派发 3 个角色，塞进 subagent 会让并发账算不清，而超限的失败方式是静默空返回。详见 SKILL.md「阶段总览」下的说明。
 
 把 `<cur_date>` 替换成 Step 0 定下来的实际日期（`YYYY-MM-DD`），其余文字**逐字照抄**。
 

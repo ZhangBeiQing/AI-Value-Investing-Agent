@@ -275,6 +275,7 @@ def prepare_financial_report_workdir(
     outputs = {
         "industry_chain_research": research_outputs_dir / "industry_chain_research.md",
         "pre_announcement_expectations": research_outputs_dir / "pre_announcement_expectations.md",
+        # 保留旧 manifest 路径键以兼容历史产物；新流程不生成这两个文件。
         "draft_v1": research_outputs_dir / "draft_v1.md",
         "challenge_round_01": research_outputs_dir / "challenge_round_01.md",
         "final_report": bundle.output_path,
@@ -329,15 +330,13 @@ def prepare_financial_report_workdir(
         "- Expectation Scout 禁止读取最新财报、当前市场上下文和任何财报后信息；只能读取财报前上下文、上一期原始财报、上期基本面记忆中可验证的旧假设，以及公告前来源。",
         "- Industry Researcher 可读取公司财报以识别业务暴露，但必须独立验证细分产业链，不得沿用候选行业标签下结论。",
         "- Financial Author 第一遍不得读取上期基本面记忆；形成当前事实判断后再读取它做假设兑现检查。",
-        "- Research Challenger 读取初稿和全部合法输入，负责审计、追问、补搜和替代解释，不投票。",
+        "- Financial Author 一次撰写直接交付最终报告，初稿即最终报告。",
         "",
         "## 单写者输出",
         "",
         f"- Industry Researcher：`{outputs['industry_chain_research']}`",
         f"- Expectation Scout：`{outputs['pre_announcement_expectations']}`",
-        f"- Financial Author 初稿：`{outputs['draft_v1']}`",
-        f"- Research Challenger：`{outputs['challenge_round_01']}`",
-        f"- Financial Author 修订并发布：`{outputs['final_report']}`",
+        f"- Financial Author：`{outputs['final_report']}`",
         "",
         "任何角色不得写其他角色文件，不得修改 `summary_index.json`。最终文件通过质量门禁后，由主 Agent 调用注册脚本。",
     ]
@@ -411,8 +410,7 @@ def validate_deep_research_artifacts(
     output_paths = manifest.get("research_output_paths") or {}
     required = {
         "pre_announcement_expectations": output_paths.get("pre_announcement_expectations"),
-        "draft_v1": output_paths.get("draft_v1"),
-        "challenge_round_01": output_paths.get("challenge_round_01"),
+        "industry_chain_research": output_paths.get("industry_chain_research"),
     }
     contents: Dict[str, str] = {}
     for name, raw_path in required.items():
@@ -483,17 +481,6 @@ def validate_deep_research_artifacts(
     if header_meta_pattern.search("\n".join(final_content.splitlines()[:20])):
         errors.append("最终财报报告标题下包含禁止的元信息键值行块（本期财报/分析日/数据来源/修订说明等）")
 
-    challenge = contents.get("challenge_round_01") or ""
-    if re.search(r"严重度\s*[：:]\s*high\b", challenge, re.IGNORECASE):
-        # 不要求最终报告暴露质询/修订过程；high 问题应被吸收到风险和验证章节。
-        has_risk_section = bool(
-            re.search(r"^#{1,6}\s*16\s*[.、．]?", final_content, re.MULTILINE)
-        )
-        has_watchlist_section = bool(
-            re.search(r"^#{1,6}\s*17\s*[.、．]?", final_content, re.MULTILINE)
-        )
-        if not has_risk_section or not has_watchlist_section:
-            errors.append("Challenger 存在 high 问题，但最终报告缺少 §16 风险或 §17 验证清单")
     return errors
 
 

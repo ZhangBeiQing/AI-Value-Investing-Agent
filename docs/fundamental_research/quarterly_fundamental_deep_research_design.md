@@ -1,5 +1,6 @@
 # 季度财报与全面基本面深度研究系统详细设计
 
+> 历史设计说明：2026-10-14 起已取消 Challenger 与 Author 修订发布轮次。当前流程为行业研究、预期研究、Author 一次撰写最终报告、主 Agent 门禁与注册；执行以 `.codex/skills/financial-report-summary/SKILL.md` 为准。下文旧阶段仅作设计历史保留。
 状态：已实施（v1；保留后续 LangGraph/自动批次分组增强空间）
 更新日期：2026-08-03
 适用范围：`financial-report-summary`、财报研究 workdir、公司触发型产业链研究、财报前预期差研究
