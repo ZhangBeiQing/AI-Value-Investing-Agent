@@ -46,6 +46,7 @@ LOGGER_COLORS_EXACT: dict[str, str] = {
     "CacheRegistry": "blue",
     "DataRefresh": "blue",
     "DailyPipeline": "white",
+    "WeeklyScoring": "cyan",
     "BuildAgentInput": "white",
     "PostTradePipeline": "white",
     "AgentPrompt": "purple",

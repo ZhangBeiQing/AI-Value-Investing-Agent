@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -159,6 +159,56 @@ def _select_reports(
     )
     next_future = future_candidates[0] if future_candidates else None
     return latest_available, next_future
+
+
+def has_usable_financial_report(
+    symbol: str,
+    as_of_date: str,
+    *,
+    slack_days: int = 0,
+) -> bool:
+    """判断某股票在 as_of_date（含 slack_days 宽限）是否有可用于研究包的财报。
+
+    判定口径与 ``get_financial_report_summary()`` 完全一致：只依据
+    ``financial_reports/*.md`` 中能否选出一份 release_date <= cutoff 的报告。
+    ETF/基金类标的没有季度财报，视为"无需财报"，返回 True。
+    """
+    symbol_info = parse_symbol(symbol)
+    if is_etf_symbol(symbol_info):
+        return True
+    files = _list_report_files(symbol_info)
+    if not files:
+        return False
+    today_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+    cutoff = today_dt.date() + timedelta(days=max(0, int(slack_days or 0)))
+    try:
+        _select_reports(files, today_dt, available_cutoff_date=cutoff)
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def find_symbols_missing_financial_reports(
+    symbols: Iterable[str],
+    as_of_date: str,
+    *,
+    slack_days: int = 0,
+) -> List[str]:
+    """返回在 as_of_date 尚无可用财报的股票代码（保持输入顺序并去重）。"""
+    missing: List[str] = []
+    seen: set[str] = set()
+    for symbol in symbols:
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        try:
+            available = has_usable_financial_report(symbol, as_of_date, slack_days=slack_days)
+        except Exception as exc:
+            logger.warning("财报可用性检测失败，按缺失处理: %s (%s)", symbol, exc)
+            available = False
+        if not available:
+            missing.append(symbol)
+    return missing
 
 
 def _load_latest_forecast_markdown(symbol_info: SymbolInfo, today_dt: datetime) -> tuple[str, Optional[Path]]:

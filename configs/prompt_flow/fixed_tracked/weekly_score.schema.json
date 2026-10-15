@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "周度逐股评分输出",
+  "description": "Agent 仅输出五维评分与理由，综合分由合并脚本计算。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbol",
+    "stock_name",
+    "scores",
+    "composite_reason"
+  ],
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "pattern": "^(?:\\d{6}\\.(?:SH|SZ|BJ)|\\d{5}\\.HK)$"
+    },
+    "stock_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "market_sentiment_score",
+        "market_sentiment_reason",
+        "valuation_score",
+        "valuation_reason",
+        "price_volume_score",
+        "price_volume_reason",
+        "news_expectation_score",
+        "news_expectation_reason",
+        "fundamental_score",
+        "fundamental_reason"
+      ],
+      "properties": {
+        "market_sentiment_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "market_sentiment_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "valuation_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "valuation_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "price_volume_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "price_volume_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "news_expectation_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "news_expectation_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fundamental_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "fundamental_reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "composite_reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

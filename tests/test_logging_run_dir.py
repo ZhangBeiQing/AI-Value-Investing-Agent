@@ -16,9 +16,10 @@ def _clear_handlers(logger) -> None:
 
 def test_configure_run_logging_creates_dir_and_env(tmp_path: Path) -> None:
     previous = os.environ.pop(clog.RUN_LOG_DIR_ENV, None)
+    run_date = datetime.now().strftime("%Y-%m-%d")
     try:
-        run_dir = clog.configure_run_logging("data_prep", "2026-09-24", base_dir=tmp_path)
-        assert run_dir == tmp_path / "2026-09-24" / "data_prep"
+        run_dir = clog.configure_run_logging("data_prep", run_date, base_dir=tmp_path)
+        assert run_dir == tmp_path / run_date / "data_prep"
         assert run_dir.is_dir()
         assert os.environ[clog.RUN_LOG_DIR_ENV] == str(run_dir)
     finally:

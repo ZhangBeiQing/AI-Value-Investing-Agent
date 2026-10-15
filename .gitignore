@@ -75,6 +75,7 @@ logs/
 !configs/prompt_flow/skill_flow.json
 !configs/prompt_flow/fixed_tracked/stock_decision.example.json
 !configs/prompt_flow/fixed_tracked/stock_decision.schema.json
+!configs/prompt_flow/fixed_tracked/weekly_score.schema.json
 # 忽略项目中的所有PDF文件
 **/*.pdf
 

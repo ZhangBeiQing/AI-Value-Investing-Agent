@@ -32,6 +32,7 @@ python -m pytest tests -q -k price        # 只跑名字含 price 的用例
 | `test_logging_run_dir.py` | 运行日志按「日期 + 流程」聚合与保留策略 |
 | `test_financial_report_context.py` / `test_financial_report_skill.py` | 财报深度研究的上下文隔离与 skill 编排 |
 | `test_debate_pipeline.py` | fixed_tracked 多 Agent 辩论编排 |
+| `test_weekly_scoring.py` | 周度固定池评分：派单、日期隔离、JSON 契约校验与等权排名 |
 | `test_fixed_tracked_backtest.py` | 隔离回测：universe、账本、D+1 成交、净值 |
 | `test_industry_research.py` | 月度产业雷达与主题深研 |
 | `test_hot_news_digest.py` | 渐进式新闻总结的轻量 digest 派生 |
