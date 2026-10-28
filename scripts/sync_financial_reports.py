@@ -33,6 +33,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="限制 short_book/long_book/all。",
     )
     parser.add_argument("--lookback-days", type=int, default=550, help="公告回溯天数。")
+    parser.add_argument(
+        "--disclosure-cutoff",
+        choices=["next-day", "analysis-day"],
+        default="next-day",
+        help=(
+            "财报公告可见性截断日：next-day（默认）把 D 日盘后披露、登记为 D+1 的财报纳入；"
+            "analysis-day 严格截断到 D，历史回测必须使用该值以免时间穿越。"
+        ),
+    )
     parser.add_argument("--with-markdown", action="store_true", help="同步时立即转换 markdown。默认只下载 PDF。")
     parser.add_argument("--json", action="store_true", help="输出 JSON 结果。")
     parser.add_argument(
@@ -95,6 +104,7 @@ def main() -> int:
                 lookback_days=args.lookback_days,
                 convert_markdown=args.with_markdown,
                 as_of_date=args.date,
+                extend_disclosure_cutoff=args.disclosure_cutoff == "next-day",
             )
             results.append(
                 {

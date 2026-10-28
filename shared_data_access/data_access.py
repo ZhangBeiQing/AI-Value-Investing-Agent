@@ -212,6 +212,11 @@ class SharedDataAccess:
                 symbolInfo,
                 as_of_dt,
                 disclosure_window,
+                cutoff_dt=(
+                    normalize_date(disclosure_as_of_date)
+                    if disclosure_as_of_date
+                    else None
+                ),
             )
 
         chip_distribution = None
@@ -527,6 +532,7 @@ class SharedDataAccess:
         symbolInfo: SymbolInfo,
         as_of_dt: datetime,
         lookback_days: int,
+        cutoff_dt: datetime | None = None,
     ) -> DisclosureBundle:
         cache_dir = build_cache_dir(
             symbolInfo,
@@ -539,6 +545,9 @@ class SharedDataAccess:
         if frame is None:
             frame = pd.DataFrame()
         start_dt = as_of_dt - timedelta(days=lookback_days)
+        # cutoff_dt 是公告可见性截断日：日常模式下可比 as_of_dt 晚一天，用于纳入
+        # 「D 日盘后披露、公告日期登记为 D+1」的财报；回测与其它场景沿用 as_of_dt。
+        visible_until = cutoff_dt or as_of_dt
         if not frame.empty:
             normalized = frame.copy()
             time_col = None
@@ -549,7 +558,7 @@ class SharedDataAccess:
             if time_col:
                 normalized[time_col] = pd.to_datetime(normalized[time_col], errors="coerce")
                 normalized = normalized.dropna(subset=[time_col])
-                end_dt = as_of_dt + timedelta(days=1)
+                end_dt = visible_until + timedelta(days=1)
                 mask = (normalized[time_col] >= start_dt) & (normalized[time_col] < end_dt)
                 normalized = normalized.loc[mask]
                 normalized = normalized.sort_values(time_col, ascending=False)
@@ -557,7 +566,7 @@ class SharedDataAccess:
         return DisclosureBundle(
             frame=frame,
             start=start_dt,
-            end=as_of_dt + timedelta(days=1),
+            end=visible_until + timedelta(days=1),
             source_path=csv_path if csv_path.exists() else None,
         )
 

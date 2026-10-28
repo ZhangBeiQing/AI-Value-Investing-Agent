@@ -427,7 +427,14 @@ def validate_deep_research_artifacts(
             errors.append(f"研究过程文件为空或疑似占位: {target}")
 
     expectation = contents.get("pre_announcement_expectations") or ""
-    if re.search(r"not_performed_time_contamination_risk", expectation, re.IGNORECASE):
+    # 只有把该标记当作结论/状态断言时才拦截；若只是“未将搜索阶段标记为 XXX”这类否定说明则不算违规
+    flagged_skipped_search = False
+    for match in re.finditer(r"not_performed_time_contamination_risk", expectation, re.IGNORECASE):
+        prefix = expectation[max(0, match.start() - 24): match.start()]
+        if not re.search(r"[未不没勿别]", prefix):
+            flagged_skipped_search = True
+            break
+    if flagged_skipped_search:
         errors.append("预期研究以时间污染为由跳过了联网搜索")
     pre_context_path = manifest_path.parent / "pre_announcement_market_context.md"
     pre_context = (
@@ -882,20 +889,53 @@ def _summary_entry_period(entry: Dict[str, Any]) -> Optional[tuple[int, int]]:
     return fiscal_year, quarter
 
 
-def _summary_entry_covers_report(entry: Dict[str, Any], latest: FinancialReportMeta) -> bool:
+_PREVIEW_ANNOUNCEMENT_MARKERS = ("业绩预告", "业绩快报")
+
+
+def _is_preview_announcement_title(title: str) -> bool:
+    """业绩预告/快报不是正式财报，不能代替同一报告期的季度/年度报告。"""
+
+    text = str(title or "")
+    if not text:
+        return False
+    if "报告" in text and "预告" not in text and "快报" not in text:
+        return False
+    return any(marker in text for marker in _PREVIEW_ANNOUNCEMENT_MARKERS)
+
+
+def _summary_entry_covers_report(
+    entry: Dict[str, Any],
+    latest: FinancialReportMeta,
+    announcement_titles: Optional[Dict[str, str]] = None,
+) -> bool:
     if str(entry.get("announcement_id") or "") == latest.announcement_id:
         return True
-    return _summary_entry_period(entry) == (latest.fiscal_year, latest.quarter)
+    if _summary_entry_period(entry) != (latest.fiscal_year, latest.quarter):
+        return False
+    # 同一报告期内，「业绩预告 / 业绩快报」的总结不能视为已完成正式财报的研究。
+    # 2026-10-27 真实事故：星宸科技、长川科技先有业绩预告总结，正式三季报披露后
+    # 被这两条预告记录判成 already_summarized 而整批漏掉。
+    previous_title = (announcement_titles or {}).get(
+        str(entry.get("announcement_id") or "")
+    )
+    if previous_title and _is_preview_announcement_title(previous_title):
+        return False
+    return True
 
 
 def _should_skip(symbol: str, latest: FinancialReportMeta) -> bool:
     summary_index = load_summary_index(symbol)
+    announcement_titles = {
+        report.announcement_id: report.title
+        for report in _load_financial_report_entries(symbol)
+        if report.announcement_id
+    }
     completed = [summary_index.get("latest_completed_report") or {}]
     completed.extend(summary_index.get("history") or [])
     for entry in completed:
         if not isinstance(entry, dict):
             continue
-        if not _summary_entry_covers_report(entry, latest):
+        if not _summary_entry_covers_report(entry, latest, announcement_titles):
             continue
         raw_path = entry.get("output_path")
         if not raw_path:
@@ -950,7 +990,12 @@ def build_stock_report_bundles(
     *,
     extra_items: Optional[List[Dict[str, Any]]] = None,
     skip_queue: bool = False,
+    report_visibility_cutoff: Optional[str] = None,
 ) -> List[StockReportBundle]:
+    # 财报在交易日 D 的晚间披露、公告日期却登记为 D+1。日常模式下“可见的财报”要放宽到
+    # D+1，否则当晚披露的这一批会被判成“已总结/无新财报”而整批漏掉；回测必须传
+    # run_date 严格截断，避免读到决策日之后的信息。
+    visible_until = report_visibility_cutoff or run_date
     if skip_queue:
         items: List[Dict[str, Any]] = []
     else:
@@ -973,7 +1018,7 @@ def build_stock_report_bundles(
             continue
         latest, previous = _select_latest_two_reports(
             symbol,
-            available_on_date=run_date,
+            available_on_date=visible_until,
         )
         summary_index_path = _summary_index_path(symbol)
         if latest is None:

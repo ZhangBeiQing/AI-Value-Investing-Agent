@@ -385,8 +385,19 @@ class AnnouncementMeta:
     content_source_url: Optional[str] = None
 
 
-def _slugify(text: str) -> str:
-    return "".join(ch if ch.isalnum() else "_" for ch in text).strip("_")[:80]
+def _slugify(text: str, max_bytes: int = 120) -> str:
+    cleaned = "".join(ch if ch.isalnum() else "_" for ch in text).strip("_")
+    encoded = cleaned.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return cleaned
+    # 文件名受文件系统 255 字节限制；中文每字 3 字节，必须按字节截断且不能切断多字节字符
+    truncated = encoded[:max_bytes]
+    while truncated:
+        try:
+            return truncated.decode("utf-8")
+        except UnicodeDecodeError:
+            truncated = truncated[:-1]
+    return ""
 
 
 def _hash_key(*parts: str) -> str:
@@ -864,9 +875,32 @@ def upload_file_to_dashscope(file_path: Path) -> Optional[str]:
         fid = getattr(obj, "id", None)
         _log(f"文件上传完成: {file_path}, file_id={fid}")
         return fid
-    except Exception:
-        _log("文件上传异常")
+    except Exception as exc:
+        _log(f"文件上传异常: {exc}")
         return None
+
+
+def delete_dashscope_file(file_id: Optional[str]) -> bool:
+    """
+    摘要: 删除百炼云盘上的文件，避免上传文件数累积触达配额上限
+    Args:
+        file_id: 待删除的 file_id；为空视为已清理
+    Returns:
+        删除成功（或无需删除）返回 True；失败返回 False
+    """
+    if not file_id:
+        return True
+    client = _get_openai_client("extraction", "qwen-doc-turbo/file-delete")
+    if client is None:
+        _log(f"删除文件失败：客户端未初始化, file_id={file_id}")
+        return False
+    try:
+        client.files.delete(file_id)
+        _log(f"文件已删除: file_id={file_id}")
+        return True
+    except Exception as exc:
+        _log(f"文件删除异常: file_id={file_id}, 错误: {exc}")
+        return False
 
 
 def _build_general_prompt(stock_name: str, symbol: str, meta: AnnouncementMeta) -> str:
@@ -1023,14 +1057,15 @@ def qwen_doc_summarize_with_fileid(stock_name: str, symbol: str, meta: Announcem
     if client is None or not meta.file_id:
         _log("无法调用摘要：客户端未初始化或缺少file_id")
         return None
+    file_id = meta.file_id
     prompt = NORMAL_ANNOUNCEMENT_PROMPT
     try:
-        _log(f"调用Qwen摘要: stock_name={stock_name}, file_id={meta.file_id}, title={meta.title[:40]}")
+        _log(f"调用Qwen摘要: stock_name={stock_name}, file_id={file_id}, title={meta.title[:40]}")
         completion = client.chat.completions.create(
             model="qwen-doc-turbo",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "system", "content": f"fileid://{meta.file_id}"},
+                {"role": "system", "content": f"fileid://{file_id}"},
                 {"role": "user", "content": prompt},
             ]
         )
@@ -1060,6 +1095,9 @@ def qwen_doc_summarize_with_fileid(stock_name: str, symbol: str, meta: Announcem
     except Exception as exc:
         _log(f"调用Qwen摘要异常: {exc}")
         return None
+    finally:
+        delete_dashscope_file(file_id)
+        meta.file_id = None
 
 
 def convert_pdf_to_markdown(pdf_path: Path, md_path: Path) -> Optional[str]:
@@ -1334,6 +1372,30 @@ def update_disclosures_for_stock(
     return len(items)
 
 
+def resolve_disclosure_cutoff_date(
+    analysis_date: Optional[str],
+    *,
+    extend_to_next_day: bool = True,
+) -> Optional[str]:
+    """解析财报公告的可见性截断日。
+
+    交易日 D 的夜晚是财报集中披露时点，而巨潮/交易所把这类盘后公告的日期登记为
+    D+1。若按 D 截断公告抓取窗口，当晚这一批财报会整批丢失。因此默认把**公告可见性**
+    放宽到 D+1，而价格、估值等仍以 D 为分析日。历史回测必须传
+    ``extend_to_next_day=False``，否则会读到决策日之后的信息。
+    """
+
+    if not analysis_date:
+        return None
+    try:
+        base = datetime.strptime(str(analysis_date)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return str(analysis_date)[:10]
+    if extend_to_next_day:
+        base = base + timedelta(days=1)
+    return base.isoformat()
+
+
 def sync_financial_reports_for_stock(
     symbol_info: SymbolInfo,
     *,
@@ -1341,11 +1403,19 @@ def sync_financial_reports_for_stock(
     convert_markdown: bool = True,
     data_access: Optional[SharedDataAccess] = None,
     as_of_date: Optional[str] = None,
+    extend_disclosure_cutoff: bool = True,
 ) -> int:
     """同步财报公告到 disclosures 缓存，但不走普通公告摘要流程。"""
     stock_name = symbol_info.stock_name or symbol_info.symbol
     symbol = symbol_info.symbol
-    _log(f"开始同步财报公告: {stock_name}({symbol}), lookback={lookback_days}天")
+    disclosure_cutoff = resolve_disclosure_cutoff_date(
+        as_of_date,
+        extend_to_next_day=extend_disclosure_cutoff,
+    )
+    _log(
+        f"开始同步财报公告: {stock_name}({symbol}), lookback={lookback_days}天, "
+        f"分析日={as_of_date or 'today'}, 公告截断={disclosure_cutoff or 'today'}"
+    )
 
     idx_path = index_path(symbol_info)
     idx = load_index(idx_path)
@@ -1358,7 +1428,7 @@ def sync_financial_reports_for_stock(
         disclosure_lookback_days=lookback_days,
         # 财报通常在盘后披露；当天稍早生成的公告缓存不能遮蔽新报告。
         force_refresh_disclosures=True,
-        disclosure_as_of_date=as_of_date,
+        disclosure_as_of_date=disclosure_cutoff,
         skip_price_refresh=True,
         skip_financial_refresh=True,
     )

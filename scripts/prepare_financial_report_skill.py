@@ -27,6 +27,7 @@ from services.research.financial_report_skill import (
     prepare_financial_report_workdir,
     synthesize_manual_item,
 )
+from services.news.disclosures_builder import resolve_disclosure_cutoff_date
 
 LOGGER = init_component_logger(
     "PrepareFinancialReportSkill",
@@ -162,6 +163,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="先同步财报公告到 disclosures，再准备输入。",
     )
     parser.add_argument(
+        "--disclosure-cutoff",
+        choices=["next-day", "analysis-day"],
+        default="next-day",
+        help=(
+            "财报公告可见性截断日。默认 next-day：分析日为 D 时按 D+1 截断，"
+            "以纳入 D 日晚间披露、公告日期登记为 D+1 的财报（财报披露的常见形态）。"
+            "传入 --backtest-context 时强制 analysis-day，避免回测时间穿越。"
+        ),
+    )
+    parser.add_argument(
         "--symbols",
         help="只处理这些股票代码，逗号分隔；一旦提供，将不再自动加入 tracked、queue 或 quant prefilter 股票。",
     )
@@ -214,6 +225,18 @@ def _parse_symbol_list(raw: Optional[str]) -> List[str]:
     if not raw:
         return []
     return [token.strip() for token in raw.split(",") if token.strip()]
+
+
+def resolve_sync_disclosure_cutoff(args: argparse.Namespace) -> str:
+    """决定财报公告同步使用的可见性截断口径。
+
+    日常/实盘：默认 ``next-day``，把 D 日晚间披露、公告日期登记为 D+1 的财报纳入。
+    历史回测：强制 ``analysis-day``，只能看到决策日及以前已披露的信息。
+    """
+
+    if getattr(args, "backtest_context", None):
+        return "analysis-day"
+    return getattr(args, "disclosure_cutoff", "next-day")
 
 
 def _apply_explicit_symbol_scope(args: argparse.Namespace) -> List[str]:
@@ -310,6 +333,8 @@ def main() -> int:
         ]
         if args.date:
             sync_cmd.extend(["--date", args.date])
+        # 回测必须严格按决策日截断，否则会读到决策日之后才披露的财报。
+        sync_cmd.extend(["--disclosure-cutoff", resolve_sync_disclosure_cutoff(args)])
         sync_cmd.append("--include-tracked" if args.include_tracked else "--no-include-tracked")
         if args.include_queue:
             sync_cmd.append("--include-queue")
@@ -326,6 +351,10 @@ def main() -> int:
         mandate=args.mandate,
         extra_items=extra_items or None,
         skip_queue=not args.include_queue,
+        report_visibility_cutoff=resolve_disclosure_cutoff_date(
+            analysis_date,
+            extend_to_next_day=resolve_sync_disclosure_cutoff(args) == "next-day",
+        ),
     )
     if args.convert_missing_markdown:
         conversion_jobs = _collect_pdf_conversion_jobs(

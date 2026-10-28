@@ -1868,9 +1868,13 @@ def _fetch_cninfo_cn_announcements(
                 "公告链接": detail_url,
             })
 
-        total_pages = data.get("totalPages", 1) or 1
+        # cninfo 返回字段名是 totalpages（小写 p），需兼容两种写法，否则会误判为仅 1 页只抓 30 条
+        total_pages = data.get("totalpages") or data.get("totalPages") or 1
+        has_more = data.get("hasMore")
         page += 1
         if page > total_pages:
+            break
+        if has_more is False:
             break
         _time.sleep(0.3)
 
@@ -1951,9 +1955,13 @@ def _fetch_cninfo_disclosures_via_cached_org_id(
             })
 
         if total_pages is None:
-            total_pages = data.get("totalPages", 1)
+            # cninfo 返回字段名是 totalpages（小写 p），需兼容两种写法，否则会误判为仅 1 页
+            total_pages = data.get("totalpages") or data.get("totalPages") or 1
+        has_more = data.get("hasMore")
         page += 1
         if total_pages is not None and page > total_pages:
+            break
+        if has_more is False:
             break
         _time.sleep(0.3)
 
