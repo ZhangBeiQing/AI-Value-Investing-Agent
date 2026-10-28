@@ -53,11 +53,24 @@ python scripts/refresh_all_for_date.py --date 2026-04-21
 python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-date  # 休市日补充宏观/新闻分析
 python scripts/refresh_all_for_date.py --fresh-heavy   # 额外强刷财报结构化数据等重缓存
 
+# 单股入口：只为「一只股票」准备分析数据，不触碰其它标的
+# 串联 manage_daily_data --symbols 与 prepare_financial_report_skill --symbols，
+# 产出「行情/财报缓存 + 该公司公告与财报 PDF + financial_report_workdir」
+# 需要分析不在池内的股票时，先按「Ask First」把标的加入 configs/stock_pool.py
+python scripts/prepare_single_stock.py --symbol 600601.SH --date 2026-10-28
+python scripts/prepare_single_stock.py --symbol 600601              # 默认 today；纯数字自动补 .SH/.SZ
+python scripts/prepare_single_stock.py --symbol 600601.SH --only data       # 只刷行情/财报缓存与公告
+python scripts/prepare_single_stock.py --symbol 600601.SH --only financial  # 只建财报研究 workdir
+python scripts/prepare_single_stock.py --symbol 600601.SH --force-refresh   # 强刷共享缓存
+
 # 仅在需要手动准备或调试单步链路时使用
 python scripts/manage_daily_data.py
 python scripts/run_daily_pipeline.py --date YYYY-MM-DD
 python scripts/run_post_trade.py --date YYYY-MM-DD
 ```
+
+> 单股数据准备**不要**用 `refresh_all_for_date.py` 或 `manage_selection_system.py build-announcements`：
+> 前者按整个固定股票池刷新，后者只能扫全 universe（无 `--symbols`），都会把别的股票一起刷一遍。
 
 ## 日期语义（统一口径）
 
@@ -67,6 +80,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 周末或节假日「今天」不是交易日时，需要手动指定最近一个交易日，例如周六补跑时传 `--date <上周五>`。
 - 若确需在周末或节假日吸收休市期间新增的宏观与新闻信息，`refresh_all_for_date.py` 和 `run_daily_pipeline.py` 可显式传 `--allow-non-trading-date`，按该自然日生成研究与下一交易日预案；该参数不表示休市日可以成交，也不得用于放宽回测交易日约束。
 - 不要出现「传明天的日期」这种用法。
+- **例外：财报公告的可见性截断**。公司在交易日 D 的晚间发财报、公告日期登记为 D+1，所以 `prepare_financial_report_skill.py` / `sync_financial_reports.py` 默认按 **D+1** 抓取并筛选公告（`--disclosure-cutoff next-day`），而价格、估值、市场上下文仍用 D。历史回测由 `--backtest-context` 自动切回 `analysis-day` 严格截断，避免时间穿越。
 - 因为是当天夜间运行，`akshare` 的当日行情/新闻偶有延迟：每轮必须校验该 `--date` 对应的产物真的落盘，**不得拿前一交易日的数据顶替**，否则次日预案会建立在过期收盘价上。
 
 ## Boundaries
@@ -79,7 +93,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 用户说"开始今天股票交易"时，优先按 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` 执行，默认假设 `data/skill_runs/YYYY-MM-DD/` 的 `01-04` 已由用户手动准备完成
 - 改主链路后至少给出对应验证证据：日志、输出文件或失败现场
 - 新增或修改核心组件时使用统一日志入口，不要直接散落 `print`
-- 需要联网搜索时优先使用 `WebSearch` 工具，不要使用 `WebFetch` 或其他工具
+- 需要联网搜索时一律使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP）；不可用时失败关闭，不要改用爬虫或第三方检索 API 替代
 - 出 bug 时先拿失败现场再改代码，复杂问题先缩成最小复现，不要一上来全链路硬跑
 
 ### 修改后最低验证标准
@@ -154,7 +168,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 
 - 所有 Agent、Subagent 和 Skill 的最终交付文件禁止包含原始 URL、Markdown 链接、脚注引用、括号来源引用或独立来源清单。
 - 高可信和一般可信资料直接吸收为结论；最终文件只保留结果，不展示常规引用。
-- 只有雪球、股吧、社交媒体传闻等低可信信息确实影响判断时，才标注“低可信来源”或“未经证实”，说明不确定性及其对结论的影响；仍不得写来源名称、帖子标题或 URL。
+- 社区与传闻类信息（雪球、股吧、投资者论坛等）按 `configs/research/web_research_policy.md` 的 3.2 节分级：**身份可追溯、细节可核查的一手观察**与机构研报同等可用，可直接吸收进结论；只有**未能交叉验证**的社区线索或传闻才在正文标注“未经证实”，说明不确定性及其对结论的影响；仍不得写来源名称、帖子标题或 URL。AI 生成的社区总结帖一律不入证据，也不得进入最终产物。
 - 过程研究文件、抓取缓存、证据索引和审计日志可保留来源元数据供内部核验，但发布到 `financial_reports/`、`05_decision.json`、交易总结、行业研究最终报告及其他用户直接消费的最终产物前必须移除引用。
 
 ## Rules

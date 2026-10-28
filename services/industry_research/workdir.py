@@ -166,7 +166,7 @@ def _render_deep_research_prompt(brief: Mapping[str, Any], outputs: Mapping[str,
 
 ## 搜索与证据要求
 
-- 所有外部搜索首先使用百炼 `bailian_web_search` 能力；不可用时失败关闭，不静默切换搜索引擎。
+- 所有外部搜索一律使用运行时内置搜索工具（DSH / Codex 为 `mcp__bailian__bailian_web_search`，OpenCode / Claude Code 为 `WebSearch`）；不可用时失败关闭，不自行拼接爬虫或第三方检索 API 替代。
 - 优先使用政府、交易所、行业协会、公司公告、业绩会和客户/供应商材料。
 - 普通新闻只能作为线索；关键结论至少需要两个相互独立的来源，或一个权威原始来源。
 - 每条关键事实记录 `period_end`、`release_date`、`fetched_at`、来源标题和URL。

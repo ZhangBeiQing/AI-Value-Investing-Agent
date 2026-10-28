@@ -16,7 +16,7 @@
 ### 任务
 
 - 验证 `terminal_theme → subchain → value_chain_node → company_exposure`；
-- 使用百炼搜索刷新本披露窗口的需求、订单、供给、库存、价格、交期、CAPEX 和技术路线；
+- 使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP）刷新本披露窗口的需求、订单、供给、库存、价格、交期、CAPEX 和技术路线；
 - 建立终端 TAM、供需错配和产业链利润映射；
 - 分别判断组内每家公司主题收入、利润暴露、竞争地位和是否真正受益；
 - 公司不预设为龙头；

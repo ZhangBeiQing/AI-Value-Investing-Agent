@@ -56,7 +56,7 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 - `prepare_financial_report_skill.py` 会同步公告 PDF、整理待生成清单，并为每股生成相互隔离的财报前市场上下文与分析日价格/增强估值上下文；它复用底层股票研究服务，不调用整个 `run_daily_pipeline.py`。
 - `/financial-report-summary` 按细分产业链协调 Industry Researcher，并为每股协调 Expectation Scout 和 Financial Author；Author 一次撰写直接写入 `financial_reports/`，主 agent 通过质量门禁再注册 `summary_index.json`。
-- 财报前预期严格按公告时点截断；年度同花顺预测不能冒充季度一致预期。外部搜索强制百炼优先，重大数字回到原始来源核验。
+- 财报前预期严格按公告时点截断；年度同花顺预测不能冒充季度一致预期。外部搜索统一使用运行时内置搜索工具，重大数字回到原始来源核验。
 - 详见 `.codex/skills/financial-report-summary/SKILL.md`。
 
 ### 1.4 综合 fixed_tracked 01-04 产物

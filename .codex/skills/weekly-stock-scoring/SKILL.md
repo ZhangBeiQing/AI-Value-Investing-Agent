@@ -59,7 +59,7 @@ python scripts/prepare_universe_scoring_inputs.py --date {date} --symbols 300502
 **财报前置门禁（universe 池）**：该脚本在生成研究包前会校验目标股票在 `{date}` 之前是否已有可用财报（`financial_reports/*.md`，口径与研究包一致，ETF 不要求）。
 
 - 有缺失时脚本默认先自动运行财报准备层（`python scripts/prepare_financial_report_skill.py --date {date} --symbols <缺失股> --sync-first --json`，纯 Python，只生成 workdir），写出 `data/skill_runs/{date}/universe/_missing_financial_reports.json`，并以**退出码 2 硬失败**，此时不得继续派发评分。
-- 缺失必须由**主 Agent 亲自**补齐：完整读取 `.codex/skills/financial-report-summary/SKILL.md`，对 ready 股票派发 Industry Researcher / Expectation Scout / Financial Author 撰写 `data/stock_info/{name}_{symbol}/financial_reports/<YYYYMMDD>.md`，再用 `scripts/register_financial_report_summary.py` 注册 `summary_index.json`（每批最多 10 个 subagent）。
+- 缺失必须由**主 Agent 亲自**补齐：完整读取 `.codex/skills/financial-report-summary/SKILL.md`，对 ready 股票派发 Industry Researcher / Expectation Scout / Financial Author 撰写 `data/stock_info/{name}_{symbol}/financial_reports/<YYYYMMDD>.md`，再用 `scripts/register_financial_report_summary.py` 注册 `summary_index.json`（每批最多 30 个 subagent）。
 - 补齐并落盘校验通过后，重跑 `prepare_universe_scoring_inputs.py` 生成研究包，再进入第二步。
 - 关闭门禁用 `--no-ensure-financial-reports`，只跳过自动 prepare 用 `--no-prepare-missing-reports`；正式流程不要关。
 
@@ -72,7 +72,7 @@ python scripts/prepare_universe_scoring_inputs.py --date {date} --symbols 300502
 - 宏观上下文路径：`data/skill_runs/{date}/fixed_tracked/01_global_context.md`（两个池共用）
 - 唯一输出路径：fixed_tracked 池为 `data/weekly_scoring/{date}/{stock_name}_{symbol}_score.json`，universe 池为 `data/weekly_scoring/{date}/universe/{stock_name}_{symbol}_score.json`
 
-**并发限制**：同一批最多 10 个 subagent，且不得超过当前平台可用并发额度。
+**并发限制**：同一批最多 30 个 subagent，且不得超过当前平台可用并发额度。
 
 估值直接完整读取研究包 `### 1.2 Valuation Report (Markdown)`，按规则解释各张表；不另加Python计算或抓取层。必须比较当前PE/PB与历史同口径序列或百分位，以及历史价格高于/低于现价的累计占比。单档概率不作判断依据。已有数据必须用于具体判断，不能因为缺DCF或精确日频分位就退回“估值待核实”；真实缺口指出具体字段。旧报告与新披露冲突时先更新事实，再打分。
 

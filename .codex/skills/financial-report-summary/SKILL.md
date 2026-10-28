@@ -54,13 +54,13 @@ data/stock_info/{stock_name}_{symbol}/disclosures/pdfs/
 
 仅处理 `ready_items`。`skipped_items` 中已总结或缺财报的股票不启动角色。正式研究不得使用 `--skip-market-context`。
 
-## 二、验证百炼搜索
+## 二、验证搜索能力
 
-在派发任何需要联网的角色前，发现并验证 `bailian_web_search` 能力。实际 MCP 前缀可以不同。
+在派发任何需要联网的角色前，确认阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP） 可用。
 
-- 能力不存在或传输失败：停止研究，报告 `bailian_unavailable`。
+- 搜索能力不存在或被禁用：停止研究，报告 `web_search_unavailable`。
 - 搜索成功但无结果：允许角色继续换查询词或记录数据缺口。
-- 不得静默切换其他搜索引擎；只有用户明确允许 fallback 才能使用替代搜索。
+- 不得改用其他搜索通道，也不得自行拼接爬虫或第三方检索 API 替代；只有用户明确允许 fallback 才能使用替代搜索。
 
 ## 三、产业链分组
 
@@ -151,7 +151,7 @@ Financial Author 不得自行写 `summary_index.json`。注册失败时保留研
 - 每股最终报告路径；
 - 细分产业链复用关系；
 - 影响结论的重大数据缺口与不确定性；
-- 百炼搜索状态；
+- 联网搜索状态；
 - `summary_index.json` 是否注册成功。
 
 不在汇报中代替报告生成买卖建议。

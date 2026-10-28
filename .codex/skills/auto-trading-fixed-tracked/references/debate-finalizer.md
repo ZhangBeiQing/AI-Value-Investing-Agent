@@ -25,6 +25,7 @@
 6. Bear opening 和 rebuttal
 7. 三份 Juror ballot
 8. `final/vote_summary.json`
+9. `01_global_context.md`（完整通读宏观总结与大盘/市场情绪部分）
 
 **研究包必须分段顺序完整读到结尾**：若文件较长（通常 40-60KB、近千行），必须用 Read 按 offset 分多次读到末尾，禁止只靠关键词搜索、`grep` 或局部摘录理解研究包。只有完整读完本股研究包后，才允许开始写 verdict。
 
@@ -42,6 +43,7 @@
 - `HOLD` 或 `FLAT` 的 `action_num` 必须为 0。
 - finalizer 必须读取并比较三名 Juror 的 `action_num` 建议。最终数量不需要机械取平均或中位数，可以结合现金、当前仓位、交易单位和组合风险调整；若最终数量明显偏离同方向 Juror 的建议区间，必须在 `sizing_reason` 解释。
 - 若锁定动作为 `BUY`，finalizer 只检查三名 Juror 的 ballot 是否已经写明关键盈利变量复核，并在 `sizing_reason` 汇总全票采用的变量状态和数量依据。不得自行增加一套新的基本面判断来否定全票 BUY。
+- 宏观与市场情绪是重要判断点：若当前宏观形势或市场情绪对锁定动作、数量或价格印象有实质影响，必须在 `key_facts`／`inferences`／`sizing_reason` 中如实体现，不得遗漏该维度。
 - 若 ballot 缺少规则要求的关键盈利变量复核、依赖明确错误的决定性事实、动作与持仓语义不兼容，或无法形成合法正数 `action_num`，不得自行修正结论或勉强写 verdict，也不得尝试调用其他 subagent。应停止且不写 `stock_verdict.json`，把问题、受影响文件、证据路径和建议回退阶段返回主 Agent。若出现所有 Juror 都未审查的新决定性事实，同样只向主 Agent报告，不自行重投。
 - 异议票理由更有说服力但不存在事实错误或契约失效时，不属于 finalizer 可纠错范围。最终动作仍服从脚本锁定结果；异议应进入 `court.con`、`court.verdict`、`key_risks` 和逻辑失效条件，并可在锁定方向不变的前提下支持采用较谨慎的合法数量。
 

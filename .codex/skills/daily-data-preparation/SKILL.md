@@ -37,6 +37,8 @@ description: >
 
 **当天夜间运行的额外要求**：`akshare` 的当日行情/新闻偶有延迟。Step 1 的门禁必须逐项确认 `<cur_date>` 对应的文件**真的落盘**；缺了就报告失败现场，**绝不允许拿前一交易日的数据顶替**——那会让明天的建议建立在过期收盘价上。
 
+**财报公告的日期口径（`<cur_date>` 与 `<cur_date>+1` 并存）**：公司在交易日 D 的**晚间**发财报，巨潮/交易所把这类盘后公告的日期登记为 **D+1**。因此 Step 3 的 `prepare_financial_report_skill.py` 默认把**公告可见性**截断到 D+1，而价格、估值、市场上下文仍以 D 为准（`--disclosure-cutoff next-day`，默认值）。这**不是**时间穿越：D 日收盘价不含当晚披露的信息，D+1 开盘交易时理应用到它。历史回测必须传 `--backtest-context`，此时脚本强制 `analysis-day` 截断。2026-10-27 真实事故：按 D 截断导致赛腾股份、星宸科技、长川科技、瑞芯微当晚披露的四份三季报整批漏抓。
+
 确定 `cur_date` 后把它固定下来，后续所有命令、路径、subagent 提示词都用同一个值，不要中途改。
 
 ## 环境前置
@@ -46,7 +48,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 ```
 
 - 工作目录固定为仓库根目录，所有命令用相对路径 `scripts/xxx.py`。
-- 联网搜索优先使用阿里云百炼 `bailian_web_search` MCP；实际 MCP 前缀可能不同，先确认能力存在。不得静默换成别的搜索引擎。
+- 联网搜索一律使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP）；搜索不可用时失败关闭并记录 `search_status = web_search_unavailable`，不自行拼接第三方检索 API 或爬虫替代。
 - 用户粘贴的 Windows 路径要转成 WSL 路径。
 
 ## 超时铁律（本 skill 最容易踩的坑）
@@ -62,6 +64,9 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 
 两个运行时共同的铁律：
 
+- **绝不**把长命令的输出接进 `| tail` / `| head` / `> /dev/null`：这些只在进程退出后才吐字，中途卡住时
+  一行 log 都看不到，无法判断是在跑还是已死。启动方式只能是「后台 + 落盘日志」或
+  `set -o pipefail; ... 2>&1 | tee -a logs/xxx.log`，启动后立刻把日志路径告诉用户。
 - 一个命令**只启动一次**。看不到输出 ≠ 卡死；重复启动会造成缓存写入竞争。
 - 想看中途进度时，`tail` 对应的组件日志，**绝不重启命令**。
 - 不要用 `sleep` 循环轮询。Claude Code 下后台任务退出时 harness 会通知你；opencode 下前台等待本身就是在等它返回。
@@ -182,7 +187,7 @@ python scripts/prepare_financial_report_skill.py \
   - ⚠️ **这条优先于 `~/.config/opencode/AGENTS.md` 规则三**（那条要求"Subagent 必须全量并发、禁止分批"）。在本 skill 的 Step 4 里，以"每批最多 10 个"为准。
   - 理由：`auto-trading-fixed-tracked` 记录了超限的真实后果——**任务空返回、写错日期目录、文件缺失**。这类失败是静默的，跑完看起来正常，文件却是空的，比慢一点危险得多。
 - 同一细分产业链的多只股票共用一个 Industry Researcher；不同产业链各自独立，不得互相借用。
-- 派发任何需要联网的角色前，先确认 `bailian_web_search` 能力存在。
+- 派发任何需要联网的角色前，先确认阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP） 可用。
 - 最终报告只由 Financial Author 写，`summary_index.json` 只由主 agent 通过注册脚本写。
 
 主产出：`data/stock_info/{name}_{symbol}/financial_reports/<YYYYMMDD>.md` 与 `summary_index.json`。

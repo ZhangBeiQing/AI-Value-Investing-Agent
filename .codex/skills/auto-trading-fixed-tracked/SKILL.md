@@ -56,6 +56,7 @@ data/skill_runs/_analysis_index.json
 
 - 主 Agent的组合与 P0 方法：当天 `03_agent_input.md`。
 - 个股共同投资、联网搜索和证据准入规则：当天 `03_stock_analysis_input.md`。
+- 联网搜索一律使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP）；搜索不可用时按 `03_stock_analysis_input.md` 中的搜索政策失败关闭，不自行拼接爬虫或第三方检索 API 替代。
 - Bull opening：[references/debate-bull.md](references/debate-bull.md)。
 - Bear opening：[references/debate-bear.md](references/debate-bear.md)。
 - 双方 rebuttal：[references/debate-rebuttal.md](references/debate-rebuttal.md)。
