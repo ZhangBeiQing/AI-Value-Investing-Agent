@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -29,6 +30,9 @@ load_dotenv(".env")
 
 DEFAULT_DEDUP_MODEL = "deepseek-v4.1-flash"
 DEFAULT_BATCH_SIZE = 20
+DEFAULT_DEDUPE_MAX_WORKERS = int(os.getenv("NEWS_DEDUPE_MAX_WORKERS", "12"))
+DEFAULT_ENRICH_MAX_WORKERS = int(os.getenv("NEWS_ENRICH_MAX_WORKERS", "16"))
+DEDUP_RETRY_ATTEMPTS = 3
 SOURCE_BATCH_LIMITS = {
     "em_breakfast": 80,
     "cls_key": 50,
@@ -114,13 +118,22 @@ def run_news_curation_pipeline(
     base_dir: str | Path = "data",
     model: str = DEFAULT_DEDUP_MODEL,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    dedupe_max_workers: int = DEFAULT_DEDUPE_MAX_WORKERS,
+    enrich_max_workers: int = DEFAULT_ENRICH_MAX_WORKERS,
     max_items_per_source: Dict[str, int] | None = None,
 ) -> Dict[str, Path]:
     paths = SelectionSystemPaths.from_base_dir(base_dir)
     paths.ensure_directories()
     paths.ensure_run_dir(run_date)
 
-    LOGGER.info("开始新闻模块: run_date=%s model=%s batch_size=%d", run_date, model, batch_size)
+    LOGGER.info(
+        "开始新闻模块: run_date=%s model=%s batch_size=%d dedupe_workers=%d enrich_workers=%d",
+        run_date,
+        model,
+        batch_size,
+        dedupe_max_workers,
+        enrich_max_workers,
+    )
     candidates, candidate_source_status = collect_news_candidates(
         run_date,
         max_items_per_source=max_items_per_source,
@@ -143,6 +156,7 @@ def run_news_curation_pipeline(
         candidates,
         model=model,
         batch_size=batch_size,
+        max_workers=dedupe_max_workers,
     )
     save_json_file(paths.run_news_dedup_decisions_path(run_date), decision_payload)
     LOGGER.info("去重判决已写入: %s", paths.run_news_dedup_decisions_path(run_date))
@@ -173,7 +187,7 @@ def run_news_curation_pipeline(
     )
     LOGGER.info("去重结果已写入: %s", paths.run_news_deduped_path(run_date))
 
-    enriched_items, enrichment_status = enrich_news_items(deduped_items)
+    enriched_items, enrichment_status = enrich_news_items(deduped_items, max_workers=enrich_max_workers)
     save_json_file(
         paths.run_news_enriched_path(run_date),
         _build_payload(
@@ -340,6 +354,7 @@ def dedupe_news_candidates(
     *,
     model: str = DEFAULT_DEDUP_MODEL,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    max_workers: int = DEFAULT_DEDUPE_MAX_WORKERS,
 ) -> Dict[str, Any]:
     client = _get_dedup_client(model)
     batches = _chunk_list(list(candidates), batch_size)
@@ -347,25 +362,45 @@ def dedupe_news_candidates(
     survivor_ids: List[str] = []
     llm_to_news = {str(item.get("llm_id") or ""): str(item.get("news_id") or "") for item in candidates}
 
-    LOGGER.info("开始新闻去重: candidates=%d batches=%d", len(candidates), len(batches))
+    worker_count = max(1, min(int(max_workers), len(batches) or 1))
+    LOGGER.info(
+        "开始新闻去重: candidates=%d batches=%d workers=%d",
+        len(candidates),
+        len(batches),
+        worker_count,
+    )
 
-    for batch_index, batch in enumerate(batches, start=1):
+    def _run_batch(indexed_batch: Tuple[int, List[Dict[str, Any]]]) -> Dict[str, Any]:
+        batch_index, batch = indexed_batch
         LOGGER.info("去重批次开始: batch=%d size=%d", batch_index, len(batch))
-        result = _dedupe_batch(client, batch, model=model)
+        result = _dedupe_batch_with_retry(client, batch, model=model)
         normalized_llm = _normalize_dedup_result([item["llm_id"] for item in batch], result)
         normalized = _convert_dedup_result_to_news_ids(normalized_llm, llm_to_news)
-        batch_results.append(
-            {
-                "batch_index": batch_index,
-                "input_items": [
-                    {"llm_id": item["llm_id"], "news_id": item["news_id"], "title": item["title"]}
-                    for item in batch
-                ],
-                "result": normalized,
-            }
-        )
-        survivor_ids.extend(normalized["keep_ids"])
         LOGGER.info("去重批次完成: batch=%d keep=%d", batch_index, len(normalized["keep_ids"]))
+        return {
+            "batch_index": batch_index,
+            "input_items": [
+                {"llm_id": item["llm_id"], "news_id": item["news_id"], "title": item["title"]}
+                for item in batch
+            ],
+            "result": normalized,
+        }
+
+    indexed_batches = list(enumerate(batches, start=1))
+    if worker_count == 1:
+        for indexed_batch in indexed_batches:
+            batch_results.append(_run_batch(indexed_batch))
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {executor.submit(_run_batch, indexed_batch): indexed_batch[0] for indexed_batch in indexed_batches}
+            collected: Dict[int, Dict[str, Any]] = {}
+            for future in as_completed(futures):
+                batch_index = futures[future]
+                collected[batch_index] = future.result()
+            batch_results = [collected[index] for index in sorted(collected)]
+
+    for batch_result in batch_results:
+        survivor_ids.extend(batch_result["result"]["keep_ids"])
 
     survivor_items = [item for item in candidates if item["news_id"] in set(survivor_ids)]
     merge_result: Dict[str, Any] | None = None
@@ -430,7 +465,7 @@ def dedupe_news_candidates(
 def enrich_news_items(
     items: Sequence[Dict[str, Any]],
     *,
-    max_workers: int = 6,
+    max_workers: int = DEFAULT_ENRICH_MAX_WORKERS,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     LOGGER.info("开始抓取新闻正文: items=%d workers=%d", len(items), max_workers)
     enriched_by_id: Dict[str, Dict[str, Any]] = {}
@@ -964,6 +999,32 @@ def _dedupe_batch(client: OpenAI, batch: Sequence[Dict[str, Any]], *, model: str
     )
     content = completion.choices[0].message.content or ""
     return _parse_json_object(content)
+
+
+def _dedupe_batch_with_retry(
+    client: OpenAI,
+    batch: Sequence[Dict[str, Any]],
+    *,
+    model: str,
+    attempts: int = DEDUP_RETRY_ATTEMPTS,
+) -> Dict[str, Any]:
+    last_error: Exception | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            return _dedupe_batch(client, batch, model=model)
+        except Exception as exc:  # noqa: BLE001 - 并发调用下需兜住限流/网络/解析异常
+            last_error = exc
+            if attempt >= attempts:
+                break
+            sleep_seconds = min(2 ** attempt, 15)
+            LOGGER.warning(
+                "去重批次调用失败，准备重试: attempt=%d/%d error=%s",
+                attempt,
+                attempts,
+                exc,
+            )
+            time.sleep(sleep_seconds)
+    raise RuntimeError(f"新闻去重批次调用失败: {last_error}") from last_error
 
 
 def _normalize_dedup_result(input_ids: Sequence[str], result: Dict[str, Any]) -> Dict[str, Any]:

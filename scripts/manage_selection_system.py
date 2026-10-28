@@ -70,6 +70,18 @@ def _build_parser() -> argparse.ArgumentParser:
     news_parser.add_argument("--date", required=True, help="Run date in YYYY-MM-DD format.")
     news_parser.add_argument("--model", default="deepseek-v4.1-flash", help="Dedup model name.")
     news_parser.add_argument("--batch-size", type=int, default=20, help="Batch size for LLM dedup.")
+    news_parser.add_argument(
+        "--dedupe-workers",
+        type=int,
+        default=12,
+        help="Concurrent LLM dedup batch workers. Default: 12",
+    )
+    news_parser.add_argument(
+        "--enrich-workers",
+        type=int,
+        default=16,
+        help="Concurrent news body fetch workers. Default: 16",
+    )
 
     market_parser = subparsers.add_parser(
         "run-signals",
@@ -427,6 +439,8 @@ def _handle_run_news(
     run_date: str,
     model: str,
     batch_size: int,
+    dedupe_workers: int,
+    enrich_workers: int,
 ) -> int:
     from services.selection_system.news_curation import run_news_curation_pipeline
 
@@ -441,6 +455,8 @@ def _handle_run_news(
         base_dir=base_dir,
         model=model,
         batch_size=batch_size,
+        dedupe_max_workers=dedupe_workers,
+        enrich_max_workers=enrich_workers,
     )
     LOGGER.info("news curation 完成: %s", json.dumps({k: str(v) for k, v in outputs.items()}, ensure_ascii=False))
     return 0
@@ -828,6 +844,8 @@ def main() -> int:
             args.date,
             args.model,
             args.batch_size,
+            args.dedupe_workers,
+            args.enrich_workers,
         )
     if args.command in {"run-signals", "run-market-signals"}:
         return _handle_run_market_signals(
