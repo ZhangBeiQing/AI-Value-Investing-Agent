@@ -27,6 +27,9 @@ DEFAULT_TOP_N = 3
 DEFAULT_STOCKS_PER_BOARD = 3
 DEFAULT_RESEARCH_MODEL = "deepseek-v4.1-flash"
 DEFAULT_DIGEST_TOP_K = 10
+# 板块研究是单次 forced_search 大请求，上游 dashscope 偶发长时间不返回；
+# 不设超时会让整条 refresh 链路无限期挂住（2026-10-28 实际挂死 16 分钟）。
+DEFAULT_RESEARCH_TIMEOUT_SECONDS = 300.0
 
 load_dotenv(".env")
 
@@ -404,13 +407,42 @@ def _build_fallback_board_research(boards: Sequence[Mapping[str, Any]]) -> List[
     return fallback
 
 
+def _resolve_research_timeout() -> float:
+    """读取板块研究请求超时秒数，非法值回退默认值。"""
+    raw = os.getenv("BOARD_HEAT_TIMEOUT_SECONDS")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_RESEARCH_TIMEOUT_SECONDS
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        LOGGER.warning(
+            "BOARD_HEAT_TIMEOUT_SECONDS 非法，回退默认值: raw=%r default=%s",
+            raw,
+            DEFAULT_RESEARCH_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_RESEARCH_TIMEOUT_SECONDS
+    if value <= 0:
+        LOGGER.warning(
+            "BOARD_HEAT_TIMEOUT_SECONDS 必须为正数，回退默认值: raw=%r default=%s",
+            raw,
+            DEFAULT_RESEARCH_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_RESEARCH_TIMEOUT_SECONDS
+    return value
+
+
 def _get_research_client(model: str) -> OpenAI:
     api_key = os.getenv("AUDIT_MODEL_API_KEY") or os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("AUDIT_MODEL_BASE_URL") or os.getenv("OPENAI_API_BASE")
     if not api_key or not base_url:
         raise ValueError("缺少 AUDIT_MODEL_API_KEY/AUDIT_MODEL_BASE_URL 或 OPENAI_API_KEY/OPENAI_API_BASE")
     LOGGER.info("初始化板块研究客户端: model=%s base_url=%s", model, base_url)
-    return OpenAI(api_key=api_key, base_url=base_url)
+    return OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=_resolve_research_timeout(),
+        max_retries=1,
+    )
 
 
 def _parse_json_object(text: str) -> Dict[str, Any]:
