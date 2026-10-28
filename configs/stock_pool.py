@@ -24,18 +24,11 @@ class ForcedShortBookEntry:
     reason: str
 
 TRACKED_A_STOCKS: List[StockEntry] = [
-    StockEntry("300476.SZ", "胜宏科技", "GB300 HDI板独家份额50%"),
     StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
     StockEntry("002714.SZ", "牧原股份", "生猪养殖"),
     StockEntry("603501.SH", "豪威集团", "半导体设计"),
-    StockEntry("600276.SH", "恒瑞医药", "创新医药"),
-    StockEntry("01093.HK", "石药集团", "创新药与医药制造"),
-    StockEntry("300274.SZ", "阳光电源", "光伏逆变器"),
     StockEntry("600406.SH", "国电南瑞", "智能电网"),
-    StockEntry("601877.SH", "正泰电器", "低压电器与户用光伏"),
     StockEntry("01810.HK", "小米集团-W", "手机与智能家居与汽车"),
-    StockEntry("09988.HK", "阿里巴巴-W", "电商、云计算与人工智能"),
-    StockEntry("00700.HK", "腾讯控股", "社交、游戏与云服务"),
     StockEntry("002594.SZ", "比亚迪", "汽车电子"),
     StockEntry("300750.SZ", "宁德时代", "新能源电池"),
     StockEntry("600150.SH", "中国船舶", "船舶制造"),
@@ -45,23 +38,11 @@ TRACKED_A_STOCKS: List[StockEntry] = [
     StockEntry("02513.HK", "智谱", "人工智能大模型"),
     StockEntry("603283.SH", "赛腾股份", "消费电子自动化设备"),
     StockEntry("301536.SZ", "星宸科技", "AI视觉芯片"),
-    StockEntry("688235.SH", "百济神州-U", "创新药"),
     StockEntry("600036.SH", "招商银行", "零售银行"),
-    StockEntry("601398.SH", "工商银行", "国有大行"),
     StockEntry("603195.SH", "公牛集团", "民用电工"),
     StockEntry("300014.SZ", "亿纬锂能", "锂电池"),
-    StockEntry("002463.SZ", "沪电股份", "PCB"),
-    StockEntry("002466.SZ", "天齐锂业", "锂矿"),
-    StockEntry("600584.SH", "长电科技", "半导体封测"),
-    StockEntry("600183.SH", "生益科技", "覆铜板CCL"),
-    StockEntry("300458.SZ", "全志科技", "芯片设计"),
-    StockEntry("300394.SZ", "天孚通信", "光通信器件"),
-    StockEntry("300613.SZ", "富瀚微", "视频监控芯片"),
-    StockEntry("002851.SZ", "麦格米特", "电力电子与电气自动化"),
-    StockEntry("00175.HK", "吉利汽车", "汽车制造"),
     StockEntry("300760.SZ", "迈瑞医疗", "医疗器械"),
-    StockEntry("600362.SH", "江西铜业", "铜矿采选与冶炼"),
-    StockEntry("601318.SH", "中国平安", "综合金融与保险"),
+    StockEntry("600601.SH", "方正科技", "印制电路板 PCB"),
 ]
 
 
