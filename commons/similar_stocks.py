@@ -62,6 +62,9 @@ def _call_deepseek_chat(prompt: str, model: str | None = None) -> str:
         "temperature": 0.4,
         "top_p": 0.9,
         "max_tokens": 8192,
+        # 关闭推理：官方 deepseek-flash 等推理模型会先消耗 reasoning tokens，
+        # 长 prompt 下 8192 常被推理占满导致 content 为空，这里直接关掉思维链。
+        "thinking": {"type": "disabled"},
     }
 
     data = json.dumps(payload).encode("utf-8")

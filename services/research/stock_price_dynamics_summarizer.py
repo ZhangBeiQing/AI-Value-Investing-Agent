@@ -477,13 +477,23 @@ def stock_price_dynamics_summarizer(
             if not symbol_key:
                 continue
             symbol_close_col.setdefault(symbol_key, column)
-            series = close_df[column].dropna()
+            series = close_df[column]
+            if isinstance(series, pd.DataFrame):
+                series = series.iloc[:, 0]
+            if not isinstance(series, pd.Series):
+                logger.warning("跳过非序列收盘价列: %s", column)
+                continue
+            series = series.dropna()
             if series.empty:
                 continue
-            metric_result = return_metrics_indicator(
-                pd.DataFrame({"收盘": series}),
-                windows=(63, 126, 252),
-            )
+            try:
+                metric_result = return_metrics_indicator(
+                    pd.DataFrame({"收盘": series}),
+                    windows=(63, 126, 252),
+                )
+            except Exception as exc:
+                logger.warning("收盘价指标计算失败，跳过 %s: %s", column, exc)
+                continue
             if metric_result:
                 metrics[symbol_key] = metric_result
         
@@ -547,13 +557,12 @@ def stock_price_dynamics_summarizer(
         if not etf_mode:
             summary_df['与目标股票相关系数'] = correlations
         
-        # 格式化
+        # 格式化（先强制转数值，避免个别非数值单元格导致 dtype=object 时 round 报错）
         for col in summary_df.columns:
             if any(keyword in col for keyword in ('收益率', '波动率', '回撤')):
-                summary_df[col] = summary_df[col].round(1)
+                summary_df[col] = pd.to_numeric(summary_df[col], errors='coerce').round(1)
             elif '夏普比率' in col or '相关系数' in col:
-                # 保持原有的数值列处理逻辑
-                summary_df[col] = summary_df[col].round(3)
+                summary_df[col] = pd.to_numeric(summary_df[col], errors='coerce').round(3)
         
         # 保存分析结果
         analysis_dir = ensure_stock_subdir(symbolInfo, "analysis", base_dir)
