@@ -137,17 +137,24 @@ def _extract_global_market_with_qwen(image_path: Path, image_json_path: Path) ->
         "rows 是数组，每行包含 market, name, latest, change, change_pct。"
         "数字按图片原文输出，不要自行解释，不要输出额外文字。"
     )
-    completion = client.chat.completions.create(
-        model="qwen-doc-turbo",
-        messages=[
-            {"role": "system", "content": "你是一个严谨的财经OCR结构化助手。"},
-            {"role": "system", "content": f"fileid://{file_id}"},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    payload = _parse_json_like(completion.choices[0].message.content)
-    image_json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return payload
+    try:
+        completion = client.chat.completions.create(
+            model="qwen-doc-turbo",
+            messages=[
+                {"role": "system", "content": "你是一个严谨的财经OCR结构化助手。"},
+                {"role": "system", "content": f"fileid://{file_id}"},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        payload = _parse_json_like(completion.choices[0].message.content)
+        image_json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return payload
+    finally:
+        if file_id:
+            try:
+                client.files.delete(file_id)
+            except Exception:
+                pass
 
 
 def _parse_json_like(text: str) -> Dict[str, Any]:
