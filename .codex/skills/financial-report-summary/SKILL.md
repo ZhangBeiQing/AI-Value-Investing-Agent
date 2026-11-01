@@ -27,6 +27,12 @@ python scripts/prepare_financial_report_skill.py \
 
 `--date` 是本次分析日。准备脚本会为每股生成或更新：
 
+> **扫描范围**：默认 = `TRACKED_A_STOCKS` ∪ `book-fixed_tracked` 当前持仓 ∪ 量化初筛（传 `--include-quant-prefilter` 时）。
+> 持仓里不在 `TRACKED_A_STOCKS` 的股票（如 605117.SH 德业、601138.SH 工业富联、601688.SH 华泰）
+> 曾经完全不进扫描范围、公告索引也不刷新，2026-10-29 的德业三季报就是这样整份漏掉的。
+> 现在默认已并入，用 `--no-include-positions` 可关闭；用 `--symbols` 显式指定范围时持仓扩池同样关闭。
+> 只查范围不跑准备：`python scripts/prepare_financial_report_skill.py --date YYYY-MM-DD --include-quant-prefilter --print-scope`。
+
 ```text
 financial_report_workdir/
 ├── 01_latest_report.md

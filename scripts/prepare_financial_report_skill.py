@@ -27,6 +27,7 @@ from services.research.financial_report_skill import (
     prepare_financial_report_workdir,
     synthesize_manual_item,
 )
+from services.research.position_symbols import DEFAULT_SIGNATURES, load_position_symbols
 from services.news.disclosures_builder import resolve_disclosure_cutoff_date
 
 LOGGER = init_component_logger(
@@ -193,6 +194,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="额外把 12_quant_prefilter_short.csv 中的股票也加入处理列表。",
     )
     parser.add_argument(
+        "--include-positions",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "是否把当前账本持仓也加入处理列表（默认启用，用 --no-include-positions 关闭）。"
+            "持仓里不在 TRACKED_A_STOCKS 的股票（如 605117.SH、601138.SH、601688.SH）"
+            "原先不会同步公告，财报季会被整批漏掉。"
+        ),
+    )
+    parser.add_argument(
+        "--position-books",
+        default=",".join(DEFAULT_SIGNATURES),
+        help="参与持仓扩池的账本签名，逗号分隔；默认只含 book-fixed_tracked。",
+    )
+    parser.add_argument(
+        "--print-scope",
+        action="store_true",
+        help="只解析并打印本次处理范围（symbol 列表）后退出，不同步、不准备。",
+    )
+    parser.add_argument(
         "--skip-market-context",
         action="store_true",
         help="仅调试准备层时跳过当前价格与增强估值生成；正式财报研究不建议使用。",
@@ -252,6 +273,8 @@ def _apply_explicit_symbol_scope(args: argparse.Namespace) -> List[str]:
         ignored_sources.append("queue")
     if args.include_quant_prefilter:
         ignored_sources.append("quant_prefilter")
+    if args.include_positions:
+        ignored_sources.append("positions")
     if ignored_sources:
         LOGGER.info(
             "--symbols 已指定，仅处理显式股票；忽略扩池来源: %s",
@@ -261,8 +284,29 @@ def _apply_explicit_symbol_scope(args: argparse.Namespace) -> List[str]:
     args.include_tracked = False
     args.include_queue = False
     args.include_quant_prefilter = False
+    args.include_positions = False
     args.symbols = ",".join(explicit_symbols)
     return explicit_symbols
+
+
+def _parse_position_books(raw: Optional[str]) -> List[str]:
+    books = [token.strip() for token in (raw or "").split(",") if token.strip()]
+    return books or list(DEFAULT_SIGNATURES)
+
+
+def _load_position_symbols_for_args(args: argparse.Namespace) -> List[str]:
+    """把当前账本持仓解析成 symbol，用于并入财报扫描范围。"""
+    symbols = load_position_symbols(signatures=_parse_position_books(args.position_books))
+    if symbols:
+        LOGGER.info(
+            "持仓扩池: %d 个 symbol 来自 %s -> %s",
+            len(symbols),
+            args.position_books,
+            ", ".join(symbols),
+        )
+    else:
+        LOGGER.info("持仓扩池: 未从 %s 解析到任何持仓 symbol", args.position_books)
+    return symbols
 
 
 def _load_quant_prefilter_symbols(run_date: str) -> List[str]:
@@ -323,6 +367,29 @@ def main() -> int:
                 extra_symbols.append(s)
         if extra_symbols:
             args.symbols = ",".join(extra_symbols)
+    if args.include_positions:
+        position_symbols = _load_position_symbols_for_args(args)
+        for s in position_symbols:
+            if s not in extra_symbols:
+                extra_symbols.append(s)
+        if extra_symbols:
+            args.symbols = ",".join(extra_symbols)
+    if args.print_scope:
+        print(
+            json.dumps(
+                {
+                    "date": args.date,
+                    "symbols": extra_symbols,
+                    "include_tracked": args.include_tracked,
+                    "include_queue": args.include_queue,
+                    "include_quant_prefilter": args.include_quant_prefilter,
+                    "include_positions": args.include_positions,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
     if args.sync_first:
         sync_cmd = [
             sys.executable,
