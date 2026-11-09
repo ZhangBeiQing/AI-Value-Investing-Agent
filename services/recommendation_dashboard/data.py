@@ -335,10 +335,8 @@ def stock_detail(data_dir: Path, symbol: str) -> dict[str, Any] | None:
             "bear": "advocates/bear/opening.json",
             "bull_rebuttal": "advocates/bull/rebuttal.json",
             "bear_rebuttal": "advocates/bear/rebuttal.json",
-            "juror_01": "jury/juror_01/ballot.json",
-            "juror_02": "jury/juror_02/ballot.json",
-            "juror_03": "jury/juror_03/ballot.json",
-            "vote_summary": "final/vote_summary.json",
+            "review_request": "adjudicator/review_request.json",
+            "review_resolution": "adjudicator/review_resolution.json",
             "final": "final/stock_verdict.json",
         }
         for key, relative_path in paths.items():

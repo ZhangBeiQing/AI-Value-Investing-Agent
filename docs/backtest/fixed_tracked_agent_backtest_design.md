@@ -21,7 +21,7 @@ Skill 负责：
 3. 从当前固定股池和每日长期候选构造当日 fixed_tracked 分析集合；
 4. 复用安全的历史产物，补建可按日期重建的输入；
 5. 在缺失上下文时允许 Agent 受约束联网研究；
-6. 逐日运行 fixed_tracked 的 P0、Bull、Bear、Rebuttal、Juror、Finalizer；
+6. 逐日运行 fixed_tracked 的 P0、Bull、Bear、定向 Rebuttal、Adjudicator；
 7. 自动合并 `05_decision.json`，不等待人工确认；
 8. 自动调用回测模式的 `run_post_trade.py`，在 D+1 开盘模拟成交并生成 `06-08`；
 9. 维护独立的 `position.jsonl` 和投资逻辑记忆；
@@ -81,7 +81,7 @@ slippage_bps: 0
     ↓ 只扩展当日待研究股票集合
 fixed_tracked 主 Agent 做 P0
     ↓
-Bull / Bear / Rebuttal / Juror / Finalizer
+Bull / Bear / Adjudicator（必要时定向回应）
     ↓
 05_decision.json 才是当日最终交易决策
 ```
@@ -289,8 +289,7 @@ JSON 示例：
 - Bull；
 - Bear；
 - Rebuttal；
-- 三名 Juror；
-- Finalizer。
+- 独立 Adjudicator。
 
 主 Agent 不得只在派单 Prompt 中临时复述规则，因为弱模型可能遗漏或改写。
 
@@ -741,7 +740,7 @@ results
 
 ### 6.6 Skill 与 Prompt 的复用方式
 
-不复制 Bull、Bear、Rebuttal、Juror、Finalizer 和财报研究 Prompt。
+不复制 Bull、Bear、定向 Rebuttal、Adjudicator 和财报研究 Prompt。
 
 `backtest-fixed-tracked` 只是一层新的自动化编排 Skill，直接复用：
 
@@ -749,8 +748,7 @@ results
 .codex/skills/auto-trading-fixed-tracked/references/debate-bull.md
 .codex/skills/auto-trading-fixed-tracked/references/debate-bear.md
 .codex/skills/auto-trading-fixed-tracked/references/debate-rebuttal.md
-.codex/skills/auto-trading-fixed-tracked/references/debate-juror.md
-.codex/skills/auto-trading-fixed-tracked/references/debate-finalizer.md
+.codex/skills/auto-trading-fixed-tracked/references/debate-adjudicator.md
 .codex/skills/financial-report-summary/references/*
 configs/prompt_flow/fixed_tracked/*
 ```
@@ -759,8 +757,8 @@ configs/prompt_flow/fixed_tracked/*
 
 - 实验路径；
 - `00_backtest_context`；
-- 取消人工暂停；
-- 自动接受 P0；
+- 保留 P0 确认，05 与模拟成交自动推进；
+- P0 仍须用户确认；
 - 自动执行组合层数量保护；
 - 自动生成 05；
 - 自动调用回测模式 `run_post_trade.py`；
@@ -939,22 +937,14 @@ inputs_ready
 
 自动接受 P0，不向用户逐日确认。
 
-未进入 P0 的股票视为当日无新交易指令。它们不需要逐股启动六个辩论 Agent。
+未进入 P0 的股票视为当日无新交易指令。它们不需要逐股启动三个研究裁决 Agent。
 
-### 8.4 辩论
+### 8.4 独立研究与单裁决
 
-继续复用现有角色规则：
-
-- Bull；
-- Bear；
-- 原 Bull/Bear follow-up Rebuttal；
-- Juror 01/02/03；
-- 本地聚合；
-- Finalizer。
-
-每个角色额外强制读取 `00_backtest_context.md` 和回测联网规则。
-
-文件所有权保持不变，任何 subagent 都不能直接写 `05_decision.json`。
+每股两名独立 Advocate 完成 opening，再由第三名独立 Adjudicator 形成完整 verdict。
+决定性争议才触发原会话定向回应。
+从隔离账本取实际持股数传给 prepare 的 --position-shares；validate 通过后才能合并05。
+精确步骤与模板以当前 backtest skill 和 auto-trading skill 为准。
 
 ### 8.5 自动组合复核
 
@@ -970,7 +960,7 @@ inputs_ready
    - 再按 symbol 排序保证可复现；
 6. 剩余现金不足时，把最后一个订单缩减到可负担的合法交易单位；
 7. 不足一个交易单位时拒绝该订单；
-8. 不允许 PortfolioGuard 改变 Juror 多数动作，只能调整或拒绝数量；
+8. 不允许 PortfolioGuard 改变 Adjudicator 动作，只能调整或拒绝数量；
 9. 所有调整写入 `portfolio_adjustments`。
 
 该策略需要在实现评审时再次确认，因为它代替了日常流程中的人工判断。
@@ -982,8 +972,7 @@ inputs_ready
 ```bash
 python scripts/merge_subagent_decisions.py \
   --date {date} \
-  --book-type fixed_tracked \
-  --source debate
+  --book-type fixed_tracked
 ```
 
 但 `--base-dir` 必须指向实验自己的 `skill_runs` 根目录，或者扩展脚本支持明确的 `--experiment-root`。不得读取正式 `data/skill_runs` 中同日期的辩论结果。
@@ -1118,7 +1107,7 @@ role prompt hash
 + model identity
 ```
 
-例如只修改 Juror Prompt 时：
+例如只修改 Adjudicator Prompt 时：
 
 - Bull/Bear opening 可复用；
 - Rebuttal 可复用；

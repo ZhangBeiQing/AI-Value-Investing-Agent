@@ -1,4 +1,4 @@
-更新日期：2026-11-06
+更新日期：2026-11-09
 
 fixed_tracked 当前采用模型自主决策策略：主 Agent 自主选择 P0，不设置固定仓位上限、涨跌触发阈值或强制研究周期；个股角色自主决定估值方法、动作、数量与执行节奏。输入文件、决策字段、事实核验与执行校验保持兼容。研究包的历史投资逻辑记忆不包含 `action_type`、`action_num` 和历史 verdict；正式决策与交易账本仍保留完整记录。策略源更新后需重新生成当天 03 输入才会应用到后续分析。
 
@@ -59,6 +59,8 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 ```
 
 - `prepare_financial_report_skill.py` 会同步公告 PDF、整理待生成清单，并为每股生成相互隔离的财报前市场上下文与分析日价格/增强估值上下文；它复用底层股票研究服务，不调用整个 `run_daily_pipeline.py`。
+- 财报日常输入新增源文哈希绑定的 `YYYYMMDD.daily.json`（目标 3000–5000 非空白字符），完整深研原样保留。每日 04 优先读摘要，缺失、失效或未来日期时明确回退全文；详见 `configs/research/financial_daily_brief_contract.md`。
+- 输入分层与单裁决流程的实现边界见 `docs/daily_research_efficiency_design.md`。
 - `/financial-report-summary` 按细分产业链协调 Industry Researcher，并为每股协调 Expectation Scout 和 Financial Author；Author 一次撰写直接写入 `financial_reports/`，主 agent 通过质量门禁再注册 `summary_index.json`。
 - 财报前预期严格按公告时点截断；年度同花顺预测不能冒充季度一致预期。外部搜索按运行环境选择（Codex + GPT 优先自带搜索，其他组合优先百炼 MCP），重大数字回到原始来源核验。
 - 详见 `.codex/skills/financial-report-summary/SKILL.md`。
@@ -92,8 +94,7 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── 03_stock_analysis_input.md        # 共享投资策略 + fixed 个股辩论角色研究方法
 │   ├── 04_stock_research/                # 每只股票的研究包 *.md
 │   ├── 05_decision.json                  # 由 skill agent 在对话中生成
-│   ├── debate/                           # Bull/Bear/Jury/final 单股辩论产物
-│   └── subagent_result/                  # 旧版单 subagent 兼容产物
+│   ├── debate/                           # Bull/Bear/Adjudicator 单股研究与裁决
 ```
 
 详见 `.codex/rules/skill-pipeline.md`。
@@ -104,8 +105,8 @@ data/skill_runs/YYYY-MM-DD/
 6. /auto-trading-fixed-tracked     → fixed_tracked/05_decision.json
 ```
 
-- fixed_tracked 主 agent 不读取所有研究包，而是先根据今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0。用户确认后，每只 P0 使用 Bull、Bear、三名 Juror 和唯一 finalizer；辩论产物写入互不冲突的路径，第二次人工确认后通过 `scripts/merge_subagent_decisions.py --source debate` 生成 `05_decision.json`。
-- fixed_tracked 的 Bull、Bear、Rebuttal、Juror 和 finalizer 必须利用月度经营公告、产销/交付、订单、价格、排产及产业链数据完成下一报告期盈利推演；财报是最终验证而非默认等待点。产业爆发框架 B 默认禁用，仅当最新财报深研同时确认行业总量爆发、供需错配、最受益环节、龙头地位、公司基本面右侧和折价后估值空间时才能启用；普通科技成长不得自动套用。
+- fixed_tracked 主 agent 不读取所有研究包，而是先根据今日异常、量价、宏观判定与 `data/skill_runs/_analysis_index.json` 挑出 P0。用户确认后，每只 P0 使用独立 Bull、Bear 和一名独立 Adjudicator，必要时定向质询；辩论产物写入互不冲突的路径，最近分析快照只含当前范围的代码、名称、日期、价格印象和完整待核验事项。第二次人工确认后通过 `scripts/merge_subagent_decisions.py` 生成 `05_decision.json`。
+- fixed_tracked 的 Bull、Bear 与 Adjudicator 必须利用月度经营公告、产销/交付、订单、价格、排产及产业链数据完成下一报告期盈利推演；财报是最终验证而非默认等待点。产业爆发框架 B 默认禁用，仅当最新财报深研同时确认行业总量爆发、供需错配、最受益环节、龙头地位、公司基本面右侧和折价后估值空间时才能启用；普通科技成长不得自动套用。
 - 详见 `.codex/skills/auto-trading-fixed-tracked/SKILL.md`。
 
 ### 1.6 人工确认后执行后处理
@@ -386,3 +387,11 @@ data/skill_runs/YYYY-MM-DD/
 - 新增 skill / command / rule 时，更新本文「7. 规则与 skills 索引」表格；新增 docs 子目录时，更新「8. docs 子目录索引」表格。
 - 调整测试契约（产物结构、字段、评分口径）时，同一提交内同步更新 `tests/`，并运行 `python -m pytest tests -q` 确认全绿；测试网定位与约定见 `docs/testing/README.md`。
 - 重大主流程调整后，更新本文顶部的「更新日期」与「1. 日常主流程」章节。
+
+### P0 事件输入
+
+`p0_event_report.md` 由现有 build_agent_input 步骤生成，输入为当日股票范围的本地公告索引及已审计新闻，
+输出近十四个自然日的事件日期、标题与覆盖状态。读取按分析日截断，使用 source_data_root 对应的缓存，
+不抓取外部数据。缺资料会在报告列出；主 Agent 在选 P0 前按搜索政策定向补证。
+原有01–05文件及字段保留。主 Agent 结合事件日期判断最近三个交易日条件，并参考约10只的日常处理量向用户提交候选。
+并发批次统一服从交易 Skill 和平台额度。

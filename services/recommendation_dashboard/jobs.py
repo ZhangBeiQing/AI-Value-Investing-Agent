@@ -142,9 +142,7 @@ def read_job(data_dir: Path, job_id: str) -> dict[str, Any] | None:
         debate_dir = debate_symbol_dir(workspace, job["symbol"])
         expected = [
             "advocates/bull/opening.json", "advocates/bear/opening.json",
-            "advocates/bull/rebuttal.json", "advocates/bear/rebuttal.json",
-            "jury/juror_01/ballot.json", "jury/juror_02/ballot.json", "jury/juror_03/ballot.json",
-            "final/vote_summary.json", "final/stock_verdict.json",
+            "final/stock_verdict.json",
         ]
         finished = sum((debate_dir / name).is_file() for name in expected)
         job["message"] = f"AI 辩论进行中 · {finished}/{len(expected)} 份阶段文件已生成"
@@ -181,8 +179,7 @@ def job_result(data_dir: Path, job_id: str) -> dict[str, Any] | None:
     stage_files = {
         "bull": "advocates/bull/opening.json", "bear": "advocates/bear/opening.json",
         "bull_rebuttal": "advocates/bull/rebuttal.json", "bear_rebuttal": "advocates/bear/rebuttal.json",
-        "juror_01": "jury/juror_01/ballot.json", "juror_02": "jury/juror_02/ballot.json",
-        "juror_03": "jury/juror_03/ballot.json", "vote_summary": "final/vote_summary.json",
+        "review_request": "adjudicator/review_request.json", "review_resolution": "adjudicator/review_resolution.json",
     }
     stages = {}
     for key, relative_path in stage_files.items():
@@ -417,7 +414,7 @@ def run_job(data_dir: Path, job_id: str) -> None:
             shutil.copy2(official_dir / name, workspace / name)
         if not list((workspace / "04_stock_research").glob(f"*_{symbol}_{run_date}_research.md")):
             raise RuntimeError("单股研究包未生成")
-        _set_stage(data_dir, job, "debating", "Agent 正在进行正反辩论、反驳和三名裁判裁决")
+        _set_stage(data_dir, job, "debating", "Agent 正在进行正反独立研究与单裁决")
         from services.trading.debate_pipeline import debate_symbol_dir, prepare_debate_directories
 
         prepare_debate_directories(workspace, symbol)
@@ -427,9 +424,8 @@ def run_job(data_dir: Path, job_id: str) -> None:
             f"本任务的隔离目录是 {workspace}；其中的 01、02、03、04 是本次唯一输入。"
             f"调用 scripts/manage_debate.py 时必须传 --base-dir {workspace.parent.parent} --date {run_date} "
             f"--book-type fixed_tracked --symbol {symbol}，绝不能使用默认正式目录。"
-            "仅执行该 skill 的阶段 B：Bull/Bear opening、复用会话 rebuttal、三名独立 Juror、"
-            "程序化 aggregate、唯一 finalizer、validate。角色只写各自文件，主 Agent 不代写。"
-            f"聚合时从人工持仓文件核实 {symbol} 实际持股数，不得猜测。"
+            "仅执行该 skill 的阶段 B：Bull/Bear 独立 opening、独立 Adjudicator、必要时定向质询、validate。角色只写各自文件，主 Agent 不代写。"
+            f"准备时从人工持仓文件核实 {symbol} 实际持股数，传给 prepare 的 --position-shares，不得猜测。"
             "不得修改正式 data/skill_runs、股票宇宙、05_decision.json、任何账本或真实持仓；"
             "不执行交易后处理。最终只报告文件路径和动作。"
         )

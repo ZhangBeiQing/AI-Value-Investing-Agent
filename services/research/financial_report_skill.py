@@ -267,6 +267,7 @@ def prepare_financial_report_workdir(
         "industry_chain": RESEARCH_CONFIG_ROOT / "industry_chain_research_policy.md",
         "web_research": RESEARCH_CONFIG_ROOT / "web_research_policy.md",
         "output_schema": RESEARCH_CONFIG_ROOT / "financial_report_output_schema.md",
+        "daily_brief": RESEARCH_CONFIG_ROOT / "financial_daily_brief_contract.md",
         "valuation_framework": valuation_framework_target,
     }
     missing_policies = [str(path) for path in policy_paths.values() if not path.exists()]
@@ -280,6 +281,7 @@ def prepare_financial_report_workdir(
         "draft_v1": research_outputs_dir / "draft_v1.md",
         "challenge_round_01": research_outputs_dir / "challenge_round_01.md",
         "final_report": bundle.output_path,
+        "daily_brief": bundle.output_path.with_suffix(".daily.json"),
     }
     agent_input_lines = [
         f"# {bundle.stock_name} ({bundle.symbol}) 季度基本面研究运行输入",
@@ -338,6 +340,7 @@ def prepare_financial_report_workdir(
         f"- Industry Researcher：`{outputs['industry_chain_research']}`",
         f"- Expectation Scout：`{outputs['pre_announcement_expectations']}`",
         f"- Financial Author：`{outputs['final_report']}`",
+        f"- Financial Author 日常摘要：`{outputs['daily_brief']}`（全文核对后生成，按 daily_brief 固定规则绑定原文）",
         "",
         "任何角色不得写其他角色文件，不得修改 `summary_index.json`。最终文件通过质量门禁后，由主 Agent 调用注册脚本。",
     ]

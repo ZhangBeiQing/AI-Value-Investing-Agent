@@ -72,13 +72,13 @@ class RecommendationDashboardTest(unittest.TestCase):
         self.assertEqual(rows["600001.SH"]["price_impression"], "合理")
 
     def test_detail_uses_latest_available_complete_debate(self) -> None:
-        path = self.data_dir / "skill_runs" / "2026-09-10" / "fixed_tracked" / "debate" / "甲公司_600001.SH" / "jury" / "juror_01" / "ballot.json"
+        path = self.data_dir / "skill_runs" / "2026-09-10" / "fixed_tracked" / "debate" / "甲公司_600001.SH" / "advocates" / "bull" / "opening.json"
         path.parent.mkdir(parents=True)
-        path.write_text('{"action_type":"BUY","reason":"test"}', encoding="utf-8")
+        path.write_text('{"arguments":["test"]}', encoding="utf-8")
         detail = stock_detail(self.data_dir, "600001.SH")
         self.assertEqual(detail["latest_decision_date"], "2026-09-15")
         self.assertEqual(detail["debate_date"], "2026-09-10")
-        self.assertEqual(detail["stages"]["juror_01"]["action_type"], "BUY")
+        self.assertEqual(detail["stages"]["bull"]["arguments"], ["test"])
         self.assertIsNone(stock_detail(self.data_dir, "600999.SH"))
 
     def test_manual_holdings_keep_cny_and_hkd_totals_separate(self) -> None:
@@ -265,7 +265,8 @@ class RecommendationDashboardTest(unittest.TestCase):
         agent_dir = self.data_dir / "agent_data" / "book-fixed_tracked"
         operations = json.loads((agent_dir / "stock_decisions.json").read_text(encoding="utf-8"))
         self.assertTrue(any(item.get("symbol") == "600050.SH" and item.get("operation_date") == "2026-09-17" for item in operations))
-        self.assertEqual(json.loads((agent_dir / "latest_decision_snapshot.json").read_text(encoding="utf-8"))["stock_count"], 1)
+        # This unheld stock is outside the current pool; its full decision remains archived.
+        self.assertEqual(json.loads((agent_dir / "latest_decision_snapshot.json").read_text(encoding="utf-8"))["stock_count"], 0)
         self.assertTrue((workspace / "07_daily_summary.json").is_file())
         self.assertTrue((workspace / "08_history_merge.json").is_file())
 

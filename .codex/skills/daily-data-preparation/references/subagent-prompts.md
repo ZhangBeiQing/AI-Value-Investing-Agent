@@ -64,9 +64,9 @@ python scripts/prepare_financial_report_skill.py \
 
 调度上只有三条硬约束：
 
-- 只处理 prepare 输出里的 `ready_items`；`skipped_items` 不启动任何角色。
+- 只处理 prepare 输出里的 `ready_items`；`skipped_items` 不启动完整深研；`daily_brief_items` 只派发 Author 做原文摘要补建。
 - **每批最多 10 个 subagent。** 5 只股票 × 4 个角色 = 20 个，必须拆批：上一批全部结束、文件全部落盘并校验通过，才能起下一批。
   - 这条**优先于** `~/.config/opencode/AGENTS.md` 规则三的"禁止分批"。超限的失败方式是静默空返回，比慢危险。
 - 同一细分产业链共用一个 Industry Researcher；不同产业链各自独立，不得互相借用。
 
-> 当天没有公司发新财报时，`ready_items` 为空是**合法结果**：跳过本步，在最终报告里写明"无新增财报"，不要硬造一份研究。
+> 当天没有公司发新财报时，`ready_items` 为空是**合法结果**：跳过完整深研；若有 daily_brief_items 则只补摘要，汇报时单独说明，不硬造新研究。

@@ -28,6 +28,7 @@ from services.research.financial_report_skill import (
     synthesize_manual_item,
 )
 from services.research.position_symbols import DEFAULT_SIGNATURES, load_position_symbols
+from services.research.financial_daily_brief import daily_brief_task
 from services.news.disclosures_builder import resolve_disclosure_cutoff_date
 
 LOGGER = init_component_logger(
@@ -450,6 +451,7 @@ def main() -> int:
                     LOGGER.warning("PDF 转换失败: %s (%s)", pdf_path, outcome.detail)
     ready = []
     skipped = []
+    daily_brief_items = []
     for bundle in bundles:
         forced_reprepare = bool(
             args.force_reprepare
@@ -457,6 +459,10 @@ def main() -> int:
             and bundle.skip_reason == "already_summarized_latest_report"
         )
         if bundle.skipped and not forced_reprepare:
+            if bundle.skip_reason == "already_summarized_latest_report":
+                task = daily_brief_task(bundle.output_path, symbol=bundle.symbol, as_of_date=analysis_date)
+                if task:
+                    daily_brief_items.append(task)
             skipped.append(
                 {
                     "symbol": bundle.symbol,
@@ -527,7 +533,7 @@ def main() -> int:
             }
         )
 
-    payload = {"ready_items": ready, "skipped_items": skipped}
+    payload = {"ready_items": ready, "skipped_items": skipped, "daily_brief_items": daily_brief_items}
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)

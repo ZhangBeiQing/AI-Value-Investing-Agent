@@ -2,7 +2,7 @@
 
 ## 适用对象
 
-本文件是 fixed_tracked 的核心投资策略单一来源，主 Agent、Bull、Bear、Juror 和 finalizer 都必须完整继承。
+本文件是 fixed_tracked 的核心投资策略单一来源，主 Agent、Bull、Bear、独立 Adjudicator 都必须完整继承。
 
 不同辩论角色可以承担不同立场，但不得因此改变这里的投资哲学。角色职责、文件路径和输出格式由 Skill reference 另行规定。
 

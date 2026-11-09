@@ -183,8 +183,8 @@ python scripts/prepare_financial_report_skill.py \
 
 开始前完整读取 `.codex/skills/financial-report-summary/SKILL.md` 及其 `references/role-prompts.md`，然后按那份 skill 的规则执行。本 skill 不重复它的内部规则，只约束调度方式：
 
-- 从 Step 3 prepare 脚本的 JSON 输出里取 `ready_items`，**只处理 ready 的股票**；`skipped_items`（已总结或无新财报）不启动任何角色。
-- 当天没有公司发新财报时，`ready_items` 为空是**合法结果**：跳过本步，在最终报告里写明"无新增财报"，不要硬造研究。
+- 从 Step 3 prepare 脚本的 JSON 输出里取 `ready_items`，**只处理 ready 的股票**；`skipped_items` 不启动完整深研。另处理 `daily_brief_items`：仅由 Author 读取已完成报告补建日常摘要，不重做行业/预期研究、不联网；详见财报角色模板。
+- 当天没有公司发新财报时，`ready_items` 为空是**合法结果**：跳过完整深研；若有 `daily_brief_items` 则仅补摘要，在汇报里区分“无新增财报”和“补建日常摘要”。
 - 逐股派发角色时，**每批最多 10 个 subagent**。比如 5 只股票 × 4 个角色 = 20 个，必须拆成至少 2 批：上一批全部结束、目标文件全部落盘并校验通过后，才能起下一批。
   - ⚠️ **这条优先于 `~/.config/opencode/AGENTS.md` 规则三**（那条要求"Subagent 必须全量并发、禁止分批"）。在本 skill 的 Step 4 里，以"每批最多 10 个"为准。
   - 理由：`auto-trading-fixed-tracked` 记录了超限的真实后果——**任务空返回、写错日期目录、文件缺失**。这类失败是静默的，跑完看起来正常，文件却是空的，比慢一点危险得多。
@@ -192,7 +192,23 @@ python scripts/prepare_financial_report_skill.py \
 - 派发任何需要联网的角色前，先按 `configs/research/web_research_policy.md` 确认当前环境的搜索入口可用（Codex + GPT 优先自带搜索，其他组合优先百炼 MCP）。
 - 最终报告只由 Financial Author 写，`summary_index.json` 只由主 agent 通过注册脚本写。
 
-主产出：`data/stock_info/{name}_{symbol}/financial_reports/<YYYYMMDD>.md` 与 `summary_index.json`。
+### Step 4.1：生成财报日常摘要
+
+- `ready_items`：同一 Financial Author 完成完整深研后，按 `configs/research/financial_daily_brief_contract.md` 生成同名 `.daily.json`，一起通过发布检查。
+- `daily_brief_items`：为每股派发一次摘要补建任务，读取已完成深研全文并重组摘要。使用以下派发模板：
+
+```text
+你是 {symbol} 在 {cur_date} 的 Financial Author，执行已完成深研的摘要补建。
+完整读取 .codex/skills/financial-report-summary/references/role-prompts.md 中“Financial Author — 已完成深研的摘要补建”章节。
+完整读取 configs/research/financial_daily_brief_contract.md 与 {full_report_path}。
+只写 {daily_brief_path}。完成后回传路径及影响摘要完整性的实际问题。
+```
+
+保留与压缩范围、§15 天花板情景的呈现方式，以摘要契约的章节映射表为准。主 Agent 核对关键数字、负面证据及未知项，
+并调用 `services.research.financial_daily_brief.load_daily_brief` 检查生成文件；正文与状态分别是该函数返回值的第一、二项。
+有效正文非空且状态为 `valid` 后，才将该项记为摘要完成。
+
+主产出：完整 `financial_reports/<YYYYMMDD>.md`、日常 `<YYYYMMDD>.daily.json` 与新深研的 `summary_index.json` 登记。
 
 ## 五、Step 5：生成 01-04 股票研究包
 
@@ -229,6 +245,7 @@ data/skill_runs/<cur_date>/
 - [ ] `data/macro_economy/<YYYYMMDD>.md` 的正文日期确实是 `cur_date`
 - [ ] 财报 `summary_index.json` 已登记本轮新增股票（无新财报时"零新增"也是合法结果）
 - [ ] Step 4 的 `ready_items` 逐只都有对应的 `financial_reports/<YYYYMMDD>.md` 落盘；**空文件视为失败**（并发超限的静默空返回就长这样）
+- [ ] 本轮新深研和 `daily_brief_items` 对应的 `.daily.json` 通过摘要契约与内容核对；未完成项单独报告
 - [ ] `data/skill_runs/<cur_date>/run_manifest.json` 存在
 - [ ] `data/skill_runs/<cur_date>/fixed_tracked/` 下 `01`、`02`、`03`、`03_stock_analysis_input`、`04_stock_research/` 齐全
 - [ ] `04_stock_research/` 的逐股目录数量与 `TRACKED_A_STOCKS` 数量相符,没有大面积缺失
@@ -302,3 +319,7 @@ python scripts/run_daily_pipeline.py --date <cur_date> --max-workers 6 --all-boo
 然后只提示一句："当日数据与 01-04 输入产物已就绪，可以开始运行 `/auto-trading-fixed-tracked`。"
 
 **不要**自动开始交易分析。
+
+## 财报日常输入分层
+
+财报深研新产物同时包含完整报告和源文哈希绑定的 `.daily.json`，遵循财报 skill 与 `configs/research/financial_daily_brief_contract.md`。每日研究包默认消费有效摘要；旧报告缺摘要则明确回退全文。不得因为摘要缺失把已总结股票重新做全套财报研究。宏观保持原有 1500–2000 字目标，不向宏观转移行业研究。

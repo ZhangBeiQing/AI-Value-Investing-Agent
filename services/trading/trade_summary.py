@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from datetime import datetime, timedelta
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, List, Optional
 from configs.stock_pool import TRACKED_A_STOCKS
 from core.logging import init_component_logger
 from commons import get_last_trading_day
@@ -165,14 +165,28 @@ def _sort_summary_entries(entries: List[dict]) -> None:
     )
 
 
-def refresh_latest_decision_snapshot(signature: str) -> Path:
-    """从完整决策摘要投影出每只股票最新的一条分析结果。"""
+def refresh_latest_decision_snapshot(
+    signature: str, *, symbols: Iterable[str] | None = None,
+) -> Path:
+    """为 P0 筛选生成当前研究范围的最近分析与完整待核验事项。"""
+
+    if symbols is None:
+        scope = {entry.symbol for entry in TRACKED_A_STOCKS}
+        if signature == "book-fixed_tracked":
+            from services.research.position_symbols import load_position_symbols
+
+            scope.update(load_position_symbols(
+                base_dir=Path(_data_dir(signature)).parent.parent,
+                signatures=(signature,),
+            ))
+    else:
+        scope = set(symbols)
 
     summary_entries = read_json_file(_operation_summary_file(signature))
     latest_by_stock: dict[str, tuple[tuple[str, str, int], dict]] = {}
     for index, entry in enumerate(summary_entries):
         stock_code = _entry_symbol(entry)
-        if not stock_code:
+        if stock_code not in scope:
             continue
         entry_date = str(entry.get("end_date") or entry.get("start_date") or "")
         entry_key = (entry_date, str(entry.get("start_date") or ""), index)
@@ -181,13 +195,19 @@ def refresh_latest_decision_snapshot(signature: str) -> Path:
             latest_by_stock[stock_code] = (entry_key, entry)
 
     latest_entries = [
-        item[1]
-        for _, item in sorted(latest_by_stock.items(), key=lambda item: item[0])
+        {
+            "stock_code": stock_code,
+            "stock_name": item[1].get("stock_name") or NAME_BY_SYMBOL.get(stock_code, stock_code),
+            "analysis_date": item[1].get("end_date") or item[1].get("start_date"),
+            "price_impression": item[1].get("price_impression"),
+            "next_day_watchlist": item[1].get("next_day_watchlist") or [],
+        }
+        for stock_code, item in sorted(latest_by_stock.items(), key=lambda item: item[0])
     ]
     latest_dates = [
-        str(entry.get("end_date") or entry.get("start_date"))
+        str(entry["analysis_date"])
         for entry in latest_entries
-        if entry.get("end_date") or entry.get("start_date")
+        if entry["analysis_date"]
     ]
     payload = {
         "source_file": "decision_summary.json",
@@ -477,7 +497,8 @@ def _rebuild_operation_summary(signature: str, summary_file: str | None = None) 
 
 
 def process_and_merge_operations(
-    signature: str, new_operations: List[dict] | None = None
+    signature: str, new_operations: List[dict] | None = None,
+    *, snapshot_symbols: Iterable[str] | None = None,
 ):
     summary_file = _operation_summary_file(signature)
     if new_operations == [] and read_json_file(summary_file):
@@ -496,7 +517,7 @@ def process_and_merge_operations(
             _rebuild_operation_summary(signature, summary_file)
     else:
         _rebuild_operation_summary(signature, summary_file)
-    refresh_latest_decision_snapshot(signature)
+    refresh_latest_decision_snapshot(signature, symbols=snapshot_symbols)
 
 
 def get_historical_context(signature: str, stock_code: str, n: int):

@@ -14,11 +14,11 @@ description: 对指定历史区间运行 fixed_tracked 的隔离多 Agent 回测
 1. 创建或续跑隔离实验；
 2. 按真实交易日从早到晚推进；
 3. 准备当天历史输入并处理财报门禁；
-4. 按 `auto-trading-fixed-tracked` 调度 P0、辩论、投票和 finalizer；
+4. 按 `auto-trading-fixed-tracked` 调度 P0、辩论、独立裁决；
 5. 自动合并 `05_decision.json`，以 D+1 开盘价模拟成交；
 6. 校验、断点恢复与期末结果检查。
 
-不得代替 Bull、Bear、Juror 或 finalizer 做个股结论；不得把主 Agent 的个股观点写进 subagent prompt。
+不得代替 Bull、Bear 或 Adjudicator 做个股结论；不得把主 Agent 的个股观点写进 subagent prompt。
 
 ## 2. 必读文件与唯一规则来源
 
@@ -29,7 +29,7 @@ description: 对指定历史区间运行 fixed_tracked 的隔离多 Agent 回测
 3. [联网防穿越规则](references/guarded-web-policy.md)
 4. [结果检查](references/result-review.md)
 
-个股辩论的角色规则、JSON 契约和投票机制只复用：
+个股辩论的角色规则、JSON 契约和独立裁决方法只复用：
 
 ```text
 .codex/skills/auto-trading-fixed-tracked/references/
@@ -49,8 +49,8 @@ configs/prompt_flow/fixed_tracked/stock_decision.schema.json
 - 共享写入只允许两类例外：按公告日、通过日期因果门禁的 `data/stock_info/*/financial_reports/` 深度基本面总结；以及由正常日期接口按 D 日重建的 `data/stock_info/*/{analysis,pe_pb_analysis}` 派生中间结果。两者都不得包含回测仓位、交易动作或 D 日之后的信息。
 - 不得因为共享目录没有现成历史 Markdown 就让 04 输出空估值；必须走正常日期接口重建并在读取时按 D 日截断。
 - `12_quant_prefilter_long.csv` 只扩展当日研究范围，不能直接形成交易动作。
-- 回测与日常交易 Skill 的人工暂停差异：**P0 选股结果必须先交用户评审并获得明确确认**，确认前禁止派发任何 Bull/Bear/Juror/finalizer subagent；待确认的重点股清单要先展示给用户；05 和模拟成交则自动推进。任何情况下**绝不**调用真实模式的 `run_post_trade.py`。
-- 回测模式下所有个股 subagent（Bull/Bear/Juror/finalizer）一律用 `subagent_type=general`
+- 回测与日常交易 Skill 的人工暂停差异：**P0 选股结果必须先交用户评审并获得明确确认**，确认前禁止派发任何 Bull/Bear/Adjudicator subagent；待确认的重点股清单要先展示给用户；05 和模拟成交则自动推进。任何情况下**绝不**调用真实模式的 `run_post_trade.py`。
+- 回测模式下所有个股 subagent（Bull/Bear/Adjudicator）一律用 `subagent_type=general`
 - 联网只在实验 `network_mode=guarded_web` 下允许，并严格执行 [联网防穿越规则](references/guarded-web-policy.md)。
 
 ## 4. 目录和文件所有权
@@ -186,9 +186,9 @@ python scripts/manage_fixed_tracked_backtest.py prepare-day \
 
 ### 6.3 P0 与空 P0
 
-主 Agent只读 `{root}/00`、`01`、`02`、`03`、`{experiment_root}/agent_data/backtest-{experiment_id}/latest_decision_snapshot.json`（存在时）和存在时的市场级文件；不得打开 `04_stock_research/*`。快照仅用于上次结论、待验证事实和遗留风险的历史上下文，不能替代当天资料或形成直接交易指令。按当天 `03_agent_input.md` 选择 P0。
+主 Agent只读 `{root}/00`、`01`、`02`、`03`、`p0_event_report.md`、`price_delta_report.md`、`{experiment_root}/agent_data/backtest-{experiment_id}/latest_decision_snapshot.json`（存在时）和存在时的市场级文件；不得打开 `04_stock_research/*`。快照中的最近分析日期、价格印象和完整待核验事项用于结合当天变化选择 P0。按当天 `03_agent_input.md` 选择 P0。
 
-**P0 选出后必须暂停并把候选清单提交用户评审**：展示每只股票、入选理由与建议方向（BUY/SELL/HOLD/FLAT），等用户明确确认或给出增删修改后，才可进入 6.4 派发辩论。用户未确认前，禁止启动任何 Bull/Bear/Juror/finalizer subagent。
+**P0 选出后必须暂停并把候选清单提交用户评审**：展示每只股票、入选理由与建议方向（BUY/SELL/HOLD/FLAT），等用户明确确认或给出增删修改后，才可进入 6.4 派发辩论。用户未确认前，禁止启动任何 Bull/Bear/Adjudicator subagent。
 
 若 P0 为空，只生成显式空 05：
 
@@ -206,8 +206,8 @@ python scripts/manage_fixed_tracked_backtest.py no-trade-day \
 P0 非空时，逐股辩论的精确顺序、唯一输出路径、并发批次、角色 prompt 和校验命令见 [逐日调度与角色模板](references/orchestration.md)。核心顺序不可变：
 
 ```text
-prepare dirs → Bull/Bear opening → 原会话 rebuttal → 3 Juror
-→ aggregate → 独立 finalizer → validate → merge 05 → execute-day
+prepare（隔离实际持仓）→ Bull/Bear opening → 独立 Adjudicator
+→ 必要时原会话定向回应 → validate → merge 05 → execute-day
 ```
 
 所有 P0 完成后，自动合并当日 `05_decision.json`，补齐其顶层 `summary_date`、`system_risk_notes`、`system_focus_items` 并校验。然后只通过隔离入口执行：
@@ -219,7 +219,7 @@ python scripts/manage_fixed_tracked_backtest.py execute-day \
   --execution-date {next_trading_date}
 ```
 
-成功时必须出现 `{root}/06_execution_log.json`、`07_daily_summary.json`、`08_history_merge.json`；同时隔离交易记忆目录会更新 `latest_decision_snapshot.json`，按股票保留 `decision_summary.json` 中最新的一条完整分析结果，供下一交易日 P0 筛选读取。`06` 是幂等凭证：已有匹配的成功 06 时不得再次成交。
+成功时必须出现 `{root}/06_execution_log.json`、`07_daily_summary.json`、`08_history_merge.json`；同时隔离交易记忆目录会更新 `latest_decision_snapshot.json`，保留实验分析范围及持仓中各股最近分析日期、价格印象和完整待核验事项，供下一交易日 P0 筛选读取。`06` 是幂等凭证：已有匹配的成功 06 时不得再次成交。
 
 ## 7. 结束、校验与汇报
 
@@ -240,7 +240,7 @@ python scripts/manage_fixed_tracked_backtest.py finalize \
 | --- | --- | --- |
 | `prepare-day` 非 `ready` | 读 `00_prepare_status.json`，处理财报门禁或缺失输入后重跑 | 跳过 04 或带着缺输入进入 P0 |
 | 某角色文件缺失/JSON 无效 | 让该文件唯一所有者修复，再校验 | 主 Agent 手写其研究结论或跳过该股 |
-| `vote_summary` 与 ballot 不一致 | 重新运行本地 `aggregate` | Agent 手写或修改 `vote_summary` |
+| 质询未解决或裁决数量非法 | 原角色核验并修正，再 validate | 主 Agent 代写个股结论 |
 | 05 校验失败 | 修复对应 verdict 或顶层系统字段后再合并 | 用空壳 05 绕过校验 |
 | 开盘价缺失 | 保留 `pending` 订单及原因，按执行日志处理 | 用收盘价、未来价格或估算价替代 |
 | 中断 | 先 `status`，只从 `next_date` 继续 | 删除 06、重复成交或重新初始化账本 |

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 
@@ -47,7 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--require-deep-research",
         action="store_true",
-        help="注册前强制检查 draft_v1、challenge_round_01、最终报告及质询闭环。",
+        help="注册前检查产业链研究、公告前预期与最终报告质量门禁。",
+    )
+    parser.add_argument(
+        "--require-daily-brief",
+        action="store_true",
+        help="同时检查与完整报告绑定的 .daily.json 日常摘要；旧报告可不传此项。",
     )
     parser.add_argument(
         "--as-of-date",
@@ -79,6 +85,16 @@ def main() -> int:
         if quality_errors:
             detail = "\n".join(f"- {item}" for item in quality_errors)
             raise SystemExit(f"季度深研质量门禁未通过，拒绝登记：\n{detail}")
+
+    if args.require_daily_brief:
+        from services.research.financial_daily_brief import load_daily_brief
+
+        brief, status = load_daily_brief(
+            summary_path, symbol=symbol_info.symbol,
+            as_of_date=args.as_of_date or date.today().isoformat(),
+        )
+        if brief is None:
+            raise SystemExit(f"日常摘要门禁未通过，拒绝登记：{status}")
 
     update_summary_index(
         symbol=symbol_info.symbol,

@@ -342,7 +342,8 @@ def test_isolated_next_open_execution_and_idempotency(tmp_path: Path) -> None:
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
     assert snapshot["stock_count"] == 1
     assert snapshot["stocks"][0]["stock_code"] == SYMBOL
-    assert snapshot["stocks"][0]["inferences"] == ["推论"]
+    assert snapshot["stocks"][0]["analysis_date"] == DECISION_DATE
+    assert "inferences" not in snapshot["stocks"][0]
 
     record_count = len(ledger.records())
     second_paths = simulate_post_trade(

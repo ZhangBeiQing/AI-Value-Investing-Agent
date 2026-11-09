@@ -2,7 +2,7 @@
 
 ## 适用范围
 
-本文件与 `investment_policy.md`、`configs/research/web_research_policy.md` 一起生成 `03_stock_analysis_input.md`，供 Bull、Bear、Juror 和 finalizer 共同读取。
+本文件与 `investment_policy.md`、`configs/research/web_research_policy.md` 一起生成 `03_stock_analysis_input.md`，供 Bull、Bear、独立 Adjudicator 共同读取。
 
 `investment_policy.md` 是角色定位、投资哲学和交易纪律的单一来源；本文件只补充逐股研究方法，不重复定义另一套投资风格。角色的具体职责和输出格式以各自的 Skill reference 为准。
 
@@ -145,9 +145,7 @@ A 股普通股票数量默认按 100 股取整；港股和 ETF 按标的交易�
 
 Bull 和 Bear 只提供估值、安全边际、盈利质量和周期位置论据，不输出最终价格标签。
 
-每名 Juror 在读取原始证据和完整辩论后，独立输出自己的 `price_impression`，并在 ballot 的 `reason` 中解释价格判断和交易动作之间的关系。
-
-Python 只保存三名 Juror 的价格印象，不计算多数、中位数或最终标签。finalizer 比较三名 Juror 使用的事实、盈利假设、估值口径、周期判断和来源质量后，形成最终 `price_impression`。finalizer 不得根据已锁定的 `action_type` 反推价格印象，也不得用价格印象覆盖交易动作。
+由独立 Adjudicator 审查原始证据和双方论据后同时形成 `price_impression` 与动作；必须解释二者的关系，不能从动作倒推价格标签。程序只验证契约和输入一致性，不生成价格印象。
 
 合法值：
 
@@ -156,3 +154,7 @@ Python 只保存三名 Juror 的价格印象，不计算多数、中位数或最
 ```
 
 价格印象应综合盈利质量、盈利增速、历史估值、历史价格分布、行业景气、宏观环境、催化和量价，不使用单一 PE/PB 机械决定。
+
+## 财报摘要的使用与回查
+
+每日研究包财报部分可以是与完整深研绑定的日常摘要，完整报告本地路径在该节列出。完整阅读当日研究包即可，不要求每个角色默认重读整份季度深研。摘要保留研究结论和不确定性，无法替代决定性事实核验：BUY/SELL 依赖摘要中的关键财务数字、指引、TTM/Forward 分母或会计假设时，必须打开完整报告对应章节核对期间、单位、计算和适用限制。发现冲突、遗漏、异常或反面证据不足时同样回查；原报告仍不能解决时定向核对官方资料。不能把程序通过哈希校验当作事实正确，也不能继承报告中的历史价格作为今日价格。缺少摘要时按研究包明示的全文回退处理，不擅自截断资料。

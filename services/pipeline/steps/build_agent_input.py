@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -17,7 +17,7 @@ from services.prompting.system_prompt import (
     get_skill_system_prompt,
 )
 from services.snapshot.basic_snapshot import build_basic_snapshot
-from commons.stock_utils import parse_symbol
+from commons.stock_utils import get_stock_data_dir, is_etf_symbol, parse_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -52,6 +52,56 @@ WEB_RESEARCH_POLICY = (
 DEFAULT_ANALYSIS_INDEX_REF = "data/skill_runs/_analysis_index.json"
 
 PRICE_DELTA_REPORT_FILENAME = "price_delta_report.md"
+P0_EVENT_REPORT_FILENAME = "p0_event_report.md"
+
+
+def write_p0_event_report(
+    run_date: str, output_dir: str | Path, symbols: Iterable[str],
+    *, source_data_root: str | Path | None = None,
+) -> Path:
+    """Project cached announcement and news titles into the P0 input."""
+    end_date = datetime.strptime(run_date, "%Y-%m-%d").date()
+    start_date = end_date - timedelta(days=13)
+    lines = [
+        f"# P0 近期事件概览（{run_date}）", "",
+        f"事件窗口：{start_date} 至 {end_date}。按发布日期判断 P0 的最近三个交易日条件。",
+        "先按标题筛选可能改变盈利、估值、治理或风险的事项，需要时定向核验正文。",
+        "宏观与产业政策结合 01 研判；缓存覆盖不足或待核验事项依赖最新事件时，先定向搜索补证。", "",
+    ]
+    for symbol in symbols:
+        info = parse_symbol(symbol)
+        lines.extend([f"## {info.stock_name or symbol}（{symbol}）", ""])
+        if is_etf_symbol(info):
+            lines.extend(["公司公告不适用；结合 01 的宏观和市场变化筛选。", ""])
+            continue
+        stock_root = get_stock_data_dir(info, base_dir=source_data_root)
+        index_path = stock_root / "disclosures" / "index.json"
+        news_path = stock_root / "news" / "news_audited.json"
+        announcements = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else {}
+        news = json.loads(news_path.read_text(encoding="utf-8")) if news_path.exists() else {}
+        events: set[tuple[str, str]] = set()
+        visible_dates = []
+        for item in [*announcements.values(), *(news.get("news_items") or [])]:
+            date_text = str(item.get("datetime") or item.get("date") or "")[:10]
+            if not date_text or date_text > run_date:
+                continue
+            visible_dates.append(date_text)
+            if date_text < start_date.isoformat():
+                continue
+            events.add((date_text, item["title"]))
+        if not index_path.exists() and not news_path.exists():
+            lines.extend(["事件资料缺失，需定向补证。", ""])
+            continue
+        latest = max(visible_dates) if visible_dates else "无可见日期"
+        lines.append(f"缓存最近可见事件日期：{latest}；窗口内 {len(events)} 条。")
+        if not events:
+            lines.append("窗口内缓存未记录事件；需结合信息时效核查新增事项。")
+        for event_date, title in sorted(events, reverse=True):
+            lines.append(f"- {event_date}｜{title}")
+        lines.append("")
+    target = Path(output_dir) / P0_EVENT_REPORT_FILENAME
+    target.write_text("\n".join(lines), encoding="utf-8")
+    return target
 
 
 def resolve_signature(raw_signature: str) -> str:
@@ -114,6 +164,7 @@ def build_fixed_main_user_query(
         "- 02_basic_snapshot_payload.json",
         "- 01_global_context.md",
         f"- price_delta_report.md（当前价 vs 上次深研价变化，选 P0 参考）",
+        "- p0_event_report.md（全池近期公告与新闻标题及资料覆盖情况）",
         *(
             [f"- data/selection_runs/{run_date}/06_hot_news_state.json（可选）"]
             if gradual_news_summary_enabled()
@@ -262,7 +313,7 @@ def build_stock_analysis_input(
         "",
         "## 角色规则",
         "",
-        "本文件不定义 Bull、Bear、Rebuttal、Juror 或 finalizer 的具体职责。",
+        "本文件不定义 Bull、Bear、定向质询或 Adjudicator 的具体职责。",
         "每个角色必须另外直接读取主 Agent 指定的 Skill reference，不得由主 Agent复述。",
         "",
     ]
@@ -466,6 +517,7 @@ def write_agent_input_bundle(
         book_type=book_type,
         analysis_index_ref=analysis_index_ref,
     )
+    write_p0_event_report(run_date, target_dir, symbols, source_data_root=source_data_root)
 
     agent_input = build_agent_input(
         run_date,
@@ -482,6 +534,12 @@ def write_agent_input_bundle(
     if analysis_index_ref and analysis_index_ref != DEFAULT_ANALYSIS_INDEX_REF:
         agent_input = agent_input.replace(
             DEFAULT_ANALYSIS_INDEX_REF, analysis_index_ref
+        )
+    if backtest_read_only:
+        snapshot_ref = target_dir.parents[2] / "agent_data" / resolved_signature / "latest_decision_snapshot.json"
+        agent_input = agent_input.replace(
+            "data/agent_data/book-fixed_tracked/latest_decision_snapshot.json",
+            str(snapshot_ref),
         )
     (target_dir / "03_agent_input.md").write_text(agent_input, encoding="utf-8")
     if book_type in {"fixed_tracked", "us_tracked"}:

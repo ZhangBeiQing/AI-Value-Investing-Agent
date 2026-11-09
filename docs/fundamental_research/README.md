@@ -1,6 +1,6 @@
 # 季度基本面深度研究系统
 
-更新日期：2026-10-14
+更新日期：2026-11-09
 
 ## 1. 定位
 
@@ -21,6 +21,11 @@ data/stock_info/{stock_name}_{symbol}/financial_reports/YYYYMMDD.md
 ```
 
 `summary_index.json` 字段契约不变。系统不生成真实交易动作，也不修改交易 `01-08`。
+
+同一 Financial Author 另写同名 `YYYYMMDD.daily.json`，目标 3000–5000 非空白字符。
+每日研究包默认使用通过原文哈希、股票身份、知识日期与正文结构校验的摘要，
+缺少或失效时明确回退完整报告。完整报告保留；决定性交易数字按需回查原文。
+新研究注册增加 `--require-daily-brief`，详细契约见 `configs/research/financial_daily_brief_contract.md`。
 
 历史设计（质询与修订流程已停用，当前执行以 Skill 为准）见 [季度财报与全面基本面深度研究系统详细设计](quarterly_fundamental_deep_research_design.md)。
 

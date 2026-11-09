@@ -315,7 +315,18 @@ def simulate_post_trade(
             experiment.signature,
             normalized_decision,
         )
-        process_and_merge_operations(experiment.signature, saved_operations)
+        snapshot_path = book_dir / "02_basic_snapshot_payload.json"
+        research_symbols = (
+            json.loads(snapshot_path.read_text(encoding="utf-8"))["stocks"]
+            if snapshot_path.exists() else experiment.base_universe
+        )
+        snapshot_symbols = set(research_symbols) | {
+            symbol for symbol, shares in new_state.positions.items()
+            if symbol != "CASH" and shares > 0
+        }
+        process_and_merge_operations(
+            experiment.signature, saved_operations, snapshot_symbols=snapshot_symbols,
+        )
         stock_codes = [
             _entry_symbol(entry)
             for entry in normalized_decision.get("stock_decisions") or []

@@ -22,7 +22,7 @@ from commons import ensure_stock_subdir, get_stock_data_dir, parse_symbol
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RESEARCH_ARTIFACT_CACHE_ROOT = PROJECT_ROOT / "data" / "research_artifact_cache"
-RESEARCH_ARTIFACT_SCHEMA_VERSION = 4
+RESEARCH_ARTIFACT_SCHEMA_VERSION = 5
 FINANCIAL_REPORT_SELECTION_SLACK_DAYS = 1
 LOGGER = init_component_logger(
     "BuildStockResearch",
@@ -205,6 +205,7 @@ def _build_base_artifact(
             symbol,
             run_date,
             report_release_slack_days=report_release_slack_days,
+            prefer_daily_brief=True,
         )
 
         price_payload = price_future.result()
@@ -252,6 +253,7 @@ def _build_read_only_base_artifact(
         report_release_slack_days=0,
         include_consensus=False,
         include_price_drift=False,
+        prefer_daily_brief=True,
     )
     return {
         "schema_version": RESEARCH_ARTIFACT_SCHEMA_VERSION,

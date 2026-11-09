@@ -210,3 +210,10 @@ skill 端要求 entry 字段集见各账本 SKILL.md：
 - `services/trading/trade_summary.py`（实现）
 - `services/trading/post_trade_pipeline.py`（编排）
 - `services/trading/trade_executor.py`（交易执行）
+
+## P0 最近分析快照
+
+`latest_decision_snapshot.json` 从 `decision_summary.json` 选取范围内各股最近一条记录，供主 Agent 选择 P0。
+日常范围为当前股池与实际持仓；回测由调用方传入实验当日研究范围及持仓。
+每股字段为 `stock_code`、`stock_name`、`analysis_date`、`price_impression`、`next_day_watchlist`。
+待核验事项原样保留。完整研究记录保存在 `decision_summary.json`。选择 P0 前刷新该快照。

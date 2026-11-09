@@ -75,7 +75,7 @@
 
 1. `configs/research/financial_fundamental_research_policy.md`
 2. `configs/research/company_valuation_framework.md`
-3. `configs/research/financial_report_output_schema.md`
+3. `configs/research/financial_report_output_schema.md` 与 `configs/research/financial_daily_brief_contract.md`
 4. `configs/research/web_research_policy.md`
 5. 当前股票 `05_agent_input.md`
 6. `01_latest_report.md`
@@ -116,4 +116,26 @@
 
 一次撰写直接写入 `manifest.json` 声明的最终 `financial_reports/YYYYMMDD.md`；初稿即最终报告，不生成独立过程稿，不等待质询或额外修订发布。
 
+全文核对完成后，再按日常摘要契约写同目录同名 `YYYYMMDD.daily.json`。这是第二个授权输出文件；无需新增 Agent 或新研究轮次。摘要必须对照全文核验数字、负面证据与未知项，不能机械截取。
+
 不得修改 `summary_index.json`。
+
+## Financial Author — 已完成深研的摘要补建
+
+仅处理 prepare 的 `daily_brief_items`。这是摘要任务，不是新季度研究。
+完整读取 `financial_daily_brief_contract.md` 与该任务的 full_report_path，按原文提炼八节摘要，
+只写任务 daily_brief_path；不改原报告，不联网，不重跑 Industry Researcher 或 Expectation Scout。
+知识截止日如实反映原报告所含资料的最晚日期，不能把晚于回测日的知识重标为历史日期。
+若原报告无法确认历史可见性，历史任务不发布摘要；若发现决定性事实错误，报告问题，不能在摘要中静默更正。
+按契约核对关键数字、分母、指引、反面证据及未知项，再用 load_daily_brief 验证绑定与结构。
+完整报告已经登记，不重复注册 summary_index。
+
+### 摘要写作顺序
+
+1. 顺序读完全文，按摘要契约的“原报告章节如何进入摘要”表整理关键事实、计算、情景、反面证据和验证条件。
+2. 按八节重组，正文目标 3000–5000 个非空白字符。先压缩背景、长表和重复论证；重大负面事实、口径限制及未知项保留。
+3. §15 按契约写入“估值分母与计算”：保留已有的三情景利润、倍数、理论市值、兑现期、关键前提和适用限制。详细 TAM 与分节点推导定位到全文 §10 / §15。
+4. 对照全文逐项复核决定性数字与公式，并确认摘要没有改变原文结论的条件与强弱。
+5. 计算全文文件 SHA256，填写契约规定的 JSON 元信息与八节 content，写入 daily_brief_path 后调用 load_daily_brief 检查。
+
+新深研 Author 在完成全文后采用同一摘要契约与写作顺序。

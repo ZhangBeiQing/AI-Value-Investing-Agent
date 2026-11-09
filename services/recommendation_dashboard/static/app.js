@@ -211,9 +211,9 @@ async function openJob(jobId, { refresh = false } = {}) {
     stage(body, 'Bear · 反方论点', stages.bear, 'arguments');
     stage(body, 'Bull · 对反方的反驳', stages.bull_rebuttal, 'rebuttals');
     stage(body, 'Bear · 对正方的反驳', stages.bear_rebuttal, 'rebuttals');
-    for (const [key, label] of [['juror_01', '裁判 1'], ['juror_02', '裁判 2'], ['juror_03', '裁判 3']]) stage(body, label, stages[key]);
-    stage(body, '投票汇总', stages.vote_summary);
-    if (result.verdict) stage(body, 'Final · 独立研究裁决', result.verdict);
+    stage(body, '需要核验的问题', stages.review_request);
+    stage(body, '核验结果', stages.review_resolution);
+    if (result.verdict) stage(body, '独立裁决', result.verdict);
     const log = section('任务日志', body);
     const logContent = text('pre', result.job.log_tail || '暂无日志', 'job-log');
     log.append(logContent);
@@ -496,9 +496,9 @@ function renderDetail(detail, row) {
   stage(body, 'Bear · 反方论点', stages.bear, 'arguments', debateDate);
   stage(body, 'Bull · 对反方的反驳', stages.bull_rebuttal, 'rebuttals', debateDate);
   stage(body, 'Bear · 对正方的反驳', stages.bear_rebuttal, 'rebuttals', debateDate);
-  for (const [key, label] of [['juror_01', '裁判 1'], ['juror_02', '裁判 2'], ['juror_03', '裁判 3']]) stage(body, label, stages[key], null, debateDate);
-  stage(body, '投票汇总', stages.vote_summary, null, debateDate);
-  stage(body, 'Final · 最终结果', stages.final || decision, null, debateDate);
+  stage(body, '需要核验的问题', stages.review_request, null, debateDate);
+  stage(body, '核验结果', stages.review_resolution, null, debateDate);
+  stage(body, '独立裁决', stages.final || decision, null, debateDate);
   renderChat(detail.symbol, body);
 }
 

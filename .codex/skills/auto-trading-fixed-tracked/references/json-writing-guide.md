@@ -1,14 +1,14 @@
 # JSON 书写指南（所有写 JSON 的角色必读）
 
-本文档适用于所有需要落盘 JSON 的角色：Bull / Bear / Juror / Finalizer，以及任何需要写
-`opening.json`、`rebuttal.json`、`ballot.json`、`stock_verdict.json` 或类似文件的 subagent。
+本文档适用于所有需要落盘 JSON 的角色：Bull / Bear / Adjudicator，以及任何需要写
+`opening.json`、`rebuttal.json`、`stock_verdict.json` 或类似文件的 subagent。
 
 写入任何 JSON 文件前，先读本指南；写完必须用命令行校验（见「提交前强制自检」）。
 
 ## 为什么总在 JSON 上出错
 
 本项目所有 JSON 由 Python `json.load` 解析，它对语法极其严格：
-**任何一处非法字符都会导致整份文件解析失败**，下游聚合脚本（`manage_debate.py aggregate`、
+**任何一处非法字符都会导致整份文件解析失败**，下游聚合脚本（
 `validate`、`merge_subagent_decisions.py`）无法读取，从而拖慢整个辩论流程。
 
 ## 高频错误清单（按历史出现频率排序）
@@ -63,7 +63,6 @@ JSON 字符串值里，凡是要写「引号」必须用 **英文双引号 `\"`*
 
 每个输出文件都有严格字段约束，不能自由增删字段：
 
-- `ballot.json` 新产物只允许 `action_type` / `action_num` / `price_impression` / `reason` 四字段；
 - `rebuttal.json` 的每个 `rebuttals[i]` 只允许 `original_argument` / `rebuttal` 两字段；
 - `stock_verdict.json` 只允许 schema 声明的字段；当前新 verdict 使用 16 个字段，其中包含 2 个仓位与数量诊断字段。
 
@@ -87,7 +86,6 @@ JSON 字符串值里，凡是要写「引号」必须用 **英文双引号 `\"`*
 |---|---|---|
 | `opening.json` | `{ "arguments": [...] }` | **字符串**数组 |
 | `rebuttal.json` | `{ "rebuttals": [...] }` | **对象**数组，每个对象含 `original_argument` + `rebuttal` |
-| `ballot.json` | `{ "action_type", "action_num", "price_impression", "reason" }` | 纯字段对象 |
 
 错误（把 opening 的纯字符串数组当成 rebuttal 写，或把对方论点和反驳拼成一条字符串）：
 
@@ -164,17 +162,6 @@ JSON 不允许在最后一个元素后写逗号：
 
 ## 正确写法模板
 
-### ballot.json
-
-```json
-{
-  "action_type": "FLAT",
-  "action_num": 0,
-  "price_impression": "合理",
-  "reason": "支持该动作和价格印象的核心证据权衡，解释两者关系。引用事实时用「中文引号」或转义的英文引号。"
-}
-```
-
 ### opening.json（Bull/Bear）
 
 ```json
@@ -215,7 +202,13 @@ JSON 不允许在最后一个元素后写逗号：
 
 额外检查：
 - 文件是否被 markdown 代码块或任何非 JSON 文本包裹；
-- 顶层结构是否符合本文件类型（`opening` 是字符串数组、`rebuttal` 是对象数组、`ballot` 是纯字段对象），不要把别的文件模板套过来；
+- 顶层结构是否符合本文件类型（`opening` 是字符串数组、`rebuttal` 是对象数组），不要把别的文件模板套过来；
 - 字段名和字段数是否符合对应角色的唯一输出要求；
 - 枚举值是否在允许范围内；
 - 字符串内是否含未转义的裸 ASCII 引号（建议正文一律用「」中文引号规避）。
+
+## 单裁决补充
+
+裁决者按 schema 写最终 verdict，可选质询及解决记录格式见 `debate-adjudicator.md`。
+review_context 由准备命令记录当日实际持仓，Agent 不得手改。写后先用 json.tool 检查语法，
+再由主 Agent 运行 manage_debate.py validate 检查当前完整链路。

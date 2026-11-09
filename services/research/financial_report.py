@@ -569,6 +569,7 @@ def get_financial_report_summary(
     report_release_slack_days: int = 0,
     include_consensus: bool = True,
     include_price_drift: bool = True,
+    prefer_daily_brief: bool = False,
 ) -> dict:
     stock_code = symbol.strip()
     if is_etf_symbol(parse_symbol(stock_code)):
@@ -689,6 +690,14 @@ def get_financial_report_summary(
         logger.exception("读取财报失败: %s", latest_meta.path)
         return message
 
+    daily_input_metadata = None
+    if prefer_daily_brief:
+        from services.research.financial_daily_brief import daily_financial_content
+
+        content, daily_input_metadata = daily_financial_content(
+            latest_meta.path, content, symbol=symbol_info.symbol, as_of_date=today_time,
+        )
+
     if consensus_md:
         content = consensus_md + "\n\n---\n\n" + content.lstrip()
     if forecast_text:
@@ -730,6 +739,7 @@ def get_financial_report_summary(
         "forecast_path": str(forecast_path) if forecast_path else None,
         "content": enriched_content,
         "metadata": metadata,
+        "daily_input": daily_input_metadata,
     }
     logger.info(
         "get_financial_report_summary 成功: report=%s, days_since=%s",

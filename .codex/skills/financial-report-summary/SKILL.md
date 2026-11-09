@@ -10,7 +10,7 @@ description: 对固定跟踪池、长期候选与短期候选股票生成季度�
 - 最终报告是基本面研究，不生成真实交易动作、仓位、目标价或止损。
 - 财务事实不投票；由 Author 核对证据，一次撰写直接交付最终报告。
 - 保持 `financial_reports/YYYYMMDD.md` 与 `summary_index.json` 现有契约。
-- 各角色只写自己的文件；最终报告只有 Financial Author 写，`summary_index.json` 只有主 Agent 通过注册脚本写。
+- 各角色只写自己的文件；最终报告只有 Financial Author 写，日常摘要也由同一 Author 写，`summary_index.json` 只有主 Agent 通过注册脚本写。
 
 开始前完整读取 [角色派发模板](references/role-prompts.md)。派发 subagent 时只传角色、股票/产业链、workdir、模板路径和唯一输出路径；不得转述或压缩固定规则。
 
@@ -58,7 +58,7 @@ data/stock_info/{stock_name}_{symbol}/disclosures/pdfs/
 
 仅在固定基本面规则定义的明确历史缺口出现时按需读取：先 Markdown，缺失时再定位单份 PDF。不要批量读取多年报告，也不要因本轮研究自动调用 PDF 转换（pymupdf4llm）。
 
-仅处理 `ready_items`。`skipped_items` 中已总结或缺财报的股票不启动角色。正式研究不得使用 `--skip-market-context`。
+完整深研仅处理 `ready_items`。已总结报告若出现在 `daily_brief_items`，只按角色模板的“Financial Author — 已完成深研的摘要补建”处理，不重跑全套研究；其余 `skipped_items` 不启动角色。正式研究不得使用 `--skip-market-context`。
 
 ## 二、验证搜索能力
 
@@ -96,7 +96,7 @@ terminal_theme → subchain → value_chain_node → company_exposure
 3. 等产业链研究与公告前预期研究完成后，每股启动一个 Financial Author，一次撰写直接写入 `manifest.json` 声明的最终报告路径；
 4. 主 Agent 通过质量门禁后逐股注册。
 
-初稿即最终报告，不生成独立初稿或质询文件，不启动 Challenger、Finalizer 或额外修订发布轮次。
+完整报告完成后，同一 Author 按 `configs/research/financial_daily_brief_contract.md` 生成绑定原文的 `YYYYMMDD.daily.json`；不另起摘要 Agent。初稿即最终报告，不生成独立初稿或质询文件，不启动 Challenger、Finalizer 或额外修订发布轮次。
 
 ## 五、角色派发
 
@@ -131,7 +131,8 @@ Author 完成报告后，主 Agent 检查：
 - Author 发现的重大数据缺口与不确定性已按影响融入最终报告 §16/§17；
 - 同一核心结论与证伪条件没有跨章节重复展开（跨节引用使用“（见 §X）”，证伪条件仅在 §16 完整列出）；全文篇幅在软上限内或已说明超限理由；
 - 最终报告不含“未解决问题与披露限制”或“证据与来源”独立章节；
-- 最终报告不含占位符、伪造来源或交易指令。
+- 最终报告不含占位符、伪造来源或交易指令；
+- 日常摘要符合 `configs/research/financial_daily_brief_contract.md`，决定性数字、分母、指引、反面证据与未知项均已逐项对照全文；不能只验证哈希和篇幅。
 
 重大数字错误、时间穿越或占位内容未解决时不注册。真正无法由公开信息回答的问题必须融入 §16/§17，
 说明其对判断的影响和后续验证方式，不得输出研究过程附录。
@@ -144,7 +145,7 @@ Author 完成报告后，主 Agent 检查：
 python scripts/register_financial_report_summary.py \
   --symbol SYMBOL \
   --path data/stock_info/{stock_name}_{symbol}/financial_reports/YYYYMMDD.md \
-  --require-deep-research
+  --require-deep-research --require-daily-brief
 ```
 
 Financial Author 不得自行写 `summary_index.json`。注册失败时保留研究文件并报告失败，不伪造完成状态。
@@ -186,3 +187,7 @@ Financial Author 不得自行写 `summary_index.json`。注册失败时保留研
 - 产业研究候选只能列出文件名可确认不晚于回测日的历史 card；
 - 注册必须使用返回模板并保留
   `--as-of-date {decision_date} --require-deep-research`。
+
+## 日常摘要与历史兼容
+
+新研究交付完整 Markdown 和同名 `.daily.json` 两个文件，Author 的允许输出必须列出这两个路径。旧报告缺摘要时每日研究包明确回退全文，不重新启动全套研究。需要降低旧报告输入时，只让 Author 读取已完成报告并按摘要契约补建；不改原报告事实、不提前知识截止日、不重做产业与预期研究。修订全文后必须同步更新摘要。

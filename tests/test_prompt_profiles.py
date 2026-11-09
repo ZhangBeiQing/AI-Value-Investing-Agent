@@ -148,6 +148,8 @@ def test_write_agent_input_bundle_adds_fixed_stock_profile(
     assert "rendered:stock_analysis_policy.md" in stock_input
     assert main_input.count("rendered:investment_policy.md") == 1
     assert stock_input.count("rendered:investment_policy.md") == 1
+    assert "p0_event_report.md" in main_input
+    assert (tmp_path / "p0_event_report.md").exists()
     assert stock_input.count("rendered:web_research_policy.md") == 1
     assert "```text" not in main_input
 
@@ -164,3 +166,47 @@ def test_format_metric_dict_names_non_tracked_holding_symbols() -> None:
     assert formatted["宁德时代_300750.SZ_avg_cost"] == 390.0
     assert formatted["黄金基金ETF_518800.SH_avg_cost"] == 11.166
     assert "601138.SH_601138.SH_avg_cost" not in formatted
+
+
+def test_p0_event_report_combines_cached_announcements_and_news_without_future_items(tmp_path):
+    import json
+    from commons.stock_utils import get_stock_data_dir, parse_symbol
+
+    source = tmp_path / "source"
+    stock_root = get_stock_data_dir(parse_symbol("300613.SZ"), base_dir=source)
+    (stock_root / "disclosures").mkdir(parents=True)
+    (stock_root / "news").mkdir()
+    (stock_root / "disclosures/index.json").write_text(json.dumps({
+        "new": {"date": "2026-11-09", "title": "业绩预告", "url": "https://example.com/new"},
+        "future": {"date": "2026-11-10", "title": "未来事项"},
+        "old": {"date": "2026-10-26", "title": "窗口外事项"},
+    }), encoding="utf-8")
+    (stock_root / "news/news_audited.json").write_text(json.dumps({"news_items": [
+        {"datetime": "2026-11-09 18:00:00", "title": "业绩预告", "summary": "收入增长但现金回收承压"},
+        {"datetime": "2026-11-08", "title": "新订单", "summary": "新增订单公告"},
+    ]}), encoding="utf-8")
+    output = tmp_path / "output"
+    output.mkdir()
+    path = build_agent_input.write_p0_event_report(
+        "2026-11-09", output, ["300613.SZ", "000001.SZ", "518800.SH"], source_data_root=source,
+    )
+    text = path.read_text()
+    assert text.count("业绩预告") == 1
+    assert "收入增长但现金回收承压" not in text
+    assert "新订单" in text
+    assert "未来事项" not in text
+    assert "窗口外事项" not in text
+    assert "https://" not in text
+    assert "事件资料缺失" in text
+    assert "公司公告不适用" in text
+
+
+def test_p0_policy_delegates_concurrency_and_reads_event_overview():
+    policy = MAIN_POLICY.read_text(encoding="utf-8")
+    assert "p0_event_report.md" in policy
+    assert "资料缺失或时效不足时先定向搜索补证" in policy
+    assert "平台实际并发额度" in policy
+    assert "不分批" not in policy
+    assert "Step 2.5" not in policy
+    assert "当前日常处理量参考约 10 只" in policy
+    assert "必须每日纳入 P0" in policy

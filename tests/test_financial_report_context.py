@@ -492,6 +492,8 @@ def test_prepare_workdir_writes_run_paths_and_policy_copy(tmp_path: Path, monkey
     assert "draft_v1" in manifest["research_output_paths"]
     assert "draft_v2" not in manifest["research_output_paths"]
     assert manifest["research_output_paths"]["final_report"] == str(bundle.output_path)
+    assert manifest["research_output_paths"]["daily_brief"] == str(bundle.output_path.with_suffix(".daily.json"))
+    assert "daily_brief" in manifest["research_policy_paths"]
     agent_input = (target_workdir / "05_agent_input.md").read_text(encoding="utf-8")
     assert "Financial Author 一次撰写直接交付最终报告" in agent_input
     assert "Research Challenger" not in agent_input

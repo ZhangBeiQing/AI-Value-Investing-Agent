@@ -34,16 +34,15 @@
 | 目录 | `debate/.../` 空目录 | `manage_debate.py prepare` | P0 已确认 | 只建目录，不写角色结果 |
 | Opening | `advocates/bull/opening.json` | Bull | 目录存在 | JSON 合法；只读本股研究包 |
 | Opening | `advocates/bear/opening.json` | Bear | 目录存在 | JSON 合法；只读本股研究包 |
-| Rebuttal | `advocates/bull/rebuttal.json` | 原 Bull 会话 | 双方 opening 合法 | JSON 合法 |
-| Rebuttal | `advocates/bear/rebuttal.json` | 原 Bear 会话 | 双方 opening 合法 | JSON 合法 |
-| 投票 | `jury/juror_0{1,2,3}/ballot.json` | 对应独立 Juror | 两份 rebuttal 合法 | JSON 合法；Juror 间互不可读 |
-| 聚合 | `final/vote_summary.json` | `manage_debate.py aggregate` | 三份 ballot 合法 | 严格匹配 ballot 与当日持仓；Agent 不得写 |
-| 裁决 | `final/stock_verdict.json` | 独立 finalizer | `vote_summary` 已生成 | `validate --require-verdict` 通过 |
+| 持仓上下文 | `review_context.json` | `manage_debate.py prepare` | 取得隔离账本实际持仓 | 股票、日期、数量一致 |
+| 定向回应（可选） | `advocates/*/rebuttal.json` | 原 Advocate | 决定性争议 | JSON 合法 |
+| 质询（可选） | `adjudicator/review_request.json` / `review_resolution.json` | 独立 Adjudicator | 需定向核验 | 问题逐项闭环 |
+| 裁决 | `final/stock_verdict.json` | 独立 Adjudicator | 双方 opening 完成、决定性问题已解 | `validate --require-verdict` 通过 |
 | 合并 | `05_decision.json` | `merge_subagent_decisions.py` 或 `no-trade-day` | 全部 P0 verdict 合法，或 P0 为空 | 决策 schema 通过；顶层系统字段非空/合理 |
 | 执行 | `06_execution_log.json` | `execute-day` | 合法 05 与 D+1 开盘价 | `status=success` 是幂等凭证 |
 | 总结 | `07_daily_summary.json` | `execute-day` | 成功 06 | 记录执行日和组合结果 |
 | 记忆 | `08_history_merge.json` | `execute-day` | 成功 06 | 下一日读取隔离交易记忆 |
-| 决策快照 | `{experiment_root}/agent_data/backtest-{id}/latest_decision_snapshot.json` | 隔离交易记忆服务 | `decision_summary.json` 更新后 | 每只股票仅保留 `end_date` 最新的一条完整分析结果；下一日 P0 可读，不能当作直接交易指令 |
+| 决策快照 | `{experiment_root}/agent_data/backtest-{id}/latest_decision_snapshot.json` | 隔离交易记忆服务 | `decision_summary.json` 更新后 | 实验当日范围与持仓中各股最近分析的代码、名称、日期、价格印象和完整待核验事项，供下一日 P0 筛选 |
 
 ## 4. 状态门与不可跨越顺序
 
@@ -51,10 +50,8 @@
 00_prepare_status.ready
   → P0
   → opening × 2
-  → rebuttal × 2
-  → ballot × 3
-  → vote_summary
-  → stock_verdict
+  → Adjudicator（争议时定向回应）
+  → stock_verdict + validate
   → 05_decision
   → 06_execution(D+1 open)
   → 07 + 08
@@ -89,8 +86,8 @@ data/selection_runs/**
 
 ## 6. 数量、交易与恢复约束
 
-- `aggregate` 的 `--position-shares` 必须来自实验隔离账本在 D 日的实际持仓，不能使用真实持仓或猜测值。
+- `prepare` 的 `--position-shares` 必须来自实验隔离账本在 D 日的实际持仓，不能使用真实持仓或猜测值。
 - 所有 BUY/SELL 的 D+1 成交价必须由程序读取下一交易日精确开盘价；缺价时订单为 `pending`，不得替换价格。
 - 成功 `06_execution_log.json` 不能删除、覆盖或重复执行；它是当天订单幂等边界。
-- 订单、现金、持仓和交易记忆只由隔离执行程序写入。主 Agent、研究角色和 finalizer 都不能修改。
+- 订单、现金、持仓和交易记忆只由隔离执行程序写入。主 Agent、研究角色和 Adjudicator 都不能修改。
 - 任何异常先运行 `status`，读取 `00_prepare_status.json`、`06_execution_log.json` 与 checkpoint，再决定从哪一状态恢复。
