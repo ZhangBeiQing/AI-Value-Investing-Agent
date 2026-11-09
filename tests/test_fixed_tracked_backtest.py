@@ -842,7 +842,20 @@ def test_shared_data_access_classifies_pre_listing_date(tmp_path: Path) -> None:
 
 def test_historical_manifest_excludes_known_not_listed_symbols(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # 该用例验证"上市前过滤"，不该依赖真实股票池里是否恰好有 00100.HK。
+    from configs.stock_pool import StockEntry
+    from services.pipeline import daily_pipeline as daily_pipeline_module
+
+    monkeypatch.setattr(
+        daily_pipeline_module,
+        "TRACKED_A_STOCKS",
+        [
+            StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
+            StockEntry("02513.HK", "智谱", "人工智能大模型"),
+        ],
+    )
     for symbol, first_date in (
         ("00100.HK", "2026-01-09"),
         ("02513.HK", "2026-01-08"),
@@ -934,7 +947,21 @@ def test_backtest_price_delta_report_does_not_fall_back_to_live_index(
     assert "无可用上次深研价记录" in content
 
 
-def test_backtest_universe_excludes_pre_listing_symbols(tmp_path: Path) -> None:
+def test_backtest_universe_excludes_pre_listing_symbols(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from configs.stock_pool import StockEntry
+    from services.backtest import experiment as experiment_module
+
+    monkeypatch.setattr(
+        experiment_module,
+        "TRACKED_A_STOCKS",
+        [
+            StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
+            StockEntry("600150.SH", "中国船舶", "船舶制造"),
+        ],
+    )
     source_root = tmp_path / "source_data"
     target = price_cache_dir(parse_symbol("00100.HK"), base_dir=source_root)
     target.mkdir(parents=True, exist_ok=True)

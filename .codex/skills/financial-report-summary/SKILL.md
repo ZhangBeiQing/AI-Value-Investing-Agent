@@ -62,11 +62,11 @@ data/stock_info/{stock_name}_{symbol}/disclosures/pdfs/
 
 ## 二、验证搜索能力
 
-在派发任何需要联网的角色前，确认阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP） 可用。
+在派发任何需要联网的角色前，按 `configs/research/web_research_policy.md` 确认当前环境的搜索入口可用（Codex + GPT 优先自带搜索，其他组合优先百炼 MCP）。
 
-- 搜索能力不存在或被禁用：停止研究，报告 `web_search_unavailable`。
+- 所有可用搜索入口均不存在或被禁用：停止研究，报告 `web_search_unavailable`。
 - 搜索成功但无结果：允许角色继续换查询词或记录数据缺口。
-- 不得改用其他搜索通道，也不得自行拼接爬虫或第三方检索 API 替代；只有用户明确允许 fallback 才能使用替代搜索。
+- 首选入口不可用时可使用会话已提供的另一入口；所有可用入口均不可用时失败关闭，不自行拼接爬虫或第三方检索 API。
 
 ## 三、产业链分组
 

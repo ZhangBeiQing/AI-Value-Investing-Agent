@@ -39,7 +39,10 @@ from shared_data_access.cache_registry import (
 from shared_data_access.exceptions import CacheIntegrityError, DataUnavailableError
 from shared_data_access.models import PreparedData
 from indicator_library.gateways import DataFrameGateway
-from indicator_library.calculators.fundamental import calculate_rolling_ttm_profit
+from indicator_library.calculators.fundamental import (
+    calculate_rolling_ttm_profit,
+    derive_quarterly_series_by_report_type,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -68,13 +71,13 @@ FIELD_NOTES: Dict[str, Any] = {
     "errors": "拉取失败的股票及原因 (可选)",
         "stock_fields": {
             "stock_name": "股票名称/别名 (字符串)",
-            "latest_price": "最近收盘价，A股单位：元人民币，港股单位：港元",
+            "latest_price": "最近收盘价，A股单位：元人民币，港股单位：港元，美股单位：美元",
             "daily_change_pct": "最近收盘价相对上一交易日的涨跌幅 (字符串, 如 +7%)",
-            "latest_volume": "最近成交额，单位：亿元",
-        "pe_ttm": "扣非市盈率 (TTM，使用扣非TTM净利润)",
+            "latest_volume": "最近成交额，单位：亿元（美股为亿美元）",
+        "pe_ttm": "扣非市盈率 (TTM，使用扣非TTM净利润；美股无扣非口径，等同报表净利润)",
         "pb": "市净率",
         "ps": "市销率",
-        "market_cap": "总市值，单位：人民币亿元",
+        "market_cap": "总市值，单位：人民币亿元（美股为亿美元）",
         "pe_3_5y_median": "近三年半扣非TTM市盈率中位数（使用扣非净利润）",
         "pe_3_5y_percentile": "当前扣非TTM市盈率在近三年半样本中的分位数 (0-1)",
         "pe_3_5y_std": "近三年半扣非TTM市盈率标准差",
@@ -530,10 +533,18 @@ class BasicStockInfoService:
             else liquidity
         )
         daily_change_pct = self._daily_change_pct(price_df)
+        currency = (
+            "USD"
+            if symbol_info.market == "US"
+            else "HKD"
+            if symbol_info.is_hk_market()
+            else "CNY"
+        )
 
         if is_etf:
             payload = {
                 "stock_name": stock_name,
+                "currency": currency,
                 "latest_price": valuation["latest_price"],
                 "daily_change_pct": daily_change_pct,
                 "latest_volume": valuation["latest_volume"],
@@ -543,6 +554,7 @@ class BasicStockInfoService:
         else:
             payload = {
                 "stock_name": stock_name,
+                "currency": currency,
                 "latest_price": valuation["latest_price"],
                 "daily_change_pct": daily_change_pct,
                 "latest_volume": valuation["latest_volume"],
@@ -638,7 +650,12 @@ class BasicStockInfoService:
                 pe_history.append({"报告期": quarter, "PE": pe_value})
 
         pb = self._current_pb(financials.financial_abstract, latest_price)
-        ps = self._current_ps(financials.financial_abstract, latest_price, total_shares)
+        ps = self._current_ps(
+            financials.financial_abstract,
+            latest_price,
+            total_shares,
+            profit_sheet=profit_sheet,
+        )
 
         market_cap = None
         if latest_price is not None and total_shares:
@@ -930,8 +947,19 @@ class BasicStockInfoService:
         financial_abstract: pd.DataFrame,
         latest_price: Optional[float],
         total_shares: Optional[float],
+        profit_sheet: Optional[pd.DataFrame] = None,
     ) -> Optional[float]:
-        if latest_price is None or not total_shares or financial_abstract.empty:
+        if latest_price is None or not total_shares:
+            return None
+        market_cap = latest_price * total_shares
+
+        # 美股的表带 REPORT_TYPE，且财年可能不在 12 月结束；按口径链推单季，
+        # 避免用日期后缀（0331/0630/0930/1231）猜口径而算错 TTM 营收。
+        ttm_from_sheet = self._ttm_revenue_from_report_type(profit_sheet)
+        if ttm_from_sheet and ttm_from_sheet > 0:
+            return market_cap / ttm_from_sheet
+
+        if financial_abstract.empty:
             return None
         if "指标" in financial_abstract.columns:
             rows = financial_abstract[financial_abstract["指标"].str.contains("营业总收入", na=False)]
@@ -941,7 +969,6 @@ class BasicStockInfoService:
             ttm_revenue = self._ttm_from_cumulative_row(row)
             if not ttm_revenue or ttm_revenue <= 0:
                 return None
-            market_cap = latest_price * total_shares
             return market_cap / ttm_revenue
         revenue_candidates = [
             "OPERATE_INCOME_TTM",
@@ -952,9 +979,32 @@ class BasicStockInfoService:
         for col in revenue_candidates:
             ttm_revenue = self._latest_column_numeric(financial_abstract, col)
             if ttm_revenue and ttm_revenue > 0:
-                market_cap = latest_price * total_shares
                 return market_cap / ttm_revenue
         return None
+
+    def _ttm_revenue_from_report_type(
+        self,
+        profit_sheet: Optional[pd.DataFrame],
+    ) -> Optional[float]:
+        """按 ``REPORT_TYPE`` 推导最近四季营收之和（仅美股这类带口径标记的表）。"""
+
+        if profit_sheet is None or profit_sheet.empty:
+            return None
+        if "REPORT_TYPE" not in profit_sheet.columns:
+            return None
+        if "TOTAL_OPERATE_INCOME" not in profit_sheet.columns:
+            return None
+        work = profit_sheet.copy()
+        work["REPORT_DATE"] = pd.to_datetime(work["REPORT_DATE"], errors="coerce")
+        work = work.dropna(subset=["REPORT_DATE"]).sort_values("REPORT_DATE")
+        if work.empty:
+            return None
+        series = derive_quarterly_series_by_report_type(work, "TOTAL_OPERATE_INCOME")
+        values = [value for value in series.values() if value is not None]
+        if len(values) < 4:
+            return None
+        total = float(sum(values[-4:]))
+        return total if total > 0 else None
 
     def _latest_metric(self, row: Optional[pd.Series]) -> Optional[float]:
         if row is None:

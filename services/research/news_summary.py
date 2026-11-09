@@ -189,6 +189,64 @@ def _try_update_disclosures_for_stock(stock_code: str, lookback_days: int = 365)
     audit_news_json(symbol_info, "deepseek-v4.1-flash")
 
 
+def _search_us_filings(
+    symbol_info,
+    today_time: str,
+    *,
+    allow_refresh: bool,
+) -> str:
+    """美股第 2 章：直接用 SEC 申报生成条目，不依赖本地 news.json。"""
+
+    from shared_data_access.us_disclosures import (
+        build_us_filing_news_items,
+        load_us_disclosures,
+        update_us_disclosures_cached,
+    )
+
+    diagnostics: List[str] = []
+    today_dt = parse_today_date(today_time)
+    if today_dt is None:
+        return json.dumps(
+            {"error": f"无法解析 today_time: {today_time}"},
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    frame = load_us_disclosures(symbol_info)
+    if frame.empty and allow_refresh:
+        try:
+            update_us_disclosures_cached(symbol_info, lookback_days=730)
+            diagnostics.append("已刷新 SEC 申报缓存。")
+        except Exception as exc:
+            diagnostics.append(f"SEC 申报刷新失败: {exc}")
+
+    items, build_diagnostics = build_us_filing_news_items(
+        symbol_info,
+        lookback_days=180,
+        limit=20,
+        today=today_dt.date(),
+    )
+    diagnostics.extend(build_diagnostics)
+    filtered = filter_news_before_today(items, today_dt, diagnostics)
+    filtered = _deduplicate_recurring_events(filtered, diagnostics)
+    filtered = _filter_low_impact_noise(filtered, diagnostics)
+    _strip_internal_datetime(filtered)
+
+    payload = {
+        "stock": f"{symbol_info.stock_name} ({symbol_info.symbol})",
+        "today": today_time,
+        "news_items": filtered,
+        "diagnostics": diagnostics,
+    }
+    logger.info(
+        "search_stock_news 美股完成: symbol=%s, items=%d",
+        symbol_info.symbol,
+        len(filtered),
+    )
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+
 def search_stock_news(
     symbol: str,
     today_time: str,
@@ -213,9 +271,12 @@ def search_stock_news(
         symbol_info = parse_symbol(stock_code)
         stock_name = symbol_info.stock_name or stock_name
     except Exception:
-        pass
+        symbol_info = None
 
     logger.info("search_stock_news 请求: stock=%s(%s), today=%s", stock_name, stock_code, today_time)
+
+    if symbol_info is not None and symbol_info.market == "US":
+        return _search_us_filings(symbol_info, today_time, allow_refresh=allow_refresh)
     today_dt = parse_today_date(today_time)
     if today_dt is None:
         payload = {

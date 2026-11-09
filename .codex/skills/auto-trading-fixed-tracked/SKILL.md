@@ -43,20 +43,14 @@ data/skill_runs/{date}/fixed_tracked/
 可选共享输入：
 
 ```text
-data/selection_runs/{date}/06_hot_news_state.json
-data/selection_runs/{date}/05_board_heat_digest.json
 data/skill_runs/_analysis_index.json
 ```
-
-可选文件缺失时记录为无此输入，不因此终止。
-
-`fixed_tracked` 已包含固定股票池、真实持仓和长期候选；当前只需运行本 skill 这一个交易账本。
 
 ## 3. 规则唯一来源
 
 - 主 Agent的组合与 P0 方法：当天 `03_agent_input.md`。
 - 个股共同投资、联网搜索和证据准入规则：当天 `03_stock_analysis_input.md`。
-- 联网搜索一律使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP）；搜索不可用时按 `03_stock_analysis_input.md` 中的搜索政策失败关闭，不自行拼接爬虫或第三方检索 API 替代。
+- 联网搜索按运行环境选择：Codex + GPT 优先使用自带联网搜索，其他环境或模型组合优先使用阿里云百炼搜索 MCP；首选不可用时可使用会话已提供的另一入口，具体遵循 `configs/research/web_research_policy.md`；所有可用搜索入口均不可用时按 `03_stock_analysis_input.md` 中的搜索政策失败关闭，不自行拼接爬虫或第三方检索 API 替代。
 - Bull opening：[references/debate-bull.md](references/debate-bull.md)。
 - Bear opening：[references/debate-bear.md](references/debate-bear.md)。
 - 双方 rebuttal：[references/debate-rebuttal.md](references/debate-rebuttal.md)。
@@ -116,16 +110,16 @@ data/skill_runs/_analysis_index.json
 
 对用户确认后的每只 P0 股票执行本节。不同股票可以并行，同一股票内部必须按阶段顺序执行。
 
-### B0. 并发调度（单阶段每批最多 10 个）
+### B0. 并发调度（单阶段每批最多 20 个）
 
-主 Agent 在同一阶段每批最多同时启动 **10 个 subagent**。若当天该阶段需要超过 10 个，必须按批次执行：上一批全部结束、目标文件全部落盘并校验通过后，才能启动下一批。不得超过 10 个，以避免平台资源竞争导致任务空返回、写错日期目录或文件缺失。
+主 Agent 在同一阶段每批最多同时启动 **20 个 subagent**。若当天该阶段需要超过 20 个，必须按批次执行：上一批全部结束、目标文件全部落盘并校验通过后，才能启动下一批。不得超过 20 个，以避免平台资源竞争导致任务空返回、写错日期目录或文件缺失。
 
 批次只按平台并发上限拆分，不改变研究逻辑；不得在同一股票内部跨阶段混跑，也不得在前一批产物未核验时启动后一批。
 
-- 阶段一（Opening）：全部 P0 股票 × Bull + Bear = `2 × N` 个 subagent，按每批最多 10 个启动；
-- 阶段二（Rebuttal）：复用原 Bull/Bear 会话，全部 P0 × 2 = `2 × N` 个 follow-up，按每批最多 10 个唤醒；
-- 阶段三（Juror）：全部 P0 × 3 名独立 Juror = `3 × N` 个 subagent，按每批最多 10 个启动；
-- 阶段四（Finalizer）：全部 P0 × 1 = `N` 个 finalizer，按每批最多 10 个启动。
+- 阶段一（Opening）：全部 P0 股票 × Bull + Bear = `2 × N` 个 subagent，按每批最多 20 个启动；
+- 阶段二（Rebuttal）：复用原 Bull/Bear 会话，全部 P0 × 2 = `2 × N` 个 follow-up，按每批最多 20 个唤醒；
+- 阶段三（Juror）：全部 P0 × 3 名独立 Juror = `3 × N` 个 subagent，按每批最多 20 个启动；
+- 阶段四（Finalizer）：全部 P0 × 1 = `N` 个 finalizer，按每批最多 20 个启动。
 
 示例：8 只 P0 的 Opening/Rebuttal 各 16 个，拆成 10+6 两批；Juror 为 24 个，拆成 10+10+4 三批；Finalizer 为 8 个，可一批完成。16 只 P0 时，Opening/Rebuttal 各 32 个，拆成 10+10+10+2 四批；Juror 为 48 个，拆成 10+10+10+10+8 五批；Finalizer 为 16 个，拆成 10+6 两批。
 
@@ -188,9 +182,7 @@ Bull 运行时 prompt：
 1. .codex/skills/auto-trading-fixed-tracked/references/debate-bull.md
 2. data/skill_runs/{date}/fixed_tracked/03_stock_analysis_input.md
 3. data/skill_runs/{date}/fixed_tracked/01_global_context.md
-4. data/selection_runs/{date}/06_hot_news_state.json（存在时）
-5. data/selection_runs/{date}/05_board_heat_digest.json（存在时）
-6. 当前股票唯一的 04_stock_research 研究包
+4. 当前股票唯一的 04_stock_research 研究包
 
 只允许写入：
 data/skill_runs/{date}/fixed_tracked/debate/{stock_name}_{symbol}/advocates/bull/opening.json
@@ -405,7 +397,7 @@ python scripts/run_post_trade.py \
 
 - 每只股票常规使用 6 个逻辑 Agent：Bull、Bear、Juror 01、02、03、finalizer。
 - 常规共 8 个 turn：2 opening、2 rebuttal follow-up、3 ballot、1 finalizer。
-- **所有 P0 股票必须完成辩论，但单阶段每批并发不得超过 10 个**：Opening、Rebuttal、Juror、Finalizer 分别按第 5 节 B0 的批次规则执行。每批结束后必须检查目标文件数量、JSON 可解析性和 Schema，再进入下一批；每只股票内部的 `opening → rebuttal → jury → aggregate → finalizer` 阶段顺序仍然必须严格保持。
+- **所有 P0 股票必须完成辩论，但单阶段每批并发不得超过 20 个**：Opening、Rebuttal、Juror、Finalizer 分别按第 5 节 B0 的批次规则执行。每批结束后必须检查目标文件数量、JSON 可解析性和 Schema，再进入下一批；每只股票内部的 `opening → rebuttal → jury → aggregate → finalizer` 阶段顺序仍然必须严格保持。
 - 同一 symbol 内严格执行 `opening → rebuttal → jury → aggregate → finalizer`。
 - 文件不存在、JSON 损坏或校验失败时，不得默默跳过。
 - 纯 JSON 格式错误由原文件所有者修复；结论冲突向用户报告。

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import concurrent.futures
 import threading
 import logging
+import tempfile
 
 import argparse
 import re
@@ -30,6 +31,18 @@ from shared_data_access.cache_registry import CacheKind, build_cache_dir
 from shared_data_access.data_access import SharedDataAccess
 from shared_data_access.hkex_financial_report import fetch_hkex_financial_report_pdf
 from shared_data_access.stockstar_financial_report import fetch_stockstar_financial_report_markdown
+from shared_data_access.us_disclosures import (
+    EARNINGS_RELEASE_FORMS,
+    STATEMENT_FORMS,
+    filing_headline,
+    filing_report_period,
+    is_earnings_release_text,
+    is_us_financial_filing,
+)
+from shared_data_access.us_financial_documents import (
+    build_us_financial_document_markdown,
+    markdown_file_name,
+)
 from services.document_conversion import (
     PDFMarkdownConverter,
     is_pdf_markdown_cache_current,
@@ -383,6 +396,7 @@ class AnnouncementMeta:
     audit_timestamp: Optional[str] = None
     content_source: Optional[str] = None
     content_source_url: Optional[str] = None
+    primary_document: Optional[str] = None
 
 
 def _slugify(text: str, max_bytes: int = 120) -> str:
@@ -1249,6 +1263,12 @@ def update_disclosures_for_stock(
     """
     stock_name = symbol_info.stock_name
     symbol = symbol_info.symbol
+    if getattr(symbol_info, "market", "") == "US":
+        _log(
+            f"美股公告由 SEC EDGAR 链路维护（shared_data_access.us_disclosures），"
+            f"跳过巨潮公告构建: {stock_name} ({symbol})"
+        )
+        return 0
     _log(f"开始更新公告: {stock_name} ({symbol}), lookback={lookback_days}天, model={model}")
     idx_path = index_path(symbol_info)
     idx = load_index(idx_path)
@@ -1396,6 +1416,182 @@ def resolve_disclosure_cutoff_date(
     return base.isoformat()
 
 
+US_FINANCIAL_DOCUMENT_LIMIT = 6
+
+
+def _is_legacy_us_financial_markdown(path: Path) -> bool:
+    """旧转换器的 12 万字符截断缓存需要重新生成。"""
+    return bool(re.search(
+        r"> 原文超长，已截断至\s*120[,.]?000\s*字符",
+        path.read_text(encoding="utf-8"),
+    ))
+
+
+def _write_us_financial_markdown(target: Path, markdown: str) -> None:
+    """完整写入同目录临时文件后原子替换，失败时保留旧正文。"""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=target.parent,
+            prefix=f".{target.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(markdown)
+        temporary.replace(target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _is_quarter_end(period: Optional[str]) -> bool:
+    """报告期是否落在季末。
+
+    美股 6-K 也承载股东大会通知、董事会决议，它们的 ``reportDate`` 是事件日。
+    只有 3/6/9/12 月末才可能是财报期间。
+    """
+
+    if not period:
+        return False
+    try:
+        month = int(period[5:7])
+        day = int(period[8:10])
+    except (TypeError, ValueError):
+        return False
+    return month in {3, 6, 9, 12} and day >= 28
+
+
+def _sync_us_financial_documents(
+    symbol_info: SymbolInfo,
+    *,
+    data_access: Optional[SharedDataAccess] = None,
+    as_of_date: Optional[str] = None,
+) -> int:
+    """美股财报原文：SEC EDGAR → ``disclosures/md``。
+
+    与巨潮口径的差异只在来源：正文由 SEC 申报渲染，落盘目录与文件命名保持一致，
+    下游 ``financial_report_skill`` 不需要区分市场。
+
+    返回本次新写入的 Markdown 数量。
+
+    时间守卫不在这里做：``update_*`` 面向真实当前时间抓取全部可见申报，
+    可见性由 ``financial_report_skill._select_latest_two_reports(available_on_date=...)``
+    在读取阶段截断。
+    """
+
+    symbol = symbol_info.symbol
+    stock_name = symbol_info.stock_name or symbol
+
+    # 先用统一的披露刷新入口重建索引：CIK、primary_document 与财报标记都由它写入，
+    # 避免这里再维护一套解析逻辑。重建会丢掉 md_path，因此先快照再回填，
+    # 否则每次同步都会把已经落盘的原文重新下载一遍。
+    idx_path = index_path(symbol_info)
+    previous_markdown = {
+        meta.announcement_id: meta.md_path
+        for meta in load_index(idx_path).values()
+        if meta.md_path
+    }
+
+    access = data_access or SharedDataAccess(logger=LOGGER)
+    access.prepare_dataset(
+        symbolInfo=symbol_info,
+        as_of_date=as_of_date or datetime.now().strftime("%Y-%m-%d"),
+        include_disclosures=True,
+        force_refresh_disclosures=True,
+        skip_price_refresh=True,
+        skip_financial_refresh=True,
+    )
+
+    idx = load_index(idx_path)
+    for announcement_id, md_path in previous_markdown.items():
+        if announcement_id in idx and Path(md_path).is_file():
+            idx[announcement_id].md_path = md_path
+    if not idx:
+        _log(f"美股财报原文同步跳过：公告索引为空 {stock_name}({symbol})")
+        return 0
+
+    cik = next((str(meta.org_id) for meta in idx.values() if meta.org_id), "")
+    if not cik:
+        _log(f"美股财报原文同步跳过：索引缺少 CIK {stock_name}({symbol})")
+        return 0
+
+    doc_cache_dir = idx_path.parent
+    accepted_ids: set[str] = set()
+    for meta in idx.values():
+        form = (meta.category or "").strip().upper()
+        if form in STATEMENT_FORMS:
+            accepted_ids.add(meta.announcement_id)
+            continue
+        if form not in EARNINGS_RELEASE_FORMS:
+            continue
+        # 财报的报告期必须落在季末（3/6/9/12 月末）；股东大会、董事会决议这类
+        # 6-K 的报告期是事件日，用它当财报会把噪声混进研究输入。
+        period = filing_report_period(meta.title, meta.date)
+        if not _is_quarter_end(period):
+            continue
+        # 索引里的 6-K 标题只有表单名，必须看申报正文的第一条要点才能区分
+        # 业绩稿与月营收/股利/持股变动。
+        headline = filing_headline(
+            cik=cik,
+            accession=meta.announcement_id,
+            primary_document=meta.primary_document or "",
+            cache_dir=doc_cache_dir,
+            logger=LOGGER,
+        )
+        if is_earnings_release_text(f"{headline} {meta.title}"):
+            accepted_ids.add(meta.announcement_id)
+
+    # 标记必须幂等重算：早期版本把股东大会通知也标成了财报，只加不减会留下脏数据。
+    for meta in idx.values():
+        form = (meta.category or "").strip().upper()
+        if form in STATEMENT_FORMS | EARNINGS_RELEASE_FORMS:
+            meta.is_financial_report = meta.announcement_id in accepted_ids
+
+    candidates = [meta for meta in idx.values() if meta.announcement_id in accepted_ids]
+    candidates.sort(key=lambda item: (item.date or "", item.announcement_id), reverse=True)
+    selected = candidates[:US_FINANCIAL_DOCUMENT_LIMIT]
+    _log(f"美股财报原文候选: {stock_name}({symbol}) 共 {len(candidates)} 条，处理 {len(selected)} 条")
+
+    written = 0
+    for meta in selected:
+        if meta.md_path and Path(meta.md_path).is_file():
+            if not _is_legacy_us_financial_markdown(Path(meta.md_path)):
+                continue
+            LOGGER.info("重新生成旧截断美股财报: %s %s", symbol, meta.announcement_id)
+        form = (meta.category or "").strip().upper()
+        report_period = filing_report_period(meta.title, meta.date) or ""
+        markdown = build_us_financial_document_markdown(
+            symbol_info=symbol_info,
+            cik=cik,
+            form=form,
+            filing_date=meta.date,
+            report_period=report_period,
+            accession=meta.announcement_id,
+            primary_document=meta.primary_document or "",
+            logger=LOGGER,
+        )
+        if not markdown:
+            _log(f"美股财报原文生成失败：{stock_name} {meta.title}")
+            continue
+        target = Path(meta.md_path) if meta.md_path else md_dir(symbol_info) / markdown_file_name(
+            filing_date=meta.date,
+            stock_code=meta.stock_code or symbol,
+            accession=meta.announcement_id,
+            slug=_slugify(meta.title),
+        )
+        _write_us_financial_markdown(target, markdown)
+        meta.md_path = str(target)
+        meta.is_financial_report = True
+        meta.content_source = "sec_edgar"
+        written += 1
+
+    # 必须每次都落盘：上面的财务报表标记与 md_path 回填都是重算出来的，
+    # 只在 written>0 时保存会让标记停留在 _write_index 的初值（6-K 一律 False）。
+    save_index(idx_path, idx)
+    _log(f"美股财报原文同步完成: {stock_name}({symbol}) 新增 {written} 份")
+    return written
+
+
 def sync_financial_reports_for_stock(
     symbol_info: SymbolInfo,
     *,
@@ -1408,6 +1604,14 @@ def sync_financial_reports_for_stock(
     """同步财报公告到 disclosures 缓存，但不走普通公告摘要流程。"""
     stock_name = symbol_info.stock_name or symbol_info.symbol
     symbol = symbol_info.symbol
+    if getattr(symbol_info, "market", "") == "US":
+        # 美股没有巨潮口径：财报原文改由 SEC EDGAR 渲染成本地 Markdown，
+        # 目录与命名与 A 股 / 港股保持一致，下游研究链路无需区分市场。
+        return _sync_us_financial_documents(
+            symbol_info,
+            data_access=data_access,
+            as_of_date=as_of_date,
+        )
     disclosure_cutoff = resolve_disclosure_cutoff_date(
         as_of_date,
         extend_to_next_day=extend_disclosure_cutoff,

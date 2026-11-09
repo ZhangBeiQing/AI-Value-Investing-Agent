@@ -9,7 +9,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, Iterable, List
 
-from configs.stock_pool import TRACKED_A_STOCKS
+from configs.feature_flags import selection_universe_merge_enabled
+from configs.stock_pool import FIXED_TRACKED_US_SYMBOLS, TRACKED_A_STOCKS
 from core.logging import init_component_logger
 from services.pipeline.steps.build_agent_input import build_snapshot_payload
 from services.pipeline.steps.build_agent_input import write_agent_input_bundle
@@ -211,14 +212,27 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
     short_prefilter = selection_dir / "12_quant_prefilter_short.csv"
     long_prefilter = selection_dir / "12_quant_prefilter_long.csv"
 
+    # 2026-11-05 范围收窄：默认只出 TRACKED_A_STOCKS 的研究包。
+    # 长期候选、量化初筛短期股、manual_position_override.json 都不再自动并入；
+    # 需要恢复旧的全量口径时改 configs/feature_flags.py 的 ENABLE_SELECTION_UNIVERSE_MERGE。
+    merge_selection_universe = selection_universe_merge_enabled()
     tracked_symbols = [entry.symbol for entry in TRACKED_A_STOCKS]
-    manual_position_symbols = _load_manual_position_symbols(base_dir)
-    short_prefilter_symbols = _load_prefilter_symbols(short_prefilter)
-    long_symbols = _load_selection_symbols(long_candidates) if long_candidates.exists() else []
+    # 固定股池内的美股标的与 A 股/港股同批生成研究包，共用 fixed_tracked 账本。
+    for symbol in FIXED_TRACKED_US_SYMBOLS:
+        if symbol not in tracked_symbols:
+            tracked_symbols.append(symbol)
+    if merge_selection_universe:
+        manual_position_symbols = _load_manual_position_symbols(base_dir)
+        short_prefilter_symbols = _load_prefilter_symbols(short_prefilter)
+        long_symbols = _load_selection_symbols(long_candidates) if long_candidates.exists() else []
+    else:
+        manual_position_symbols = []
+        short_prefilter_symbols = []
+        long_symbols = []
 
     long_source_type = "selection_candidates"
     long_source_path = str(long_candidates)
-    if not long_symbols:
+    if merge_selection_universe and not long_symbols:
         long_symbols = _load_prefilter_symbols(long_prefilter)
         if long_symbols:
             long_source_type = "quant_prefilter"
@@ -250,7 +264,12 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
         "signature": _book_signature("fixed_tracked"),
         "prompt_config": str(SKILL_FLOW_CONFIG),
         "source_type": "unified_fixed_pool",
-        "source_path": "configs/stock_pool.py + manual_position_override.json + long_book_candidates + 12_quant_prefilter_short.csv",
+        "source_path": (
+            "configs/stock_pool.py + manual_position_override.json + long_book_candidates + 12_quant_prefilter_short.csv"
+            if merge_selection_universe
+            else "configs/stock_pool.py（仅 TRACKED_A_STOCKS）"
+        ),
+        "selection_universe_merged": merge_selection_universe,
         "capital_budget": 0,
         "symbols": fixed_symbols,
         "symbol_sources": {

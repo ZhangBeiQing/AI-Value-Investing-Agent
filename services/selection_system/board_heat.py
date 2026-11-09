@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Mapping, Sequence
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from configs.feature_flags import board_heat_layer_enabled
 from core.logging import get_logger
 from shared_data_access.board_metrics import (
     build_board_quant_snapshot,
@@ -81,6 +82,14 @@ def build_board_heat_state(
     model: str = DEFAULT_RESEARCH_MODEL,
     force_refresh: bool = False,
 ) -> Dict[str, Path]:
+    if not board_heat_layer_enabled():
+        LOGGER.warning(
+            "板块热度层已在 configs/feature_flags.py 中暂停（ENABLE_BOARD_HEAT_LAYER=False），"
+            "跳过 05_board_heat_state/digest 生成: run_date=%s",
+            run_date,
+        )
+        return {}
+
     paths = SelectionSystemPaths.from_base_dir(base_dir)
     paths.ensure_directories()
     paths.ensure_run_dir(run_date)

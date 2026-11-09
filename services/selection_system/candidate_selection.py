@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Mapping
 
 import pandas as pd
 
+from configs.feature_flags import board_heat_layer_enabled, gradual_news_summary_enabled
 from configs.stock_pool import TRACKED_A_STOCKS, TRACKED_SYMBOLS
 from core.logging import get_logger
 from services.selection_system.announcement_summary import load_or_build_recent_company_announcements
@@ -232,8 +233,16 @@ def collect_candidate_pool_inputs(
         signature="book-long_book",
     )
     universe = load_master_universe(paths)
-    hot_news_state = load_json_file(paths.run_hot_news_state_path(run_date), default={}) or {}
-    board_heat_state = load_json_file(paths.run_board_heat_state_path(run_date), default={}) or {}
+    hot_news_state = (
+        load_json_file(paths.run_hot_news_state_path(run_date), default={}) or {}
+        if gradual_news_summary_enabled()
+        else {}
+    )
+    board_heat_state = (
+        load_json_file(paths.run_board_heat_state_path(run_date), default={}) or {}
+        if board_heat_layer_enabled()
+        else {}
+    )
     announcements_payload = load_or_build_recent_company_announcements(
         run_date,
         base_dir=base_dir,
@@ -755,6 +764,40 @@ def _build_local_agent_markdown(
         exclusion_block = ""
         exclusion_constraint = ""
         json_constraint_num = "8"
+    if board_heat_layer_enabled():
+        board_heat_block = f"""## 板块热点使用方法
+
+板块信息层不要只看一个榜单，应合并理解：
+
+1. `05_board_heat_digest.json`
+   - 适合快速看近期和今日哪些板块最强
+2. `05_board_heat_state.json`
+   - 适合看当日热点板块的研究结论、驱动、持续性、结构和风险
+3. `query_board_snapshot.py`
+   - 适合补查你正在分析的股票所属板块，或主题里提到但不在当日热点研究中的板块
+
+推荐使用顺序：
+
+1. 先从 `{payload_path.name}` 里的 `shared_context_excerpt` 读取完整的 `05_board_heat_digest.json` 和 `05_board_heat_state.json`
+2. 如果你要分析某只股票，优先查询它所属板块
+3. 如果某个主题提到了板块，但 `05_board_heat_state.json` 里没有详细展开，再用 query 补查
+
+query 用法：
+
+```bash
+python scripts/query_board_snapshot.py --date {run_date} --board-name "通信设备"
+python scripts/query_board_snapshot.py --date {run_date} --board-name "能源金属" --board-name "电池"
+```
+
+"""
+    else:
+        board_heat_block = (
+            "## 板块热点层\n\n"
+            "- 已暂停：`05_board_heat_digest.json` / `05_board_heat_state.json` 当前不生成，"
+            "见 `configs/feature_flags.py`；不要因为它缺失而判为数据缺口。\n"
+            "- 确需了解板块，仍可用 `python scripts/query_board_snapshot.py` 现查。\n\n"
+        )
+
     return f"""# {role_text} 本地 Agent 输入
 
 - run_date: {run_date}
@@ -783,31 +826,7 @@ def _build_local_agent_markdown(
 
 {continuity_block}
 {holdings_block}
-{exclusion_block}## 板块热点使用方法
-
-板块信息层不要只看一个榜单，应合并理解：
-
-1. `05_board_heat_digest.json`
-   - 适合快速看近期和今日哪些板块最强
-2. `05_board_heat_state.json`
-   - 适合看当日热点板块的研究结论、驱动、持续性、结构和风险
-3. `query_board_snapshot.py`
-   - 适合补查你正在分析的股票所属板块，或主题里提到但不在当日热点研究中的板块
-
-推荐使用顺序：
-
-1. 先从 `{payload_path.name}` 里的 `shared_context_excerpt` 读取完整的 `05_board_heat_digest.json` 和 `05_board_heat_state.json`
-2. 如果你要分析某只股票，优先查询它所属板块
-3. 如果某个主题提到了板块，但 `05_board_heat_state.json` 里没有详细展开，再用 query 补查
-
-query 用法：
-
-```bash
-python scripts/query_board_snapshot.py --date {run_date} --board-name "通信设备"
-python scripts/query_board_snapshot.py --date {run_date} --board-name "能源金属" --board-name "电池"
-```
-
-## 强制约束
+{exclusion_block}{board_heat_block}## 强制约束
 
 1. 只能从 `master_universe` 中选股
 2. 必须输出恰好 `{required_count}` 只股票

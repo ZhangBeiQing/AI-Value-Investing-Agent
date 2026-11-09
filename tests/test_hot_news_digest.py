@@ -82,6 +82,11 @@ def test_write_hot_news_digest_materializes_file(tmp_path: Path) -> None:
 
 
 def test_shared_context_injects_digest_not_full_state(tmp_path: Path, monkeypatch) -> None:
+    # 渐进式新闻总结已按 configs/feature_flags.py 暂停；此用例验证"恢复后"的注入逻辑，
+    # 因此显式把开关打开。暂停态见 tests/test_news_board_heat_paused.py。
+    from configs import feature_flags
+
+    monkeypatch.setattr(feature_flags, "ENABLE_GRADUAL_NEWS_SUMMARY", True)
     run_dir = tmp_path / "selection_runs" / "2026-09-23"
     run_dir.mkdir(parents=True)
     (run_dir / "06_hot_news_state.json").write_text(

@@ -344,6 +344,13 @@ def _render_current_consensus(
     return frame.to_markdown(index=False), source_path
 
 
+def _is_us_symbol(symbol: str) -> bool:
+    try:
+        return getattr(parse_symbol(symbol), "market", "") == "US"
+    except Exception:  # noqa: BLE001 - 符号异常时按非美股处理
+        return False
+
+
 def _render_pre_context(
     *,
     symbol: str,
@@ -368,6 +375,17 @@ def _render_pre_context(
         f"- 请求的财报前市场日：{requested_pre_date}",
         f"- 公告前证据截止：{evidence_cutoff or announcement_datetime or announcement_date}",
     ]
+    if _is_us_symbol(symbol):
+        lines.extend(
+            [
+                "",
+                "## 美股预期口径",
+                "",
+                "- 美股不适用同花顺 / 经济通一致预期缓存，本文件不提供年度一致预期锚。",
+                "- 预期重建只能依赖公司官方指引、公告前卖方研报、产业经营数据与股价隐含预期。",
+                "- 检索不到公告前卖方预测时输出降级说明并记录查询词；不得用公告后数据回填。",
+            ]
+        )
     if historical_research is None:
         lines.extend(
             [
@@ -497,7 +515,12 @@ def _render_current_context(
         "",
         consensus_markdown,
         "",
-        "> 该表仍是年度预测。应与财报前冻结快照比较预测修正，并计算“全年预测减累计实际”的剩余业绩要求。",
+        (
+            "> 美股无同花顺 / 经济通口径一致预期，预测修正只能引用公告后的公开卖方研报，"
+            "并注明机构与发布日期；不得用公告前缓存冒充公告后修正。"
+            if _is_us_symbol(symbol)
+            else "> 该表仍是年度预测。应与财报前冻结快照比较预测修正，并计算“全年预测减累计实际”的剩余业绩要求。"
+        ),
         "",
         "## 新财报口径估值重算",
         "",

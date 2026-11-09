@@ -17,12 +17,17 @@ if project_root not in sys.path:
 from core.logging import get_logger
 from shared_data_access.paths import price_cache_dir
 from core.runtime_state import get_config_value
-from configs.stock_pool import TRACKED_SYMBOLS
+from configs.stock_pool import TRACKED_SYMBOLS, USD_CNY_FX_RATE, is_usd_symbol
 from commons.stock_utils import get_latest_trading_day, parse_symbol
 
 TRACKED_SYMBOLS_LIST = TRACKED_SYMBOLS
 LOGGER = get_logger("PriceTools")
 MANUAL_POSITION_OVERRIDE_FILENAME = "manual_position_override.json"
+
+
+def _symbol_fx_rate(symbol: str) -> float:
+    """美元计价标的按 USD_CNY_FX_RATE 折算为人民币口径，其它标的为 1.0。"""
+    return float(USD_CNY_FX_RATE) if is_usd_symbol(symbol) else 1.0
 
 
 def _load_position_records(position_file: Path) -> List[Dict]:
@@ -312,7 +317,7 @@ def _resolve_manual_avg_costs(
         avg_cost = _safe_float(avg_costs.get(symbol))
         if avg_cost is None or avg_cost <= 0:
             continue
-        active_costs[symbol] = round(float(avg_cost), 4)
+        active_costs[symbol] = round(float(avg_cost) * _symbol_fx_rate(symbol), 4)
 
     if not active_costs:
         return {}, {}
@@ -327,7 +332,8 @@ def _resolve_manual_avg_costs(
         if price is None:
             profits[symbol] = 0.0
         else:
-            profits[symbol] = round((float(price) - float(cost)) * shares, 4)
+            price_cny = float(price) * _symbol_fx_rate(symbol)
+            profits[symbol] = round((price_cny - float(cost)) * shares, 4)
 
     return active_costs, profits
 
@@ -509,7 +515,7 @@ def compute_total_value(today_date: str, positions: Dict[str, float]) -> float:
         shares = positions.get(sym, 0.0) or 0.0
         price = prices.get(sym)
         if isinstance(price, (int, float)):
-            total_stock_value += float(price) * float(shares)
+            total_stock_value += float(price) * float(shares) * _symbol_fx_rate(sym)
 
     cash_value = float(positions.get("CASH", 0.0) or 0.0)
     return round(total_stock_value + cash_value, 4)
@@ -782,7 +788,7 @@ def compute_position_costs_and_profit(
     for sym in tracked_symbols:
         cost = avg_costs.get(sym)
         if cost is not None and cost > 0:
-            active_costs[sym] = round(cost, 4)
+            active_costs[sym] = round(cost * _symbol_fx_rate(sym), 4)
 
     if not active_costs:
         return {}, {}
@@ -797,7 +803,7 @@ def compute_position_costs_and_profit(
         if price is None:
             profits[sym] = 0.0
         else:
-            profits[sym] = round((price - cost) * shares, 4)
+            profits[sym] = round((float(price) * _symbol_fx_rate(sym) - cost) * shares, 4)
 
     return active_costs, profits
 

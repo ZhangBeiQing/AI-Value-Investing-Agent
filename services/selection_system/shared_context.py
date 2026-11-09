@@ -7,6 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 
+from configs.feature_flags import (
+    board_heat_layer_enabled,
+    gradual_news_summary_enabled,
+)
 from core.logging import get_logger
 
 from .announcement_summary import load_or_build_recent_company_announcements
@@ -45,7 +49,8 @@ def build_shared_selection_context(
         announcement_limit=announcement_limit,
         announcements_payload_override=announcements,
     )
-    write_hot_news_digest(run_date, base_dir=base_dir)
+    if gradual_news_summary_enabled():
+        write_hot_news_digest(run_date, base_dir=base_dir)
     target = paths.run_shared_selection_context_path(run_date)
     target.write_text(content, encoding="utf-8")
     LOGGER.info("shared selection context 已写入: %s", target)
@@ -61,8 +66,18 @@ def render_shared_selection_context(
 ) -> str:
     paths = SelectionSystemPaths.from_base_dir(base_dir)
     universe = load_master_universe(paths)
-    board_heat_digest = load_json_file(paths.run_board_heat_digest_path(run_date), default={}) or {}
-    board_heat_state = load_json_file(paths.run_board_heat_state_path(run_date), default={}) or {}
+    news_enabled = gradual_news_summary_enabled()
+    board_heat_enabled = board_heat_layer_enabled()
+    board_heat_digest = (
+        load_json_file(paths.run_board_heat_digest_path(run_date), default={}) or {}
+        if board_heat_enabled
+        else {}
+    )
+    board_heat_state = (
+        load_json_file(paths.run_board_heat_state_path(run_date), default={}) or {}
+        if board_heat_enabled
+        else {}
+    )
     announcements = announcements_payload_override or load_json_file(paths.run_recent_company_announcements_path(run_date), default={}) or {}
     macro_path, macro_full_text = _load_macro_context(run_date, base_dir=base_dir)
     announcement_lookback_days = max(int(announcements.get("lookback_days") or 3), 1) if isinstance(announcements, Mapping) else 3
@@ -100,34 +115,40 @@ def render_shared_selection_context(
 
     lines.append("## 3. 主题主线摘要")
     lines.append("")
-    digest = load_or_build_hot_news_digest(run_date, base_dir=base_dir)
-    active_themes = digest.get("active_themes") if isinstance(digest, Mapping) else []
-    if isinstance(active_themes, list) and active_themes:
-        lines.append(
-            "- source: 06_hot_news_digest.json（完整主题记忆见 06_hot_news_state.json）"
-        )
-        lines.append(render_hot_news_digest_markdown(digest))
+    if not news_enabled:
+        lines.append("- 已暂停：渐进式新闻总结（configs/feature_flags.py ENABLE_GRADUAL_NEWS_SUMMARY=False）。")
     else:
-        lines.append("- 未找到 active_themes。")
+        digest = load_or_build_hot_news_digest(run_date, base_dir=base_dir)
+        active_themes = digest.get("active_themes") if isinstance(digest, Mapping) else []
+        if isinstance(active_themes, list) and active_themes:
+            lines.append(
+                "- source: 06_hot_news_digest.json（完整主题记忆见 06_hot_news_state.json）"
+            )
+            lines.append(render_hot_news_digest_markdown(digest))
+        else:
+            lines.append("- 未找到 active_themes。")
     lines.append("")
 
     lines.append("## 4. 板块热点全文")
     lines.append("")
-    if isinstance(board_heat_digest, Mapping) and board_heat_digest:
-        lines.append("- source: 05_board_heat_digest.json")
-        lines.append("```json")
-        lines.append(json.dumps(board_heat_digest, ensure_ascii=False, indent=2))
-        lines.append("```")
+    if not board_heat_enabled:
+        lines.append("- 已暂停：板块热度层（configs/feature_flags.py ENABLE_BOARD_HEAT_LAYER=False）。")
     else:
-        lines.append("- 未找到 05_board_heat_digest.json。")
-    lines.append("")
-    if isinstance(board_heat_state, Mapping) and board_heat_state:
-        lines.append("- source: 05_board_heat_state.json")
-        lines.append("```json")
-        lines.append(json.dumps(board_heat_state, ensure_ascii=False, indent=2))
-        lines.append("```")
-    else:
-        lines.append("- 未找到 05_board_heat_state.json。")
+        if isinstance(board_heat_digest, Mapping) and board_heat_digest:
+            lines.append("- source: 05_board_heat_digest.json")
+            lines.append("```json")
+            lines.append(json.dumps(board_heat_digest, ensure_ascii=False, indent=2))
+            lines.append("```")
+        else:
+            lines.append("- 未找到 05_board_heat_digest.json。")
+        lines.append("")
+        if isinstance(board_heat_state, Mapping) and board_heat_state:
+            lines.append("- source: 05_board_heat_state.json")
+            lines.append("```json")
+            lines.append(json.dumps(board_heat_state, ensure_ascii=False, indent=2))
+            lines.append("```")
+        else:
+            lines.append("- 未找到 05_board_heat_state.json。")
     lines.append("")
 
     lines.append(f"## 5. 最近{announcement_lookback_days}天公告摘要")

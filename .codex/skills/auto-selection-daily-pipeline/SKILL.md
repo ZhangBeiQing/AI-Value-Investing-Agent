@@ -3,9 +3,12 @@ name: auto-selection-daily-pipeline
 description: >
   用于运行每日自动选股流水线。当用户说“开始今天自动选股”、“生成今日选股结果”、
   “运行每日选股流水线”或类似请求时使用。该 skill 会先检查并补齐当天缺失的宏观总结、
-  渐进式新闻主题总结、板块热度层、shared context 与 08/09 选股输入文件；当 08/09 输入
-  准备完成后，再由主 agent 启动 2 个 subagent，分别基于 08_short_book_input.* 与
-  09_long_book_input.* 生成当天短期池和长期池选股结果，merge后生成最终的短期和长期深研队列。
+  shared context 与 08/09 选股输入文件；当 08/09 输入准备完成后，再由主 agent 启动
+  2 个 subagent，分别基于 08_short_book_input.* 与 09_long_book_input.* 生成当天短期池
+  和长期池选股结果，merge后生成最终的短期和长期深研队列。
+
+  > 已暂停：渐进式新闻主题总结（`06_hot_news_state.json`）与板块热度层（`05_board_heat_*`）
+  > 由 `configs/feature_flags.py` 关闭，本 skill 不再检查、不再生成，也不算数据缺口。
 ---
 
 # 1. 适用场景
@@ -13,7 +16,7 @@ description: >
 - 用户要“开始今天自动选股”
 - 用户要“生成今天的短期池/长期池选股结果”
 - 用户要“自动补齐选股输入后再做今日选股”
-- 用户要在缺少当天宏观总结、新闻主题状态或 08/09 输入文件时，一次性完成补齐和选股
+- 用户要在缺少当天宏观总结或 08/09 输入文件时，一次性完成补齐和选股
 
 # 2. 日期与目录约定
 
@@ -38,10 +41,6 @@ description: >
 本 skill 直接关心的文件：
 
 - `data/macro_economy/YYYYMMDD.md`
-- `data/selection_runs/YYYY-MM-DD/03_news_prompt_input.json`
-- `data/selection_runs/YYYY-MM-DD/05_board_heat_digest.json`
-- `data/selection_runs/YYYY-MM-DD/05_board_heat_state.json`
-- `data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
 - `data/selection_runs/YYYY-MM-DD/04_recent_company_announcements.json`
 - `data/selection_runs/YYYY-MM-DD/07_shared_selection_context.md`
 - `data/selection_runs/YYYY-MM-DD/08_short_book_input.json`
@@ -83,29 +82,15 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 
 - 宏观总结是新闻主题状态和后续选股的上游校准器，不要跳过
 
-### Step 2. 检查渐进式新闻主题总结
+### Step 2. （已暂停）渐进式新闻主题总结与板块热度层
 
-目标文件：
+`configs/feature_flags.py` 里 `ENABLE_GRADUAL_NEWS_SUMMARY=False`、`ENABLE_BOARD_HEAT_LAYER=False`，
+因此：
 
-- `data/selection_runs/YYYY-MM-DD/06_hot_news_state.json`
-
-依赖的输入（由 `python scripts/refresh_all_for_date.py` 预先生成，本 skill 不再补跑）：
-
-- `data/selection_runs/YYYY-MM-DD/03_news_prompt_input.json`
-- `data/selection_runs/YYYY-MM-DD/05_board_heat_digest.json`
-- `data/selection_runs/YYYY-MM-DD/05_board_heat_state.json`
-
-规则：
-
-- 若当天 `06_hot_news_state.json` 已存在，直接使用
-- 若缺失，调用 `gradual-hot-news-summary` skill 生成
-- 生成逻辑与要求复用：`.codex/skills/gradual-hot-news-summary/SKILL.md`
-- 若上游 03/05 文件缺失，直接提示用户回去跑 `refresh_all_for_date.py`，不要自行补跑中国 API 脚本
-
-说明：
-
-- 生成 `06` 时，板块层不是附属材料，而是主输入的一部分
-- 当天 `05_board_heat_digest.json` 与 `05_board_heat_state.json` 必须和 `06` 配套
+- 不再检查、不再生成 `03_news_prompt_input.json`、`05_board_heat_digest.json`、`05_board_heat_state.json`、`06_hot_news_state.json`
+- **不要**为了"补齐"去调用 `gradual-hot-news-summary`，也不要回头跑新闻/板块脚本
+- 这些文件缺失属于预期状态，不算数据缺口，不要阻塞后续步骤
+- 确需临时了解板块，可用 `python scripts/query_board_snapshot.py` 现查
 
 ### Step 3. 检查 shared context
 
@@ -150,7 +135,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 原因：
 
 - 08/09 是选股阶段的专用输入
-- 宏观、新闻主题、板块、snapshot 的大上下文已经被压缩进 08/09
+- 宏观、snapshot 的大上下文已经被压缩进 08/09（新闻主题与板块层已暂停）
 - 选股 subagent 不需要再回头重读 01-07 的原始文件
 
 ### Step 5. 主 agent 先继承上一交易日结果，再启动短期池 subagent
@@ -306,12 +291,10 @@ python scripts/manage_selection_system.py --base-dir data merge-candidates --dat
 2. 同步推导"上一交易日"的实际日期（用于后续 cp 继承），并向用户确认一次
 3. 检查 `data/macro_economy/YYYYMMDD.md`
 4. 缺失则调用 `daily-macro-summary`
-5. 检查当天 `06_hot_news_state.json`
-6. 若缺失，则按 `gradual-hot-news-summary` 所需补齐 `03/05` 后生成 `06`
-7. 生成或校验 `07_shared_selection_context.md`
-8. 运行 `build-candidate-pools`
-9. 确认 `08/09 *_input.json` 与 `08/09 *_input.md` 已存在
-10. 继承昨日候选池作为今日起点：
+5. 生成或校验 `07_shared_selection_context.md`
+6. 运行 `build-candidate-pools`
+7. 确认 `08/09 *_input.json` 与 `08/09 *_input.md` 已存在
+8. 继承昨日候选池作为今日起点：
     - `cp` 上一交易日 `08_short_book_candidates.json` 到今日路径（若源存在）
     - `cp` 上一交易日 `09_long_book_candidates.json` 到今日路径（若源存在）
     - 若今日对应文件已存在，先与用户确认是覆盖重跑还是跳过继承
@@ -370,7 +353,7 @@ python scripts/manage_selection_system.py --base-dir data merge-candidates --dat
 - 不要让 subagent 保留昨日日期字段；每次修改都必须把 `run_date` 等时间字段整体切换到今日
 - 不要在今日已存在对应候选文件时直接覆盖 cp 而不与用户确认；避免误覆盖用户已经手工编辑过的结果
 - 缺少宏观总结时，不要跳过 `daily-macro-summary`
-- 缺少 `06_hot_news_state.json` 时，不要跳过板块热度层
+- 不要生成或等待 `06_hot_news_state.json` / `05_board_heat_*`（已按 `configs/feature_flags.py` 暂停）
 - 不要手工拼接 08/09；统一走 `build-candidate-pools`
 - 不要把 08/09 的输入准备和最终选股混在一个超长上下文里完成；先补齐输入，再分发给 2 个 subagent
 
@@ -379,10 +362,8 @@ python scripts/manage_selection_system.py --base-dir data merge-candidates --dat
 完成标准：
 
 1. 当天宏观总结存在
-2. 当天 `06_hot_news_state.json` 存在
-3. 当天 `05_board_heat_digest.json` 与 `05_board_heat_state.json` 存在
-4. 当天 `08_short_book_input.json/md` 存在
-5. 当天 `09_long_book_input.json/md` 存在
-6. `08_short_book_candidates.json` 与 `09_long_book_candidates.json` 成功生成
-7. `10_candidate_merge.json` 与 `11_deep_research_queue.json` 成功生成
-8. 主 agent 向用户明确汇报哪些输入是复用的、哪些是本轮自动补齐的
+2. 当天 `08_short_book_input.json/md` 存在
+3. 当天 `09_long_book_input.json/md` 存在
+4. `08_short_book_candidates.json` 与 `09_long_book_candidates.json` 成功生成
+5. `10_candidate_merge.json` 与 `11_deep_research_queue.json` 成功生成
+6. 主 agent 向用户明确汇报哪些输入是复用的、哪些是本轮自动补齐的

@@ -315,7 +315,74 @@ def calculate_hk_indicator_ttm(
     return pd.DataFrame(ttm_rows)
 
 
+def derive_quarterly_series_by_report_type(
+    sheet: pd.DataFrame,
+    column: str,
+) -> Dict[str, float]:
+    """按 ``REPORT_TYPE`` 的年内累计链推导单季序列（适配任意财年）。
+
+    美股缓存的口径：``单季报`` 即单季、``累计季报`` 与 ``年报`` 是年内累计。
+    用累加器逐期推进，而不是「减上一行」——微软的 Q3 是单季报、Q4 是年报，
+    减上一行只会减掉 Q3 单季而不是九个月累计。
+    """
+
+    series: Dict[str, float] = {}
+    year_to_date = 0.0
+    for _, row in sheet.iterrows():
+        raw_date = row.get("REPORT_DATE")
+        if isinstance(raw_date, str):
+            date_str = raw_date[:10]
+        elif hasattr(raw_date, "strftime"):
+            date_str = raw_date.strftime("%Y-%m-%d")
+        else:
+            date_str = str(raw_date)[:10]
+        report_type = str(row.get("REPORT_TYPE") or "").strip()
+        try:
+            value = float(row[column])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if np.isnan(value):
+            continue
+
+        if report_type == "单季报":
+            quarter = value
+            year_to_date += quarter
+        elif report_type == "累计季报":
+            quarter = value - year_to_date
+            year_to_date = value
+        elif report_type == "年报":
+            quarter = value - year_to_date
+            year_to_date = 0.0
+        else:
+            # 口径缺失时保守处理：当作累计
+            quarter = value - year_to_date
+            year_to_date = value
+        series[date_str] = quarter
+    return series
+
+
+def _derive_quarterly_profit_by_report_type(
+    sheet: pd.DataFrame,
+    column: str,
+    date_str: str,
+    cumulative_profit: float,
+) -> Optional[float]:
+    """取 ``derive_quarterly_series_by_report_type`` 里对应报告期的单季值。"""
+
+    series = derive_quarterly_series_by_report_type(sheet, column)
+    if not series:
+        return None
+    return series.get(date_str, cumulative_profit)
+
+
 def _derive_quarterly_profit(sheet: pd.DataFrame, column: str, date_str: str, cumulative_profit: float) -> float:
+    if "REPORT_TYPE" in sheet.columns:
+        derived = _derive_quarterly_profit_by_report_type(
+            sheet, column, date_str, cumulative_profit
+        )
+        if derived is not None:
+            return derived
+
     if date_str.endswith("12-31"):
         year = date_str[:4]
         q3_target = year + "-09-30"

@@ -76,6 +76,8 @@ python scripts/prepare_universe_scoring_inputs.py --date {date} --symbols 300502
 
 估值直接完整读取研究包 `### 1.2 Valuation Report (Markdown)`，按规则解释各张表；不另加Python计算或抓取层。必须比较当前PE/PB与历史同口径序列或百分位，以及历史价格高于/低于现价的累计占比。单档概率不作判断依据。已有数据必须用于具体判断，不能因为缺DCF或精确日频分位就退回“估值待核实”；真实缺口指出具体字段。旧报告与新披露冲突时先更新事实，再打分。
 
+联网搜索入口统一遵循 `configs/research/web_research_policy.md`：Codex + GPT 优先自带搜索，其他组合优先百炼 MCP；首选不可用时可使用会话已提供的另一入口。
+
 实际 prompt 由 `build_subagent_prompt()` 生成，包含分析日、股票身份、规则、全量研究包、宏观上下文、schema 和唯一输出路径。它要求完整阅读、按分析日截止搜索、不输出综合分与交易动作；主 Agent 直接原样派发，不另写一套评分方法。
 
 每个 subagent 输出到（universe 池多一层 `universe/` 子目录）：

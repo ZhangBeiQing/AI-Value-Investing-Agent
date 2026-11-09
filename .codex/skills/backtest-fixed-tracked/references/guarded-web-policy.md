@@ -2,7 +2,7 @@
 
 当前日期是历史 `decision_date`，不是现实日期。
 
-1. 使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP），不得改用其他搜索通道。
+1. 按 `configs/research/web_research_policy.md` 选择搜索入口：Codex + GPT 优先使用自带联网搜索，其他环境或模型组合优先使用阿里云百炼搜索 MCP；首选不可用时可使用会话已提供的另一入口，具体遵循 `configs/research/web_research_policy.md`。
 2. 搜索词必须包含“截至 decision_date”或明确的起止区间。
 3. 关键来源公开日期必须不晚于 decision_date。
 4. 晚于 decision_date 发布的回顾、复盘、全年总结、事后修正均禁止。

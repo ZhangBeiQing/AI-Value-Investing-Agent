@@ -307,7 +307,7 @@ def stock_price_dynamics_summarizer(
         similar_stocks_symbolInfo: List[SymbolInfo] = []
         similar_names: List[str] = []
         similar_symbols: List[str] = []
-        if not etf_mode:
+        if not etf_mode and top_n_similar > 0:
             similar_stocks_info = get_similar_stocks(symbolInfo, base_dir)[:top_n_similar]
             structured_similars: List[Tuple[SymbolInfo, str]] = []
             for similar_stock_info in similar_stocks_info:
@@ -361,7 +361,7 @@ def stock_price_dynamics_summarizer(
         
         # 获取指数数据（如果目标不是指数）
         index_df = pd.DataFrame()
-        if symbolInfo.market != "CN_INDEX":
+        if symbolInfo.market != "CN_INDEX" and symbolInfo.symbol != index_symbolInfo.symbol:
             logger.info(f"正在获取指数{index_symbolInfo.stock_name} {index_symbolInfo.symbol}数据...")
             index_dataset = data_access.prepare_dataset(
                 symbolInfo=index_symbolInfo,

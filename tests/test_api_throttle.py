@@ -10,6 +10,7 @@ from commons import stock_utils
 
 
 def _reset_throttle(monkeypatch) -> None:
+    monkeypatch.delenv(stock_utils.API_MIN_INTERVAL_ENV, raising=False)
     monkeypatch.setattr(stock_utils, "_last_api_call_at", 0.0)
 
 
@@ -39,7 +40,8 @@ def test_concurrent_calls_are_globally_spaced(monkeypatch) -> None:
     assert times[-1] - times[0] >= (len(times) - 1) * 0.04
 
 
-def test_min_interval_env_override() -> None:
+def test_min_interval_uses_default_when_environment_unset(monkeypatch) -> None:
+    monkeypatch.delenv(stock_utils.API_MIN_INTERVAL_ENV, raising=False)
     assert (
         stock_utils._configured_api_min_interval(0.25)
         == stock_utils.DEFAULT_API_CALL_DELAY

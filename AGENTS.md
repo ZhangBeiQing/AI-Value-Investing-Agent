@@ -63,6 +63,10 @@ python scripts/prepare_single_stock.py --symbol 600601.SH --only data       # �
 python scripts/prepare_single_stock.py --symbol 600601.SH --only financial  # 只建财报研究 workdir
 python scripts/prepare_single_stock.py --symbol 600601.SH --force-refresh   # 强刷共享缓存
 
+# 美股研究包：默认取「最近一个已收盘的美东交易日」+ US_TRACKED_STOCKS，产物在 us_tracked/，不碰 fixed_tracked
+python scripts/run_us_research.py
+python scripts/run_us_research.py --symbol TSM.US --date 2026-11-05
+
 # 仅在需要手动准备或调试单步链路时使用
 python scripts/manage_daily_data.py
 python scripts/run_daily_pipeline.py --date YYYY-MM-DD
@@ -93,7 +97,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 - 用户说"开始今天股票交易"时，优先按 `.codex/skills/auto-trading-fixed-tracked/SKILL.md` 执行，默认假设 `data/skill_runs/YYYY-MM-DD/` 的 `01-04` 已由用户手动准备完成
 - 改主链路后至少给出对应验证证据：日志、输出文件或失败现场
 - 新增或修改核心组件时使用统一日志入口，不要直接散落 `print`
-- 需要联网搜索时一律使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP）；不可用时失败关闭，不要改用爬虫或第三方检索 API 替代
+- 需要联网搜索时，Codex + GPT 优先使用自带联网搜索，其他环境或模型组合优先使用阿里云百炼搜索 MCP；首选不可用时可使用会话已提供的另一入口，具体遵循 `configs/research/web_research_policy.md`；所有可用入口均不可用时失败关闭，不自行拼接爬虫或第三方检索 API
 - 出 bug 时先拿失败现场再改代码，复杂问题先缩成最小复现，不要一上来全链路硬跑
 
 ### 修改后最低验证标准
@@ -129,6 +133,7 @@ python scripts/run_post_trade.py --date YYYY-MM-DD
 | 任务 | 首选参考 |
 | --- | --- |
 | 开始今天股票交易 | `data/skill_runs/YYYY-MM-DD/`, `.codex/skills/auto-trading-fixed-tracked/SKILL.md` |
+| 生成美股研究包 | `scripts/run_us_research.py`, `docs/us_stock_support_design.md` |
 | 交易前准备当日全部数据 | `.codex/skills/daily-data-preparation/SKILL.md` |
 | 早上一键刷数据 | `scripts/refresh_all_for_date.py`, `services/data_refresh/refresh_orchestrator.py` |
 | 刷新每日数据（单步） | `scripts/manage_daily_data.py`, `services/data_refresh/`, `.codex/skills/extend-shared-data-access/SKILL.md` |

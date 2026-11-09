@@ -102,12 +102,12 @@ verify_artifacts() {
     local missing=()
     local f
 
-    # Step 1 门禁 + Step 3 两路研究产出 + Step 5 的 01-03
+    # Step 1 门禁 + 宏观产出 + Step 5 的 01-03
+    # 渐进式新闻总结、板块热度层、量化初筛层均已暂停（configs/feature_flags.py），
+    # 因此不再验收 06_hot_news_state.json 与 12_quant_prefilter_short.csv
     for f in \
         "data/global_cache/macro_objective_panel/daily_snapshots/${d}.json" \
-        "data/selection_runs/${d}/12_quant_prefilter_short.csv" \
         "data/macro_economy/${compact}.md" \
-        "data/selection_runs/${d}/06_hot_news_state.json" \
         "data/skill_runs/${d}/run_manifest.json" \
         "data/skill_runs/${d}/fixed_tracked/01_global_context.md" \
         "data/skill_runs/${d}/fixed_tracked/02_basic_snapshot_payload.json" \

@@ -30,7 +30,9 @@ def _write_financial_cache(base_dir: Path, symbol_info: SymbolInfo) -> None:
     for filename in cache_registry.get_cache_spec(
         cache_registry.CacheKind.FINANCIALS
     ).required_files:
-        pd.DataFrame([{"NOTICE_DATE": "2025-12-31", "value": 1}]).to_csv(
+        pd.DataFrame([{
+            "NOTICE_DATE": "2026-04-28", "REPORT_DATE": "2025-12-31", "value": 1,
+        }]).to_csv(
             cache_dir / filename,
             index=False,
         )
@@ -44,6 +46,16 @@ def test_missing_share_cache_is_initialized_independently(
     symbol_info = _symbol_info()
     _write_financial_cache(tmp_path, symbol_info)
     share_updates: list[bool] = []
+    monkeypatch.setattr(
+        cache_registry, "_expected_latest_report_period", lambda today=None: "20251231",
+    )
+
+    def unexpected_financial_refresh(*args, **kwargs):
+        raise AssertionError("完整且报告期足够新的财报缓存不应触发财报抓取")
+
+    monkeypatch.setattr(
+        cache_registry, "update_financial_data_cached", unexpected_financial_refresh,
+    )
 
     def fake_update_share_info_cached(
         symbol_info: SymbolInfo,

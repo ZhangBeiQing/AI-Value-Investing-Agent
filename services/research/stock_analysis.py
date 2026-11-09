@@ -26,6 +26,7 @@ from commons import SymbolInfo, get_latest_trading_day, is_etf_symbol, parse_sym
 logger = init_tool_logger("stock_analysis")
 
 DEFAULT_INDEX_SYMBOL = os.getenv("PRICE_DYNAMICS_INDEX", "000001.IDX")
+DEFAULT_US_INDEX_SYMBOL = os.getenv("PRICE_DYNAMICS_INDEX_US", "SPY.US")
 ANNOUNCEMENT_KEYWORDS: Tuple[str, ...] = ("质押", "回购")
 ANNOUNCEMENT_TIME_FIELDS: Tuple[str, ...] = (
     "datetime",
@@ -42,6 +43,14 @@ def _resolve_stock_name(symbol_info: SymbolInfo) -> str:
 
 def _is_index_symbol(symbol_info: SymbolInfo) -> bool:
     return symbol_info.market == "CN_INDEX" or symbol_info.symbol.endswith(".IDX")
+
+
+def _resolve_benchmark_symbol(symbol_info: SymbolInfo) -> str:
+    """美股用 SPY 作基准；A 股/港股沿用上证指数。"""
+
+    if symbol_info.market == "US":
+        return DEFAULT_US_INDEX_SYMBOL.strip()
+    return DEFAULT_INDEX_SYMBOL.strip()
 
 
 def _parse_datetime(value: str) -> pd.Timestamp:
@@ -231,7 +240,7 @@ def summarize_stock_price_dynamics(
     symbol_info = parse_symbol(symbol.strip())
     is_index = _is_index_symbol(symbol_info)
     is_etf = is_etf_symbol(symbol_info)
-    similar_enabled = not (is_index or is_etf)
+    similar_enabled = not (is_index or is_etf) and symbol_info.market != "US"
     stock_name = _resolve_stock_name(symbol_info)
 
     effective_timestamp = _resolve_effective_trade_datetime(symbol_info, today_time)
@@ -282,7 +291,7 @@ def summarize_stock_price_dynamics(
     else:
         long_term = (reference_date - timedelta(days=365 * 3)).strftime("%Y-%m-%d")
 
-    index_symbol_info = parse_symbol(DEFAULT_INDEX_SYMBOL.strip())
+    index_symbol_info = parse_symbol(_resolve_benchmark_symbol(symbol_info))
     data_root = resolve_base_dir(None)
     results = stock_price_dynamics_summarizer(
         symbolsInfo=[symbol_info],

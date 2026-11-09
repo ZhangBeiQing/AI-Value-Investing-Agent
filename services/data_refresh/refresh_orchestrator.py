@@ -2,10 +2,11 @@
 
 面向「当天晚上 9 点，分析当天收盘，为下一交易日出预案」的日常节奏：
 - `--date` 语义统一为「要分析的交易日」（默认 `today`，不做减一）。
-- 轻量档（默认）：强刷宏观 panel、行情快照、板块快照、新闻（含渐进式热点总结的输入）等易变数据。
+- 轻量档（默认）：强刷宏观 panel、行情快照等易变数据。
 - 重量档（可选）：在轻量档基础上，额外强刷财报结构化数据等重缓存。
 - 公告 PDF、历史日线、财报 PDF 等重缓存按各自增量逻辑走，不在此处强刷。
-- 本编排层只跑 Python 脚本链路，宏观/新闻/选股/财报/交易等 skill 由最终清单提示人工触发。
+- 本编排层只跑 Python 脚本链路，宏观/选股/财报/交易等 skill 由最终清单提示人工触发。
+- 新闻采集与板块热度层受 `configs/feature_flags.py` 控制，当前默认**暂停**（见该文件说明）。
 """
 
 from __future__ import annotations
@@ -19,6 +20,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Sequence
 
+from configs.feature_flags import (
+    board_heat_layer_enabled,
+    factor_prefilter_layer_enabled,
+    gradual_news_summary_enabled,
+)
 from core.logging import get_logger
 from shared_data_access.market_calendar import inspect_market_session
 
@@ -38,7 +44,7 @@ def _load_daily_refresh_symbols(
     仅当 `include_selection_universe=True` 时，才恢复旧口径：
     `TRACKED_A_STOCKS ∪ master_universe`。
     """
-    from configs.stock_pool import TRACKED_A_STOCKS
+    from configs.stock_pool import FIXED_TRACKED_US_SYMBOLS, TRACKED_A_STOCKS
 
     ordered: List[str] = []
     seen: set = set()
@@ -46,6 +52,12 @@ def _load_daily_refresh_symbols(
         if entry.symbol and entry.symbol not in seen:
             ordered.append(entry.symbol)
             seen.add(entry.symbol)
+
+    # 固定股池内的美股标的与 A 股/港股一起刷新，共用同一条数据缓存链路。
+    for symbol in FIXED_TRACKED_US_SYMBOLS:
+        if symbol and symbol not in seen:
+            ordered.append(symbol)
+            seen.add(symbol)
 
     if not include_selection_universe:
         return ordered
@@ -209,12 +221,14 @@ def run_refresh_pipeline(
 
     **策略归属**：本编排层是"每日 fresh 数据"策略的唯一决策源。它决定：
     - 默认每日应刷新的股票范围 = TRACKED_A_STOCKS
-    - `generate_prefilter=True` 时，扩展至 master_universe 并生成量化初筛结果，
-      但跳过新闻/公告/信号/候选池等步骤
+    - `generate_prefilter=True` 且 `ENABLE_FACTOR_PREFILTER_LAYER=True` 时，
+      扩展至 master_universe 并生成量化初筛结果；当前该开关默认关闭，
+      因此刷新范围就是 `TRACKED_A_STOCKS`
     - `include_selection_universe=True` 时，扩展至 master_universe 并启用完整选股管线
     - 价格 / 财报结构化 / basic_info 由 manage_daily_data 负责
-    - 新闻采集 / 板块热度 默认执行，为渐进式热点总结提供输入；
-      `skip_news_boards=True` 时可跳过
+    - 新闻采集 / 板块热度 受 `configs/feature_flags.py` 控制；
+      当前 `ENABLE_GRADUAL_NEWS_SUMMARY=False`、`ENABLE_BOARD_HEAT_LAYER=False`，
+      因此默认不执行这两步；`skip_news_boards=True` 可显式跳过
     - 公告由 selection_system.build-announcements 单独负责（增量 + audit），
       因此 manage_daily_data 以 --skip-disclosures 跳过重复扫描
     - 选股系统（信号/公告/共享上下文/候选池）仅在 `include_selection_universe=True` 时启用
@@ -222,7 +236,9 @@ def run_refresh_pipeline(
     顺序依赖解释：
     1. manage_daily_data：宏观客观面板 + 行情快照 + basic_stock_info
     2. selection.run-news：全市场新闻采集/去重/增强 → 03_news_prompt_input.json
+       （仅在 `ENABLE_GRADUAL_NEWS_SUMMARY=True` 时执行）
     3. selection.build-board-heat-state：板块热度分析 → 05_board_heat_state/digest.json
+       （仅在 `ENABLE_BOARD_HEAT_LAYER=True` 时执行）
     4. generate_prefilter 或 include_selection_universe 根据参数选择后续步骤。
     """
     result = OrchestratorResult(run_date=run_date, fresh_heavy=fresh_heavy)
@@ -268,7 +284,9 @@ def run_refresh_pipeline(
             )
         )
 
-    expand_universe = include_selection_universe or generate_prefilter
+    # 仅显式启用完整选股管线时才扩展到 master_universe。
+    # 2026-11-05 起 generate_prefilter 不再隐式扩池，避免每日刷 234 只股票。
+    expand_universe = include_selection_universe
 
     refresh_symbols = _load_daily_refresh_symbols(
         base_dir=base_dir,
@@ -299,19 +317,38 @@ def run_refresh_pipeline(
         ),
     ]
 
-    if not skip_news_boards:
-        steps.extend([
+    news_enabled = gradual_news_summary_enabled()
+    board_heat_enabled = board_heat_layer_enabled()
+    if skip_news_boards or not (news_enabled or board_heat_enabled):
+        LOGGER.info(
+            "跳过新闻采集 / 板块热度层: skip_news_boards=%s news=%s board_heat=%s",
+            skip_news_boards,
+            news_enabled,
+            board_heat_enabled,
+        )
+    if news_enabled and not skip_news_boards:
+        steps.append(
             (
                 "selection.run-news",
                 _selection_cmd("run-news", run_date, base_dir=base_dir),
-            ),
+            )
+        )
+    if board_heat_enabled and not skip_news_boards:
+        steps.append(
             (
                 "selection.build-board-heat-state",
                 _selection_cmd("build-board-heat-state", run_date, "--force-refresh", base_dir=base_dir),
-            ),
-        ])
+            )
+        )
 
-    if generate_prefilter:
+    prefilter_enabled = factor_prefilter_layer_enabled() and generate_prefilter
+    if not prefilter_enabled:
+        LOGGER.info(
+            "跳过因子库/因子评分/量化初筛: feature_flag=%s generate_prefilter=%s",
+            factor_prefilter_layer_enabled(),
+            generate_prefilter,
+        )
+    if prefilter_enabled:
         steps.extend([
             (
                 "selection.build-factor-store",
@@ -364,6 +401,23 @@ def run_refresh_pipeline(
     return result
 
 
+def _skill_checklist_lines(run_date: str) -> list[str]:
+    """后续需要人工触发的 skill 清单（受 feature_flags 影响）。
+
+    改用无编号的 `- ` 列表：新闻总结一路是条件项，编号会在两种口径下错位。
+    """
+
+    lines = [
+        "【宏观总结 skill（需 LLM / 联网）】",
+        f"  - /daily-macro-summary              → data/macro_economy/{run_date.replace('-', '')}.md",
+    ]
+    if gradual_news_summary_enabled():
+        lines.append(
+            f"  - /gradual-hot-news-summary         → data/selection_runs/{run_date}/06_hot_news_state.json"
+        )
+    return lines
+
+
 def format_followup_checklist(
     run_date: str,
     *,
@@ -380,6 +434,11 @@ def format_followup_checklist(
         if allow_non_trading_date
         else ""
     )
+    paused_note = (
+        "已暂停：渐进式新闻总结与 05_board_heat_* 板块热度层（configs/feature_flags.py）。"
+        if not (gradual_news_summary_enabled() or board_heat_layer_enabled())
+        else ""
+    )
 
     if include_selection_universe:
         lines = [
@@ -388,29 +447,26 @@ def format_followup_checklist(
             f"数据刷新完成（{date_label} {run_date}）。接下来请依次人工触发：",
             "=" * 72,
             non_trading_notice,
+            paused_note,
             "",
-            "【分析 skill（需 LLM / 联网）】",
-            "  1. /daily-macro-summary              → data/macro_economy/"
-            + run_date.replace("-", "")
-            + ".md",
-            "  2. /gradual-hot-news-summary         → 06_hot_news_state.json",
-            "  3. /auto-selection-daily-pipeline    → 08/09/10/11 候选池 & 深研队列",
+            *_skill_checklist_lines(run_date),
+            "  - /auto-selection-daily-pipeline    → 08/09/10/11 候选池 & 深研队列",
             "",
             "【财报 skill（依赖选股深研队列）】",
-            f"  4. python scripts/prepare_financial_report_skill.py --date {run_date} --mandate all --sync-first --json --include-queue",
-            "  5. /financial-report-summary         → 各股 financial_reports/*.md",
+            f"  - python scripts/prepare_financial_report_skill.py --date {run_date} --mandate all --sync-first --json --include-queue",
+            "  - /financial-report-summary         → 各股 financial_reports/*.md",
             "",
             "【综合 fixed_tracked 01-04 产物】",
-            f"  6. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6{non_trading_arg}",
+            f"  - python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6{non_trading_arg}",
             "",
             "【固定股池交易 skill（生成 05_decision.json 后人工确认）】",
-            "  7. /auto-trading-fixed-tracked",
+            "  - /auto-trading-fixed-tracked",
             "",
             "【人工确认后执行后处理】",
-            f"  8. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
+            f"  - python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
             "=" * 72,
         ]
-        return "\n".join(lines)
+        return "\n".join(line for line in lines if line is not None)
 
     lines = [
         "",
@@ -418,29 +474,25 @@ def format_followup_checklist(
         f"数据刷新 & 量化初筛完成（{date_label} {run_date}）。接下来请依次人工触发：",
         "=" * 72,
         non_trading_notice,
+        paused_note,
         "",
-        "【宏观与新闻总结 skill（需 LLM / 联网）】",
-        "  1. /daily-macro-summary              → data/macro_economy/"
-        + run_date.replace("-", "")
-        + ".md",
-        "  2. /gradual-hot-news-summary         → data/selection_runs/"
-        + run_date
-        + "/06_hot_news_state.json",
+        *_skill_checklist_lines(run_date),
         "",
         "【财报准备与总结（fixed_tracked + 量化初筛短期股）】",
-        f"  3. python scripts/prepare_financial_report_skill.py --date {run_date} --sync-first --json --include-quant-prefilter",
-        "  4. /financial-report-summary         → 各股 financial_reports/*.md",
+        f"  - python scripts/prepare_financial_report_skill.py --date {run_date} --sync-first --json",
+        "  - /financial-report-summary         → 各股 financial_reports/*.md",
         "",
         "【综合 fixed_tracked 01-04 产物】",
-        f"  5. python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6{non_trading_arg}",
+        f"  - python scripts/run_daily_pipeline.py --date {run_date} --max-workers 6{non_trading_arg}",
         "",
         "【固定股池交易 skill（生成 05_decision.json 后人工确认）】",
-        "  6. /auto-trading-fixed-tracked",
+        "  - /auto-trading-fixed-tracked",
         "",
         "【人工确认后执行后处理】",
-        f"  7. python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
+        f"  - python scripts/run_post_trade.py --date {run_date} --book-type fixed_tracked --signature book-fixed_tracked",
         "",
-        "说明：12_quant_prefilter_short.csv 的短期量化初筛股票和长期候选均并入 fixed_tracked，不再单独生成 short_book/long_book。",
+        "说明：每日只生成 TRACKED_A_STOCKS 固定池的研究包；量化初筛与长期候选不再并入"
+        "（configs/feature_flags.py 的 ENABLE_SELECTION_UNIVERSE_MERGE=False）。",
         "=" * 72,
     ]
     return "\n".join(lines)

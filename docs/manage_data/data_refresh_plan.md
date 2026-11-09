@@ -24,7 +24,7 @@ python scripts/refresh_all_for_date.py --date 2026-06-11 --fresh-heavy
 # 跳过量化初筛（不生成 factor_store / 12_quant_prefilter*）
 python scripts/refresh_all_for_date.py --date 2026-06-11 --no-generate-prefilter
 
-# 跳过新闻采集和板块热度
+# 跳过新闻采集和板块热度（当前这两步在 configs/feature_flags.py 里已默认暂停，此参数仅作显式兜底）
 python scripts/refresh_all_for_date.py --date 2026-06-11 --skip-news-boards
 
 # 启用旧口径完整选股管线（生成 07/08/09/10/11，仅在显式启用 AI 选股 skill 时使用）
@@ -42,12 +42,12 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 | 序号 | 步骤 | 入口 | 用途 |
 | --- | --- | --- | --- |
-| 1 | `manage_daily_data` | `scripts/manage_daily_data.py` | 刷新宏观面板、价格、财报、`basic_stock_info` 等基础缓存（`TRACKED_A_STOCKS ∪ master_universe`） |
-| 2 | `selection.run-news` | `scripts/manage_selection_system.py run-news` | 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json` |
-| 3 | `selection.build-board-heat-state` | `scripts/manage_selection_system.py build-board-heat-state` | 板块热度分析 → `05_board_heat_state.json` / `05_board_heat_digest.json` |
-| 4 | `selection.build-factor-store` | `scripts/manage_selection_system.py build-factor-store` | 因子宽表 → `data/factor_store/`、`12_factor_snapshot.*` |
-| 5 | `selection.build-factor-scores` | `scripts/manage_selection_system.py build-factor-scores` | 因子评分 → `13_factor_scores.*` |
-| 6 | `selection.build-quant-prefilter` | `scripts/manage_selection_system.py build-quant-prefilter` | 量化初筛 → `12_quant_prefilter*.csv/json` |
+| 1 | `manage_daily_data` | `scripts/manage_daily_data.py` | 刷新宏观面板、价格、财报、`basic_stock_info` 等基础缓存（默认只有 `TRACKED_A_STOCKS`） |
+| 2 | `selection.run-news`（**已暂停**） | `scripts/manage_selection_system.py run-news` | 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json` |
+| 3 | `selection.build-board-heat-state`（**已暂停**） | `scripts/manage_selection_system.py build-board-heat-state` | 板块热度分析 → `05_board_heat_state.json` / `05_board_heat_digest.json` |
+| 4 | `selection.build-factor-store`（**已暂停**） | `scripts/manage_selection_system.py build-factor-store` | 因子宽表 → `data/factor_store/`、`12_factor_snapshot.*` |
+| 5 | `selection.build-factor-scores`（**已暂停**） | `scripts/manage_selection_system.py build-factor-scores` | 因子评分 → `13_factor_scores.*` |
+| 6 | `selection.build-quant-prefilter`（**已暂停**） | `scripts/manage_selection_system.py build-quant-prefilter` | 量化初筛 → `12_quant_prefilter*.csv/json` |
 | 7 | `clear_research_artifact_cache` | 内部步骤 | 清理 `data/research_artifact_cache/{run_date}/`，让 `run_daily_pipeline` 必然基于最新数据重建 04 产物 |
 
 当 `--include-selection-universe` 时（旧口径），步骤 4-6 会替换成：
@@ -57,7 +57,9 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 - `selection.build-shared-context` → 共享上下文
 - `selection.build-candidate-pools` → AI 选股候选池 08/09 文件
 
-跑完后脚本会打印「后续 skill 清单」（宏观总结、新闻总结、财报准备与总结、综合 fixed_tracked 01-04、固定股池交易与后处理），人工按顺序触发。
+跑完后脚本会打印「后续 skill 清单」（宏观总结、财报准备与总结、综合 fixed_tracked 01-04、固定股池交易与后处理），人工按顺序触发。
+
+> 步骤 2、3 由 `configs/feature_flags.py` 控制：`ENABLE_GRADUAL_NEWS_SUMMARY=False`、`ENABLE_BOARD_HEAT_LAYER=False` 时两步都不执行（2026-11-05 起默认如此，原因是 token 成本）。
 
 ## 4. 每日刷新策略细则
 
@@ -80,17 +82,23 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 因此 orchestrator 调用 `manage_daily_data` 时传入 `--skip-disclosures`，避免两层重复扫描。
 
-### 4.4 新闻 / 板块热度
+### 4.4 新闻 / 板块热度（已暂停）
 
-由 `selection.run-news` 和 `selection.build-board-heat-state` 负责，为渐进式热点新闻总结提供上游输入。
+原由 `selection.run-news` 和 `selection.build-board-heat-state` 负责，为渐进式热点新闻总结提供上游输入。
 
-`--skip-news-boards` 可跳过这两个步骤（用于只想刷数据、不跑新闻链路的场景）。
+2026-11-05 起因 token 成本过高，`configs/feature_flags.py` 的两个开关默认关闭，两步都不再执行；
+`--skip-news-boards` 仍可显式跳过（仅作兜底）。恢复时把开关改回 `True` 即可，无需改代码。
 
-### 4.5 量化初筛
+### 4.5 量化初筛（已暂停）
 
-由 `selection.build-factor-store` → `build-factor-scores` → `build-quant-prefilter` 三步负责，输出 `12_quant_prefilter_short.csv` 与 `12_quant_prefilter_long.csv`。其中短期量化初筛股票直接并入 fixed_tracked；长期候选也按现有规则并入 fixed_tracked，不再自动生成独立交易账本。
+原由 `selection.build-factor-store` → `build-factor-scores` → `build-quant-prefilter` 三步负责，输出 `12_quant_prefilter_short.csv` 与 `12_quant_prefilter_long.csv`，并把短期初筛股票与长期候选并入 fixed_tracked。
 
-`--no-generate-prefilter` 可跳过。
+2026-11-05 起用户要求每日只准备 `TRACKED_A_STOCKS` 固定池，因此：
+
+- `configs/feature_flags.py` 的 `ENABLE_FACTOR_PREFILTER_LAYER=False` → 这三步不再执行，刷新范围也不再扩到 `master_universe`
+- `ENABLE_SELECTION_UNIVERSE_MERGE=False` → `run_daily_pipeline` 不再把长期候选/量化初筛并入 01-04 研究包
+
+回测、选股实验需要时，手动跑 `manage_selection_system.py build-factor-store/build-factor-scores/build-quant-prefilter`，或把开关改回 `True`。
 
 ### 4.6 研究产物缓存清理
 

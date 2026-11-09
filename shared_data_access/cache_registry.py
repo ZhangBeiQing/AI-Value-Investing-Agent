@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterable, Optional
@@ -287,6 +287,57 @@ def _normalize_hk_financial_abstract(df: pd.DataFrame) -> pd.DataFrame:
     return work.reset_index(drop=True)
 META_FILENAME = ".cache_registry_meta.json"
 UTC = datetime.now  # simple hook for testing
+
+# 2026-11-02 真实事故：TTL 只回答"缓存够不够新"，回答不了"缓存盖没盖住最近交易日"。
+# 10-30 收盘后写入的 price.csv，在 11-02 盘中仍处于 TTL 内，被判新鲜 → 不刷新，
+# 20 只里 16 只的收盘价就停在 10-30。因此价格缓存额外加一道"收盘屏障"。
+MARKET_CLOSE_TIME = time(15, 0)
+
+
+def _latest_trading_day_close_barrier(now: datetime | None = None) -> Optional[datetime]:
+    """返回"最近一个已收盘交易日"的 15:00（本地时间）。
+
+    语义：缓存若不是在该时点之后写入的，就不能算"已有当日收盘"。
+
+    - 今天是交易日且已过 15:00 → 屏障为今天 15:00
+    - 今天是交易日但还没收盘 → 屏障为上一交易日 15:00
+    - 今天休市 → 屏障为上一交易日 15:00
+    - 取不到交易日历 → 返回 None，调用方保持原有 TTL 行为（不误判为需要刷新）
+
+    延迟导入 ``market_calendar``，避免与 ``historical_prices`` 形成循环依赖。
+    """
+
+    try:
+        from shared_data_access.market_calendar import inspect_market_session
+    except Exception:
+        return None
+
+    moment = now or UTC()
+    try:
+        session = inspect_market_session(moment.date().isoformat(), market="CN")
+    except Exception:
+        return None
+
+    if session.is_trading_day and moment.time() >= MARKET_CLOSE_TIME:
+        latest_text = session.target_date
+    else:
+        latest_text = session.previous_trading_day
+    if not latest_text:
+        return None
+    try:
+        latest_date = date.fromisoformat(latest_text)
+    except ValueError:
+        return None
+    return datetime.combine(latest_date, MARKET_CLOSE_TIME)
+
+
+def _parse_cache_timestamp(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
 POLICY_PATH = Path(__file__).resolve().parents[1] / "configs" / "cache_policy.json"
 
 
@@ -921,6 +972,17 @@ def update_financial_data_cached(
         logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为指数或ETF，跳过财务数据获取")
         return {}
 
+    if symbolInfo.market == "US":
+        from shared_data_access.us_financials import update_us_financial_data_cached
+
+        return update_us_financial_data_cached(
+            symbolInfo,
+            base_data_dir=base_data_dir,
+            force_refresh=force_refresh,
+            force_refresh_financials=force_refresh_financials,
+            logger=logger,
+        )
+
     # 自动转换股票代码格式
     if symbolInfo.is_hk_market():
         formatted_code = symbolInfo.to_hk_symbol()
@@ -1140,6 +1202,8 @@ def _fetch_daily_price_frame(
             adjust="qfq",
             logger=logger,
         )
+    if symbolInfo.market == "US":
+        return _fetch_us_daily_price_frame(symbolInfo, start_date, end_date, logger)
     if symbolInfo.is_cn_market() or symbolInfo.market == "CN_INDEX":
         if symbolInfo.market == "CN_INDEX":
             return fetch_cn_index_daily(symbol_info=symbolInfo, logger=logger)
@@ -1159,6 +1223,64 @@ def _fetch_daily_price_frame(
         )
     logger.warning(f"暂不支持{symbolInfo.market}市场的价格数据获取")
     return pd.DataFrame()
+
+
+def _fetch_us_daily_price_frame(
+    symbolInfo: SymbolInfo,
+    start_date: str,
+    end_date: str,
+    logger: logging.Logger | None,
+) -> pd.DataFrame:
+    """美股日线：东财优先，新浪兜底；两者都不强制覆盖未收盘的当日。"""
+
+    from shared_data_access.price_fetch import _frame_covers_trading_day, _frame_last_date
+    from shared_data_access.us_market import (
+        fetch_us_daily_from_eastmoney,
+        fetch_us_daily_from_sina,
+        latest_completed_us_session,
+    )
+
+    completed_session = latest_completed_us_session().isoformat()
+    requested = str(end_date)
+    if requested.replace("-", "") > completed_session.replace("-", ""):
+        effective_end = completed_session.replace("-", "")
+    else:
+        effective_end = requested
+    errors: list[str] = []
+
+    try:
+        frame = fetch_us_daily_from_eastmoney(
+            symbolInfo, start_date, effective_end, logger=logger
+        )
+        if _frame_covers_trading_day(frame, effective_end, market="US", logger=logger):
+            return frame
+        errors.append(f"stock_us_hist 只返回到 {_frame_last_date(frame)}")
+        if logger:
+            logger.warning(
+                "%s stock_us_hist 未覆盖 %s，改用新浪美股日线",
+                symbolInfo.symbol,
+                effective_end,
+            )
+    except Exception as exc:
+        errors.append(f"stock_us_hist={exc}")
+        if logger:
+            logger.warning("%s stock_us_hist 失败，改用新浪美股日线: %s", symbolInfo.symbol, exc)
+
+    frame = fetch_us_daily_from_sina(symbolInfo, start_date, effective_end, logger=logger)
+    if not _frame_covers_trading_day(frame, effective_end, market="US", logger=logger):
+        errors.append(f"stock_us_daily 只返回到 {_frame_last_date(frame)}")
+        raise ValueError(
+            f"美股历史行情获取失败且未覆盖 {effective_end}: "
+            f"{symbolInfo.stock_name} {symbolInfo.symbol}; " + "; ".join(errors)
+        )
+    if logger:
+        logger.info(
+            "新浪美股日线回退成功: %s %s, 至 %s",
+            symbolInfo.stock_name,
+            symbolInfo.symbol,
+            _frame_last_date(frame),
+        )
+    return frame
 
 
 def update_price_data_cached(
@@ -1185,6 +1307,24 @@ def update_price_data_cached(
 
     # 检查缓存是否需要刷新
     need_refresh = should_refresh(price_cache_dir, CacheKind.PRICE_SERIES, force_refresh)
+
+    # TTL 说"够新"不等于"盖住了最近交易日"：补一道收盘屏障。
+    if not need_refresh:
+        barrier = _latest_trading_day_close_barrier()
+        if barrier is not None:
+            last_updated = _parse_cache_timestamp(
+                (_load_meta(price_cache_dir) or {}).get("last_updated")
+            )
+            if last_updated is None or last_updated < barrier:
+                need_refresh = True
+                if logger:
+                    logger.info(
+                        "%s %s 价格缓存未覆盖最近交易日收盘（缓存时间 %s < 收盘屏障 %s），强制刷新",
+                        symbolInfo.stock_name,
+                        symbolInfo.symbol,
+                        last_updated.isoformat(timespec="seconds") if last_updated else "无记录",
+                        barrier.isoformat(timespec="seconds"),
+                    )
     # 历史覆盖是否不足：不足时必须「全量回补」，否则增量刷新永远补不上早期历史，
     # 且 requested_start_date 会停留在旧值，导致判定每天为真、空刷 API。
     coverage_insufficient = False
@@ -1321,6 +1461,44 @@ def update_share_info_cached(
     is_etf = is_etf_symbol(symbolInfo)
     if is_etf or is_index:
         logger.info(f"{symbolInfo.stock_name} {symbolInfo.symbol} 为ETF或指数，跳过股本数据获取")
+        return
+
+    # 美股股本来自东财行情快照（总市值/最新价），需要按日更新，不受 7 天 TTL 约束
+    if symbolInfo.market == "US":
+        from shared_data_access.us_market import fetch_us_quote
+
+        share_cache_dir = build_cache_dir(
+            symbolInfo,
+            CacheKind.SHARE_INFO,
+            base_dir=base_data_dir,
+            ensure=True,
+        )
+        logger.info(
+            "正在获取%s %s美股行情快照（股本/市值/PE）...",
+            symbolInfo.stock_name,
+            symbolInfo.symbol,
+        )
+        quote = fetch_us_quote(
+            symbolInfo.code,
+            base_dir=base_data_dir,
+            force_refresh=force_refresh,
+            logger=logger,
+        )
+        if quote and quote.get("total_shares"):
+            share_file = share_cache_dir / "us_quote.json"
+            share_file.write_text(
+                json.dumps(quote, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            record_cache_refresh(share_cache_dir)
+            logger.info(
+                "已缓存美股 %s 行情快照到 %s（总股本 %.2f 亿）",
+                symbolInfo.symbol,
+                share_file,
+                float(quote["total_shares"]) / 1e8,
+            )
+        else:
+            logger.warning("美股 %s 行情快照缺失股本/市值", symbolInfo.symbol)
         return
 
     # 构建股本缓存目录
@@ -2112,6 +2290,18 @@ def update_disclosures_cached(
         if fetched is None or fetched.empty:
             logger.error(f"获取{symbolInfo.stock_name}公告列表失败（含直连+akshare+全文检索回退）")
             return
+    elif symbolInfo.market == "US":
+        from shared_data_access.us_disclosures import update_us_disclosures_cached
+
+        logger.info(f"正在获取{symbolInfo.stock_name} {symbolInfo.symbol}SEC 申报列表...")
+        update_us_disclosures_cached(
+            symbolInfo,
+            lookback_days=lookback_days,
+            base_data_dir=base_data_dir,
+            force_refresh=force_refresh,
+            logger=logger,
+        )
+        return
     elif symbolInfo.is_hk_market():
         logger.info(f"正在获取{symbolInfo.stock_name} {symbolInfo.symbol}港股公告列表...")
         fetched = _fetch_cninfo_hk_announcements(
@@ -2161,12 +2351,22 @@ def _share_info_cache_file(
         return cache_dir / "stock_share_change_cninfo.csv"
     if symbol_info.is_hk_market():
         return cache_dir / "stock_hk_financial_indicator_em.csv"
+    if symbol_info.market == "US":
+        return cache_dir / "us_quote.json"
     return None
 
 
 def _csv_cache_has_rows(path: Path | None) -> bool:
     if path is None or not path.exists() or path.stat().st_size <= 0:
         return False
+    if path.suffix.lower() == ".json":
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        return bool(payload.get("total_shares") or payload.get("price"))
     try:
         return not pd.read_csv(path, nrows=1).empty
     except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
@@ -2350,7 +2550,11 @@ def ensure_symbol_data(
     if (
         include_disclosures
         and not is_etf
-        and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market())
+        and (
+            symbolInfo.is_cn_market()
+            or symbolInfo.is_hk_market()
+            or symbolInfo.market == "US"
+        )
     ):
         update_disclosures_cached(
             symbolInfo,

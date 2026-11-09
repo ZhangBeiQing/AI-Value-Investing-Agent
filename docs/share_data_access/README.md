@@ -71,6 +71,22 @@ prepare_dataset(
 `disclosures/md/`。当巨潮提供的港股附件地址不可用时，财报同步会按股票、公告日和标题到
 港交所披露易匹配官方中文 PDF；该回退仅用于财报附件，不改变普通公告的抓取逻辑。
 
+美股复用同一套目录，但来源不同：
+
+| 缓存 | 来源 | 说明 |
+| --- | --- | --- |
+| `prices/price.csv` | `stock_us_hist`（东财）→ `stock_us_daily`（新浪） | 成交量=股、成交额=美元、换手率为小数 |
+| `financials_cache/*.csv` | `stock_financial_us_report_em` + `stock_financial_us_analysis_indicator_em` | 长表归一化为 A 股宽表；`NOTICE_DATE` 取 SEC 申报日 |
+| `financials_cache/us_financial_meta.json` | 由东财市值/PE 反推 | 记录原始币种、隐含汇率、ADR 等值股本 |
+| `share_info/us_quote.json` | 东财单标的行情快照 | 最新价、总市值、PE(TTM)、PB、总股本 |
+| `disclosures/cninfo_list.csv` | SEC EDGAR submissions | 与巨潮同列结构，附 `摘要/文档要点` |
+| `disclosures/md/*.md` | SEC EDGAR 申报正文渲染 | 财报原文；10-Q/10-K/20-F 另含 XBRL 三大报表，6-K 缺失报表由东财结构化数据补足 |
+| `global_cache/sec/` | SEC company_tickers + submissions + 文档要点 | 全市场共享，按 TTL 缓存 |
+
+美股没有同花顺/经济通口径的一致预期，`profit_forecast/` 为空；估值报告用
+「东财市值/PE 反推的隐含汇率」把本币报表折算成美元，细节见
+`docs/us_stock_support_design.md`。
+
 ## 4. 回测友好的缓存策略
 
 - 所有 `update_*` 函数始终面向「真实世界的当前时间」抓取足量数据

@@ -105,19 +105,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-generate-prefilter",
         action="store_true",
-        help="跳过量化初筛生成；默认会自动生成 factor_store 和 12_quant_prefilter。",
+        help="跳过量化初筛生成；量化初筛层当前已在 configs/feature_flags.py 中暂停，默认本来就不生成。",
     )
     parser.add_argument(
         "--skip-news-boards",
         action="store_true",
-        help="跳过新闻采集和板块热度分析步骤。",
+        help=(
+            "跳过新闻采集和板块热度分析步骤。注意："
+            "configs/feature_flags.py 里这两层当前默认已暂停，无需再传本参数。"
+        ),
     )
     parser.add_argument(
         "--allow-non-trading-date",
         action="store_true",
         help=(
             "显式允许在周末或节假日按该自然日刷新并生成分析输入；"
-            "仅用于盘外补充宏观/新闻分析，不表示该日可以交易。"
+            "仅用于盘外补充宏观分析，不表示该日可以交易。"
         ),
     )
     return parser

@@ -2,7 +2,7 @@
 
 AI驱动的价值投资。核心思路是先用 Python 准备好当日全部数据和输入产物，再由本地 Agent 按照 `.codex/skills/` 中的 skill 依次执行多 Agent 辩论、生成交易决策。
 
-支持 A 股、港股、ETF/指数等不同标的；当前日常交易统一使用综合 `fixed_tracked` 账本，短期量化初筛与长期候选都作为其候选来源。
+支持 A 股、港股、ETF/指数等不同标的；当前日常交易统一使用综合 `fixed_tracked` 账本，每日数据准备只覆盖 `TRACKED_A_STOCKS` 固定池
 
 ## 系统架构
 
@@ -12,9 +12,8 @@ AI驱动的价值投资。核心思路是先用 Python 准备好当日全部数�
 ┌──────────────────────────────────────────────────────────┐
 │ 第 1 步 · 每日数据准备（crontab 周一至周五 21:03 自动运行）     │
 │   skill: daily-data-preparation                            │
-│   ├─ refresh_all_for_date.py   行情/财报/公告/新闻/板块/因子/初筛│
+│   ├─ refresh_all_for_date.py   行情/财报/公告/因子/初筛       │
 │   ├─ daily-macro-summary       宏观总结                      │
-│   ├─ gradual-hot-news-summary  渐进式新闻主题状态             │
 │   ├─ financial-report-summary  逐股财报深研                  │
 │   └─ run_daily_pipeline.py     生成 01-04 输入产物           │
 ├──────────────────────────────────────────────────────────┤
@@ -52,8 +51,9 @@ fixed_tracked 账本采用中心化管理 + 逐股多 Agent 辩论：
 
 说"开始今天的数据准备"触发 `daily-data-preparation` skill。它会一次性跑完：
 
-- `refresh_all_for_date.py`：行情 / 财报 / 公告 / 新闻 / 板块 / 因子 / 量化初筛
-- 宏观总结（`daily-macro-summary`）+ 渐进式新闻主题总结（`gradual-hot-news-summary`）
+- `refresh_all_for_date.py`：行情 / 财报 / 公告
+- 宏观总结（`daily-macro-summary`）
+- 新闻采集与板块热度层当前**已暂停**（`configs/feature_flags.py`，token 成本原因）
 - 财报 PDF prepare 与逐股财报深研（`financial-report-summary`）
 - `run_daily_pipeline.py`：生成 `01-04` 输入产物
 
@@ -102,15 +102,12 @@ python scripts/refresh_all_for_date.py --date cur_date
 
 > `cur_date` 替换为实际日期，如 `2026-08-06`。
 
-对 `TRACKED_A_STOCKS ∪ master_universe`（约 100+ 只）刷新：
+只对 `TRACKED_A_STOCKS` 固定池刷新：
 
 - 价格、财报结构化缓存、宏观客观面板
-- 全市场新闻采集 / 去重 / 增强
-- 板块热度分析
-- 因子库构建、因子评分、量化初筛（短 / 长两本候选）
 - 清理旧研究缓存
 
-该命令约需 **15 分钟**，Agent 请设置足够的超时时间，避免中途中断。
+该命令约需 **5 分钟**，Agent 请设置足够的超时时间，避免中途中断。
 
 #### 2. 确认 PDF 转 Markdown 依赖（pymupdf4llm）
 
@@ -122,9 +119,9 @@ python -c "import pymupdf4llm; print(pymupdf4llm.VERSION)"
 
 能打印版本号即就绪；未安装则执行 `pip install pymupdf4llm`（已列入 `requirements.txt`）。
 
-#### 3. 并发启动 2 个 SubAgent + 后台跑财报 prepare
+#### 3. 启动宏观 SubAgent + 后台跑财报 prepare
 
-步骤 1 完成后，**在同一条消息里一次性发出三件事**（2 个 SubAgent + 1 个后台命令），不要逐个串行等待：
+步骤 1 完成后，**在同一条消息里一次性发出两件事**（1 个 SubAgent + 1 个后台命令），不要串行等待：
 
 **SubAgent A — 宏观总结**（约需 5-10 分钟）
 
@@ -134,29 +131,21 @@ python -c "import pymupdf4llm; print(pymupdf4llm.VERSION)"
 >
 > 产出：`data/macro_economy/YYYYMMDD.md`
 
-**SubAgent B — 渐进式新闻总结**（约需 20 分钟）
+> 渐进式新闻总结（`gradual-hot-news-summary`）已按 `configs/feature_flags.py` 暂停，不再派发。
 
-> 执行："开始 cur_date 的渐进式新闻总结，没用的已经过时的新闻就删掉，不要让渐进式新闻总结文件太大"
->
-> 触发 skill：`gradual-hot-news-summary`
->
-> 产出：`data/selection_runs/YYYY-MM-DD/06_hot_news_state.json` + `06_hot_news_digest.json`
->
-> 注意：需定期清理过期新闻主题，控制文件体积。
-
-**第三件事 — 财报 prepare 脚本**（主 Agent 自己后台跑，约需 10-30 分钟）
+**第二件事 — 财报 prepare 脚本**（主 Agent 自己后台跑，约需 10-30 分钟）
 
 > ```bash
-> python scripts/prepare_financial_report_skill.py --date cur_date --sync-first --json --include-quant-prefilter
+> python scripts/prepare_financial_report_skill.py --date cur_date --sync-first --json
 > ```
 >
 > 主要耗时是把新发的财报 PDF 转 Markdown（本地 pymupdf4llm 转换，数百页年报约 1-2 分钟），请设置足够的超时时间。
 >
-> 它是纯 Python、不派发任何 SubAgent，所以和 A/B 并行不占并发额度。
+> 它是纯 Python、不派发任何 SubAgent，所以和宏观 SubAgent 并行不占并发额度。
 
 #### 4. 主 Agent 亲自做逐股财报深研（约需 10-40 分钟）
 
-步骤 3 的三项全部结束后，由**主 Agent 直接执行** `financial-report-summary`，对 prepare 输出里 `ready_items` 的股票逐一深研。产出 `data/stock_info/{name}_{symbol}/financial_reports/*.md` 与 `summary_index.json`。当天没人发新财报时，"零新增"是合法结果。
+步骤 3 的两项全部结束后，由**主 Agent 直接执行** `financial-report-summary`，对 prepare 输出里 `ready_items` 的股票逐一深研。产出 `data/stock_info/{name}_{symbol}/financial_reports/*.md` 与 `summary_index.json`。当天没人发新财报时，"零新增"是合法结果。
 
 > **为什么财报不派给 SubAgent**：`financial-report-summary` 自己要为每只股票再派发 Industry Researcher / Expectation Scout / Financial Author / Research Challenger 四个角色，5 只股票就是 20 个。嵌套派发技术上能跑通（已实测，含无头模式），但并发账会算不清，而超过每批上限的失败方式是**静默空返回**——报告"完成"，文件却是空的。所以需要再派发一层的环节只能由主 Agent 做，且必须等 A/B 退出、并发腾空后再开始。每批最多 10 个 SubAgent。
 
@@ -262,9 +251,9 @@ LLM 直接从全宇宙选股的方案，日常默认不跑：
 
 由 2 个 subagent 分别基于 `08_short_book_input` 和 `09_long_book_input` 生成短期/长期候选池，merge 后产生深研队列。详见 `.codex/skills/auto-selection-daily-pipeline/SKILL.md`。
 
-### 量化因子初筛（默认选股主轴）
+### 量化因子初筛
 
-日常默认的选股路径是量化因子初筛：`master_universe → factor_store → factor_scoring → quant_prefilter`。`12_quant_prefilter_short.csv` 与长期候选随后统一并入 fixed_tracked。评分配置见 `configs/selection_system/factor_scoring.yaml`。
+量化初筛路径 `master_universe → factor_store → factor_scoring → quant_prefilter` 的代码仍在，但每日刷新默认**已暂停**（`ENABLE_FACTOR_PREFILTER_LAYER=False`），且不再把结果并入研究包（`ENABLE_SELECTION_UNIVERSE_MERGE=False`）。需要时手动运行 `manage_selection_system.py` 对应子命令，或把开关改回 `True`。评分配置见 `configs/selection_system/factor_scoring.yaml`。
 
 ## 目录结构
 
@@ -340,7 +329,7 @@ docs/                           系统设计文档
 | --- | --- | --- |
 | `daily-data-preparation` | 说"开始今天的数据准备"（已定时，周一至周五 21:03） | `data/skill_runs/<date>/` 下的 `01-04` |
 | `daily-macro-summary` | 说"更新今天宏观总结" | `data/macro_economy/YYYYMMDD.md` |
-| `gradual-hot-news-summary` | 说"更新今日热点主题总结" | `06_hot_news_state.json` |
+| `gradual-hot-news-summary` | **已暂停**（`configs/feature_flags.py`）；仅手动恢复时使用 | `06_hot_news_state.json` |
 | `financial-report-summary` | 说"生成财报总结" | `financial_reports/*.md` |
 | `auto-trading-fixed-tracked` | 说"开始今天固定股票池交易" | `fixed_tracked/05_decision.json` |
 | `backtest-fixed-tracked` | 说"回测固定股池" | `backtest_experiments/` |

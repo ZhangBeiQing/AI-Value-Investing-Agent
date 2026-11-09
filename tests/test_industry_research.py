@@ -408,6 +408,11 @@ def test_prepare_theme_research_workdir_requires_explicit_overwrite(tmp_path: Pa
         config_path=config_path,
     )
     assert outputs["research_brief"].exists()
+    brief = outputs["deep_research_prompt"].read_text(encoding="utf-8")
+    assert "Codex + GPT 优先使用自带联网搜索" in brief
+    assert "其他环境或模型组合优先使用阿里云百炼搜索 MCP" in brief
+    assert "configs/research/web_research_policy.md" in brief
+    assert "DSH / Codex 为" not in brief
     profit_map = json.loads(outputs["profit_map_template"].read_text(encoding="utf-8"))
     assert "company_exposure_matrix" in profit_map
     assert profit_map["company_evidence_rules"]["company_total_metrics_cannot_validate_theme_segment"] is True

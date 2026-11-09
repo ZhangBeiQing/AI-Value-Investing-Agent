@@ -16,7 +16,7 @@
 ### 任务
 
 - 验证 `terminal_theme → subchain → value_chain_node → company_exposure`；
-- 使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP）刷新本披露窗口的需求、订单、供给、库存、价格、交期、CAPEX 和技术路线；
+- 按 `configs/research/web_research_policy.md` 选择搜索入口（Codex + GPT 优先自带搜索，其他组合优先百炼 MCP），刷新本披露窗口的需求、订单、供给、库存、价格、交期、CAPEX 和技术路线；
 - 建立终端 TAM、供需错配和产业链利润映射；
 - 分别判断组内每家公司主题收入、利润暴露、竞争地位和是否真正受益；
 - 公司不预设为龙头；
@@ -51,7 +51,7 @@
 
 ### 任务
 
-- 必须执行百炼联网搜索，并严格按来源发布时间过滤；研究发生在财报发布后不构成跳过历史搜索的理由；
+- 必须按 `configs/research/web_research_policy.md` 执行联网搜索，并严格按来源发布时间过滤；研究发生在财报发布后不构成跳过历史搜索的理由；
 - 搜索摘要混入实际财报数字时，丢弃该条并改用限定日期、机构名、`业绩前瞻`、`盈利预测`、`一致预期` 等查询继续搜索；禁止把整个搜索阶段标记为 `not_performed_time_contamination_risk`；
 - 先读取准备层提供的 AkShare/经济通/同花顺年度预测，再搜索公告前机构报告补充和交叉验证；缓存缺失不等于市场没有预期；
 - 严格按财报公告时点重建公司指引、年度卖方预期、季度卖方预期、产业隐含预期和股价/估值隐含预期；

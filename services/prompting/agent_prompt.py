@@ -24,7 +24,12 @@ from services.trading.price_tools import (
     get_latest_position,
 )
 from core.runtime_state import get_config_value
-from configs.stock_pool import TRACKED_SYMBOLS, TRACKED_A_STOCKS
+from configs.stock_pool import (
+    TRACKED_SYMBOLS,
+    TRACKED_A_STOCKS,
+    USD_CNY_FX_RATE,
+    is_usd_symbol,
+)
 from commons.stock_utils import parse_symbol
 
 all_stock_pool_symbols = TRACKED_SYMBOLS
@@ -417,6 +422,31 @@ def build_agent_prompt_context(
     else:
         portfolio_value_amount = f"{current_total_value:,.2f} 元"
 
+    # 持仓币种明细：美元标的按 USD_CNY_FX_RATE 折算为人民币口径，保留原始币种报价。
+    holdings_detail: Dict[str, Dict[str, object]] = {}
+    for symbol, shares in (today_init_position or {}).items():
+        if symbol == "CASH":
+            continue
+        shares_val = float(shares or 0)
+        if shares_val <= 0:
+            continue
+        currency = "USD" if is_usd_symbol(symbol) else "CNY"
+        fx = float(USD_CNY_FX_RATE) if currency == "USD" else 1.0
+        avg_cost_cny = position_costs.get(symbol)
+        profit_cny = position_profit.get(symbol)
+        price_cny = None
+        if avg_cost_cny is not None and profit_cny is not None:
+            price_cny = round(float(avg_cost_cny) + float(profit_cny) / shares_val, 4)
+        holdings_detail[symbol] = {
+            "currency": currency,
+            "shares": shares_val,
+            "avg_cost_local": round(float(avg_cost_cny) / fx, 4) if avg_cost_cny is not None else None,
+            "avg_cost_cny": avg_cost_cny,
+            "price_local": round(float(price_cny) / fx, 4) if price_cny is not None else None,
+            "price_cny": price_cny,
+            "fx_to_cny": fx,
+        }
+
     context = {
         "date": today_date,
         "positions": _stringify_payload(today_init_position or {}),
@@ -424,6 +454,11 @@ def build_agent_prompt_context(
         "position_costs": _stringify_payload(formatted_position_costs),
         "position_profit": _stringify_payload(formatted_position_profit),
         "position_return_pct": _stringify_payload(formatted_position_return_pct),
+        "positions_detail": _stringify_payload(holdings_detail),
+        "position_currency": _stringify_payload(
+            {symbol: item["currency"] for symbol, item in holdings_detail.items()}
+        ),
+        "usd_cny_fx": f"{float(USD_CNY_FX_RATE):.2f}",
         "STOP_SIGNAL": STOP_SIGNAL,
         "historical_summary": historical_summary_value,
         # portfolio_value 保留旧 JSON prompt 的标点习惯；Markdown policy 使用无尾逗号版本。

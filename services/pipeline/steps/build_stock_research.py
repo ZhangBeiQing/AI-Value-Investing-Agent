@@ -66,6 +66,7 @@ def _format_news_item(item: dict) -> List[str]:
         key
         for key in item
         if any(token in key.lower() for token in ("source", "url", "link", "citation", "reference"))
+        or key.lower() in {"announcement_id", "accession"}
     }
     used = {
         "title",

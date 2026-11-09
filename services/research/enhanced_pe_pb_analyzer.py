@@ -39,7 +39,7 @@ from commons import (
 )
 from commons.similar_stocks import get_similar_stocks
 
-HK_PROFIT_NOTE = "港股的净利润增速没有扣除非经营损益，仅供参考，详细数据请查看财报接口返回的财报分析结果"
+HK_PROFIT_NOTE = "该市场（港股/美股）的净利润增速没有扣除非经营损益，仅供参考，详细数据请查看财报接口返回的财报分析结果"
 
 
 LOGGER = init_component_logger(
@@ -150,9 +150,10 @@ class EnhancedPEPBAnalyzer:
             force_refresh_financials=force_refresh_financials,
         )
 
+        similar_limit = 0 if symbol.market == "US" else self.similar_limit
         similar_snapshots = self._build_similar_snapshots(
             symbol,
-            limit=self.similar_limit,
+            limit=similar_limit,
             force_refresh=force_refresh,
             force_refresh_financials=force_refresh_financials,
         )
@@ -176,7 +177,7 @@ class EnhancedPEPBAnalyzer:
         force_refresh: bool,
         force_refresh_financials: bool,
     ) -> StockSnapshot:
-        use_plain_labels = symbol.is_hk_market()
+        use_plain_labels = symbol.is_hk_market() or symbol.market == "US"
         dataset = self.data_access.prepare_dataset(
             symbolInfo=symbol,
             as_of_date=self._analysis_date_str(),
@@ -295,7 +296,8 @@ class EnhancedPEPBAnalyzer:
 
         yoy_percent_map = self._extract_net_profit_yoy_map(profit_sheet)
 
-        if symbol.is_hk_market():
+        if use_plain_labels:
+            # 港股无扣非口径；美股同样没有「扣非归母净利润」，统一用报表净利润
             deduct_ttm_df = ttm_profit_df.copy()
             deduct_profit = float(deduct_ttm_df.iloc[-1].get("TTM_NET_PROFIT_RAW") or 0)
         else:
@@ -316,7 +318,7 @@ class EnhancedPEPBAnalyzer:
         )
         if use_plain_labels:
             pe_deduct = pe_ttm
-            pe_deduct_note = "港股财报无扣非口径，直接使用 PE(TTM)"
+            pe_deduct_note = "该市场财报无扣非口径，直接使用 PE(TTM)"
         else:
             pe_deduct, pe_deduct_note = (None, "缺少扣非TTM净利润")
             if deduct_profit:
@@ -1503,13 +1505,15 @@ class EnhancedPEPBAnalyzer:
         )
         pe_label = self._pe_label(info, suffix="(TTM)")
         peg_base_label = self._pe_label(info)
+        price_unit = "美元" if info.symbol.market == "US" else "元"
+        cap_unit = "亿美元" if info.symbol.market == "US" else "亿元"
         lines = [
             f"# {info.display_name}({info.symbol.symbol}) 增强版PE/PB/PS分析报告",
             "",
             f"- **分析日期**: {info.analysis_time.strftime('%Y-%m-%d %H:%M:%S')}",
-            f"- **当前价格**: {info.price:.3f} 元",
-            f"- **总市值**: {info.market_cap/1e8:.3f} 亿元",
-            f"- **流通市值**: {info.float_market_cap/1e8:.3f} 亿元" if info.float_market_cap else "",
+            f"- **当前价格**: {info.price:.3f} {price_unit}",
+            f"- **总市值**: {info.market_cap/1e8:.3f} {cap_unit}",
+            f"- **流通市值**: {info.float_market_cap/1e8:.3f} {cap_unit}" if info.float_market_cap else "",
             "",
             "## 估值摘要",
             "",
@@ -1539,6 +1543,13 @@ class EnhancedPEPBAnalyzer:
 
         if info.extreme_price_metrics:
             extreme_df = pd.DataFrame(info.extreme_price_metrics)
+            if info.symbol.market == "US":
+                extreme_df = extreme_df.rename(
+                    columns={
+                        "价格(元)": "价格(美元)",
+                        "TTM扣非净利润(亿元)": "TTM净利润(亿美元)",
+                    }
+                )
             lines.append("## 最近三年半最高/最低股价及对应估值指标")
             lines.append("")
             lines.append(extreme_df.to_markdown(index=False, floatfmt=".3f").replace("nan", ""))
@@ -1554,6 +1565,13 @@ class EnhancedPEPBAnalyzer:
             distribution_df = pd.DataFrame(distribution_table)
             if "平均PE" in distribution_df.columns and avg_pe_label != "平均PE":
                 distribution_df = distribution_df.rename(columns={"平均PE": avg_pe_label})
+            if info.symbol.market == "US":
+                distribution_df = distribution_df.rename(
+                    columns={
+                        "区间下限(元)": "区间下限(美元)",
+                        "区间上限(元)": "区间上限(美元)",
+                    }
+                )
             lines.append(f"## {window_label}股价区间分布")
             lines.append("")
             lines.append(
@@ -1561,10 +1579,10 @@ class EnhancedPEPBAnalyzer:
             )
             lines.append(f"- 样本交易日数: {distribution_summary.get('trading_days')}")
             lines.append(
-                f"- {window_short_label}最低收盘价: {distribution_summary.get('lowest_close'):.3f} 元（{distribution_summary.get('lowest_close_date')}）"
+                f"- {window_short_label}最低收盘价: {distribution_summary.get('lowest_close'):.3f} {price_unit}（{distribution_summary.get('lowest_close_date')}）"
             )
             lines.append(
-                f"- {window_short_label}最高收盘价: {distribution_summary.get('highest_close'):.3f} 元（{distribution_summary.get('highest_close_date')}）"
+                f"- {window_short_label}最高收盘价: {distribution_summary.get('highest_close'):.3f} {price_unit}（{distribution_summary.get('highest_close_date')}）"
             )
             lines.append("")
             lines.append(
@@ -1587,10 +1605,13 @@ class EnhancedPEPBAnalyzer:
     def _build_history_table(self, snapshot: StockSnapshot) -> Optional[pd.DataFrame]:
         pe_col_name = self._pe_label(snapshot)
         growth_col_name = self._growth_label(snapshot)
+        is_us = snapshot.symbol.market == "US"
+        profit_col = "TTM净利润(亿美元)" if is_us else "TTM扣非净利润(亿元)"
+        price_col = "股价(美元)" if is_us else "股价(元)"
         desired_order = [
             "报告期",
-            "TTM扣非净利润(亿元)",
-            "股价(元)",
+            profit_col,
+            price_col,
             pe_col_name,
             "PB",
             growth_col_name,
@@ -1604,8 +1625,8 @@ class EnhancedPEPBAnalyzer:
                 continue
             record_map[report_key] = {
                 "报告期": report_key,
-                "TTM扣非净利润(亿元)": entry.get("TTM扣非净利润(亿元)"),
-                "股价(元)": entry.get("股价(元)"),
+                profit_col: entry.get("TTM扣非净利润(亿元)"),
+                price_col: entry.get("股价(元)"),
                 pe_col_name: entry.get("PE"),
                 "PB": entry.get("PB"),
                 growth_col_name: None,
@@ -1620,8 +1641,8 @@ class EnhancedPEPBAnalyzer:
                 report_key,
                 {
                     "报告期": report_key,
-                    "TTM扣非净利润(亿元)": None,
-                    "股价(元)": None,
+                    profit_col: None,
+                    price_col: None,
                     pe_col_name: entry.get("PE"),
                     "PB": entry.get("PB"),
                     growth_col_name: None,
@@ -1636,8 +1657,8 @@ class EnhancedPEPBAnalyzer:
         deduct_profit_for_display = snapshot.deduct_profit_raw or snapshot.ttm_profit_raw
         current_row = {
             "报告期": snapshot.analysis_time.strftime("%Y-%m-%d") + "*",
-            "TTM扣非净利润(亿元)": deduct_profit_for_display / 1e8 if deduct_profit_for_display else None,
-            "股价(元)": snapshot.price,
+            profit_col: deduct_profit_for_display / 1e8 if deduct_profit_for_display else None,
+            price_col: snapshot.price,
             pe_col_name: self._get_display_pe_value(snapshot) or snapshot.pe_ttm,
             "PB": snapshot.pb,
             growth_col_name: snapshot.net_profit_growth * 100 if snapshot.net_profit_growth is not None else None,
@@ -1653,7 +1674,7 @@ class EnhancedPEPBAnalyzer:
             ["__is_current", "__sort"], ascending=[False, False]
         ).drop(columns=["__is_current", "__sort"])
 
-        for col in ("TTM扣非净利润(亿元)", "股价(元)", pe_col_name, "PB", growth_col_name, "PEG"):
+        for col in (profit_col, price_col, pe_col_name, "PB", growth_col_name, "PEG"):
             combined[col] = combined[col].apply(
                 lambda x: round(x, 3) if isinstance(x, (int, float)) and math.isfinite(x) else x
             )

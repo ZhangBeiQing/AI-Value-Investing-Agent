@@ -1092,17 +1092,17 @@ configs/research/
 - 唯一输出路径；
 - 完成条件。
 
-## 18. 内置搜索政策
+## 18. 搜索入口政策
 
-### 18.1 强制入口
+### 18.1 按运行环境选择入口
 
-所有外部搜索一律使用运行时内置的联网搜索工具，不依赖外部搜索 MCP 或第三方检索 API。
+Codex + GPT 优先使用自带联网搜索，其他环境或模型组合优先使用阿里云百炼搜索 MCP；首选不可用时可使用会话已提供的另一入口，具体遵循 `configs/research/web_research_policy.md`。
 
 已知能力名：
 
 ```text
-DeepSeek Harness / Codex → mcp__bailian__bailian_web_search
-OpenCode / Claude Code   → WebSearch（百炼 MCP）
+Codex + GPT → 自带联网搜索（如 web.run / search_query）
+其他组合 → 优先百炼 MCP（如 mcp__bailian__bailian_web_search / WebSearch）
 ```
 
 各运行时的实际工具名可能不同，Skill 应按能力发现，不把某个内部全名写死。
@@ -1128,13 +1128,13 @@ OpenCode / Claude Code   → WebSearch（百炼 MCP）
 - 搜索调用传输错误；
 - 结果只有低等级来源。
 
-内置搜索不可用时默认失败关闭：
+所有可用搜索入口均不可用时默认失败关闭：
 
 ```text
 search_status = web_search_unavailable
 ```
 
-不得自行拼接爬虫或第三方检索 API 替代。只有用户明确允许时才能使用替代搜索。
+不得自行拼接爬虫或第三方检索 API 替代。首选入口不可用时可使用会话已提供的另一入口；不自行拼接爬虫或第三方检索 API。
 
 ### 18.4 来源层级
 
@@ -1203,7 +1203,7 @@ Codex 存在并发限制时，只限制同时运行数量，不改变角色和�
 | 财报前价格快照缺失 | warning，预期计价判断降级 |
 | 当前估值缺失 | warning，最终报告说明 |
 | 财报前一致预期缺失 | 不允许伪造季度预期，改用公司指引和产业隐含预期 |
-| 内置搜索不可用 | 研究角色失败关闭，等待用户处理或明确允许 fallback |
+| 所有可用搜索入口均不可用 | 研究角色失败关闭并报告 web_search_unavailable |
 | 产业链无法识别 | 不复用旧研究，按公司独立研究并说明 |
 | Challenger 发现重大问题 | 不直接发布，回到 Author 修订 |
 | 高严重度问题无法解决 | 按影响融入最终报告 §16/§17，不伪造答案或单列过程附录 |
@@ -1223,7 +1223,7 @@ Codex 存在并发限制时，只限制同时运行数量，不改变角色和�
 
 - 读取共享 `industry_chain_research_policy.md`；
 - 明确区分 `terminal_theme`、`subchain`、`value_chain_node`；
-- 内置搜索作为强制搜索入口；
+- 按运行环境选择搜索入口，遵循统一 web_research_policy.md；
 - 不再把“最受益公司数量”作为固定内容限制；
 - 不把公司预设为龙头；
 - 关键结论必须落到利润池和公司业务暴露；

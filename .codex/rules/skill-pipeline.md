@@ -21,6 +21,9 @@ paths:
 
 ## 产物契约
 
+- 美股 `us_tracked` 账本由 `scripts/run_us_research.py` 生成同构 `01-04`，产物在
+  `data/skill_runs/{美东已收盘交易日}/us_tracked/`，与 `fixed_tracked/` 平级、互不覆盖；
+  设计见 `docs/us_stock_support_design.md`。
 - `run_daily_pipeline` 负责 `01-04`：
   - `01_global_context.md`
   - `02_basic_snapshot_payload.json`

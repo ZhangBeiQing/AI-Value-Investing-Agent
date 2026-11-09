@@ -3,9 +3,18 @@ name: gradual-hot-news-summary
 description: >
   用于生成渐进式热点新闻主题总结。
   当用户说“更新今天的渐进式新闻总结”、“更新今日热点主题总结”或类似请求时使用。用于生成可被后续本地选股 agent 直接继承的主题级研究记忆。
+
+  ⚠️ **当前已暂停（2026-11-05）**：`configs/feature_flags.py` 的
+  `ENABLE_GRADUAL_NEWS_SUMMARY = False`。日常数据准备不再派发本 skill，
+  `06_hot_news_state.json` / `06_hot_news_digest.json` 不再生成，下游 prompt 也不再引用。
+  只有用户**明确要求**恢复或单独补一次历史主题记忆时才执行；不要自动触发。
 ---
 
 # Gradual Hot News Summary
+
+> **暂停状态**：本 skill 与其产出已按 `configs/feature_flags.py` 全局关闭（token 成本原因）。
+> 文件保留是为了以后一键恢复：把 `ENABLE_GRADUAL_NEWS_SUMMARY` 改回 `True` 即可。
+> 暂停期间缺失 `06_hot_news_state.json` 属于预期状态，任何 skill 都不得把它当数据缺口。
 
 ## 何时使用
 

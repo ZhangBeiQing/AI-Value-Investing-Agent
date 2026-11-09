@@ -4,9 +4,9 @@ description: >
   交易 skill 之前的每日数据准备总调度，设计运行时点是当天晚上 9 点、分析当天收盘、为下一交易日
   出预案（日期默认 today，不做减一）。当用户说“开始今天的数据准备”、“准备今天的交易数据”、
   “跑今天的盘前数据链路”、“刷新今天全部数据并生成研究包”或类似请求时使用。串联
-  refresh_all_for_date → MinerU 就绪 → 并发 2 个 subagent（宏观总结 / 渐进式新闻总结）
-  与财报 prepare 脚本 → 主 agent 亲自做逐股财报研究 → run_daily_pipeline，在一个会话里
-  一次性跑完约 50-90 分钟的长链路，产出 01-04 研究包，供 auto-trading-fixed-tracked 直接消费。
+  refresh_all_for_date → pymupdf4llm 就绪 → 宏观总结 subagent 与财报 prepare 脚本并行
+  → 主 agent 亲自做逐股财报研究 → run_daily_pipeline，在一个会话里一次性跑完约 50-90 分钟
+  的长链路，产出 01-04 研究包，供 auto-trading-fixed-tracked 直接消费。
 ---
 
 # Daily Data Preparation
@@ -16,9 +16,10 @@ description: >
 - 本 skill **只准备数据与输入产物**，不生成任何交易决策、仓位、目标价，不写 `05_decision.json`。
 - 完成后**不自动触发** `auto-trading-fixed-tracked`；只向用户报告"数据已就绪"，由用户决定何时开始交易。
 - 不修改 `configs/stock_pool.py`、投资策略文件、账本或历史持仓。
-- 三个子 skill（`daily-macro-summary`、`gradual-hot-news-summary`、`financial-report-summary`）的内部规则由**各自的 SKILL.md 定义**，本 skill 只负责调度、门禁和验收，**不得转述、压缩或改写它们的规则**。
-  - 前两个派给 subagent 执行，派发时只传日期与任务句子。
+- 两个子 skill（`daily-macro-summary`、`financial-report-summary`）的内部规则由**各自的 SKILL.md 定义**，本 skill 只负责调度、门禁和验收，**不得转述、压缩或改写它们的规则**。
+  - `daily-macro-summary` 派给 subagent 执行，派发时只传日期与任务句子。
   - `financial-report-summary` 由**主 agent 直接执行**（原因见「阶段总览」下的说明），执行前要完整读它自己的 SKILL.md 和角色模板。
+- **已暂停 `gradual-hot-news-summary`（渐进式新闻总结）**：token 成本过高，`configs/feature_flags.py` 的 `ENABLE_GRADUAL_NEWS_SUMMARY=False`。本 skill 不再派发该 subagent，Step 1 也不再采集新闻、不生成 `05_board_heat_*`（`ENABLE_BOARD_HEAT_LAYER=False`）。不要把它当成"漏了一步"去补。
 - 不得为了"跑快一点"而缩小股票范围、跳过步骤或改小并发；范围变更必须由用户明确要求。
 
 ## 日期语义（必读）
@@ -48,7 +49,7 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 ```
 
 - 工作目录固定为仓库根目录，所有命令用相对路径 `scripts/xxx.py`。
-- 联网搜索一律使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP）；搜索不可用时失败关闭并记录 `search_status = web_search_unavailable`，不自行拼接第三方检索 API 或爬虫替代。
+- 联网搜索按运行环境选择：Codex + GPT 优先使用自带联网搜索，其他环境或模型组合优先使用阿里云百炼搜索 MCP；首选不可用时可使用会话已提供的另一入口，具体遵循 `configs/research/web_research_policy.md`；所有可用搜索入口均不可用时失败关闭并记录 `search_status = web_search_unavailable`，不自行拼接第三方检索 API 或爬虫替代。
 - 用户粘贴的 Windows 路径要转成 WSL 路径。
 
 ## 超时铁律（本 skill 最容易踩的坑）
@@ -80,21 +81,21 @@ source /home/zhangbeiqing/venv/ai_stock/bin/activate
 | --- | --- | --- | --- |
 | Step 1 | `refresh_all_for_date.py` | ~15 min | 全流程根依赖 |
 | Step 2 | `pymupdf4llm` 依赖就绪 | <1 min | 可与 Step 1 **并行**；Step 3 的硬前置 |
-| Step 3 | 并发 2 个 subagent（宏观 / 新闻）**+** 后台跑财报 prepare 脚本 | 10-30 min | 必须等 Step 1 成功 |
+| Step 3 | 宏观 subagent **+** 后台跑财报 prepare 脚本（并行） | 10-30 min | 必须等 Step 1 成功 |
 | Step 4 | **主 agent 亲自**做逐股财报研究 | 10-40 min | 必须等 Step 3 三项全部结束 |
 | Step 5 | `run_daily_pipeline.py` | 5-15 min | 必须等 Step 4 完成 |
 
-Step 1 与 Step 2 在同一条消息里一起发出；Step 3 的两个 subagent 和 prepare 脚本也在同一条消息里一起发出。
+Step 1 与 Step 2 在同一条消息里一起发出；Step 3 的宏观 subagent 和 prepare 脚本也在同一条消息里一起发出。
 
 ### 为什么财报不派给 subagent（重要，不要"优化"回去）
 
 `financial-report-summary` 自己就要为**每只股票**派发 Industry Researcher / Expectation Scout / Financial Author 三个角色（同链行业研究可复用）。5 只股票最多需要 15 个 subagent。
 
-嵌套派发在技术上是能跑通的（已实测，含无头模式），但**并发账会算不清**：财报最多 15 个 + 宏观 + 新闻同时在跑，会超过平台每批的并发上限，而超限的失败方式是**静默空返回**——subagent 报告"完成"，文件却是空的或没写。`auto-trading-fixed-tracked` 里那条「每批最多 10 个，不得超过，以避免任务空返回、写错日期目录或文件缺失」就是同一个坑。
+嵌套派发在技术上是能跑通的（已实测，含无头模式），但**并发账会算不清**：财报最多 15 个 + 宏观同时在跑，会超过平台每批的并发上限，而超限的失败方式是**静默空返回**——subagent 报告"完成"，文件却是空的或没写。`auto-trading-fixed-tracked` 里那条「每批最多 10 个，不得超过，以避免任务空返回、写错日期目录或文件缺失」就是同一个坑。
 
-所以规则是：**需要再派发一层 subagent 的环节，只能由主 agent 直接做。** 财报研究必须留在主 agent 手里，且必须等 A/B 两路结束、并发腾空之后才开始。
+所以规则是：**需要再派发一层 subagent 的环节，只能由主 agent 直接做。** 财报研究必须留在主 agent 手里，且必须等宏观一路结束、并发腾空之后才开始。
 
-反过来，`prepare_financial_report_skill.py` 是**纯 Python，自己不派发任何 subagent**，所以它可以和 A/B 并行跑，不占 subagent 并发额度。
+反过来，`prepare_financial_report_skill.py` 是**纯 Python，自己不派发任何 subagent**，所以它可以和宏观 subagent 并行跑，不占 subagent 并发额度。
 
 ## 一、Step 1：一键刷新全部 Python 链路数据
 
@@ -108,7 +109,13 @@ python scripts/refresh_all_for_date.py --date <cur_date>
 - **不要**加 `--continue-on-failure`：默认失败即停，才能暴露真实断点。
 - 组件日志：`logs/main_scripts/RefreshAllForDate/refresh_all_for_date_*.log` 与同目录 `merged.log`。
 
-覆盖范围（`TRACKED_A_STOCKS ∪ master_universe`）：价格、财报结构化缓存、宏观客观面板、全市场新闻采集/去重/增强、板块热度、因子库与因子评分、量化初筛、清理旧研究缓存。
+### 美股标的已并入同一条链路（不要再单独跑 `run_us_research.py`）
+
+- 固定股池包含美股：`configs/stock_pool.py` 的 `FIXED_TRACKED_US_SYMBOLS`（当前 `TSM.US`）。它们与 A 股/港股**同批刷新、同批进入 `fixed_tracked` 的 `01-04`**，辩论与 `05_decision.json` 也完全一致，不再单独走 `us_tracked` 账本。
+- **日期语义差异（预期行为，不是数据顶替）**：`--date D` 对 A 股/港股是 D 日收盘；对美股，北京时间 D 日晚运行时 D 日美股尚未收盘，因此取「最近一个已收盘美东交易日」（通常 D-1）的收盘价与财务口径。研究包里美股标的的报价即为该日收盘价。
+- **币种口径**：美元持仓按 `configs/stock_pool.py` 的 `USD_CNY_FX_RATE`（默认 6.65）折算为人民币，计入真实总资产、浮动盈亏与仓位比例；`03_agent_input.md` 的「持仓币种明细」保留原始币种报价与折算后人民币口径两份数字。
+- 只有需要**单独**给某只美股补研究包（不跑 A 股链路）时，才用 `python scripts/run_us_research.py --symbol <TICKER.US>`。
+
 
 ### 进入 Step 3 的硬门禁
 
@@ -116,9 +123,6 @@ python scripts/refresh_all_for_date.py --date <cur_date>
 
 ```text
 data/global_cache/macro_objective_panel/daily_snapshots/<cur_date>.json
-data/selection_runs/<cur_date>/03_news_prompt_input.json
-data/selection_runs/<cur_date>/05_board_heat_state.json
-data/selection_runs/<cur_date>/12_quant_prefilter_short.csv
 ```
 
 任一缺失就不要进入 Step 3：先读日志定位失败步骤，向用户报告失败现场（日志路径 + 报错原文），询问是补数据还是跳过。**不要**在缺输入的情况下让 subagent 空跑——它们会基于过期数据产出看起来正常的错误结论。
@@ -139,41 +143,39 @@ python -c "import pymupdf4llm; print(pymupdf4llm.VERSION)"
 - 报 `ModuleNotFoundError` → 先 `pip install pymupdf4llm`（已列入 `requirements.txt`），装完再验一次。
 - 这一步通常几秒结束，**不需要**后台运行，也不要去 curl 任何 `/health`。
 
-## 三、Step 3：2 个 subagent + 并行跑财报 prepare
+## 三、Step 3：宏观 subagent + 并行跑财报 prepare
 
-Step 1 门禁通过后，**在同一条消息里一次性发出三件事**：两个 subagent 派发 + 一个长命令 Bash。不要逐个串行等待。
+Step 1 门禁通过后，**在同一条消息里一次性发出两件事**：宏观 subagent 派发 + 一个长命令 Bash。不要串行等待第一件结束再发第二件。
 
 - 用运行时的通用 subagent 类型（Claude Code 下 `subagent_type: claude`；opencode 下用默认 agent，不要指定 `fixed-tracked-*` 那些专用角色）。
-- 两个 subagent 之间没有依赖，允许任意顺序完成。
 - 派发提示词逐字使用 [subagent 派发模板](references/subagent-prompts.md)，把 `<cur_date>` 替换成实际日期。**不要**自己改写任务句子：那些句子就是子 skill 的触发语。
-- **只派发这两个。** 不要在这里派发第三个做财报的 subagent（原因见「阶段总览」下的说明）。
+- **只派发这一个 subagent。** 不要在这里派发做财报的 subagent（原因见「阶段总览」下的说明），也**不要**派发渐进式新闻总结（该 skill 已暂停）。
 
 | Subagent | 触发 skill | 约耗时 | 主产出 |
 | --- | --- | --- | --- |
 | A 宏观总结 | `daily-macro-summary` | 5-10 min | `data/macro_economy/<YYYYMMDD>.md` |
-| B 渐进式新闻总结 | `gradual-hot-news-summary` | ~20 min | `data/selection_runs/<cur_date>/06_hot_news_state.json` |
 
 同时，主 agent 自己按「超时铁律」的**长命令方式**启动财报准备脚本：
 
 ```bash
 python scripts/prepare_financial_report_skill.py \
-  --date <cur_date> --sync-first --json --include-quant-prefilter
+  --date <cur_date> --sync-first --json
 ```
 
 - 约 10-30 分钟，主要耗时是把新发布的财报 PDF 转 Markdown（本地 `pymupdf4llm`，数百页年报约 1-2 分钟，所以 Step 2 必须已就绪）。
-- 它是纯 Python，**不派发任何 subagent**，所以和 A/B 并行不占并发额度。
+- 它是纯 Python，**不派发任何 subagent**，所以和宏观 subagent 并行不占并发额度。
 - 组件日志：`logs/research/PrepareFinancialReportSkill/`。
 - 正式研究**不得**加 `--skip-market-context`。
 
-### 三项都结束后
+### 两项都结束后
 
 先逐个核对产出文件是否真的落盘，**不要只看 subagent 的自述文字**。
 
-- A/B 有任一路失败 → 重新派发那一路（两个任务彼此独立且幂等）。
+- 宏观 subagent 失败 → 重新派发（幂等）。
 - 重试仍失败 → 报告失败现场，并说明"若带着这个缺口继续，`01_global_context.md` 会缺哪一块"。
 - prepare 脚本失败 → 读组件日志定位；若是 PDF 转换报错，先看是不是 PDF 无文本层或已损坏（缺文本层时 `pymupdf4llm` 提不出内容），把该文件记为数据缺口。
 
-三项齐了才进入 Step 4。此时 A/B 的 subagent 已经退出，subagent 并发额度腾空，才能开始派发财报角色。
+两项齐了才进入 Step 4。此时宏观 subagent 已经退出，subagent 并发额度腾空，才能开始派发财报角色。
 
 ## 四、Step 4：主 agent 亲自做逐股财报研究
 
@@ -187,7 +189,7 @@ python scripts/prepare_financial_report_skill.py \
   - ⚠️ **这条优先于 `~/.config/opencode/AGENTS.md` 规则三**（那条要求"Subagent 必须全量并发、禁止分批"）。在本 skill 的 Step 4 里，以"每批最多 10 个"为准。
   - 理由：`auto-trading-fixed-tracked` 记录了超限的真实后果——**任务空返回、写错日期目录、文件缺失**。这类失败是静默的，跑完看起来正常，文件却是空的，比慢一点危险得多。
 - 同一细分产业链的多只股票共用一个 Industry Researcher；不同产业链各自独立，不得互相借用。
-- 派发任何需要联网的角色前，先确认阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP） 可用。
+- 派发任何需要联网的角色前，先按 `configs/research/web_research_policy.md` 确认当前环境的搜索入口可用（Codex + GPT 优先自带搜索，其他组合优先百炼 MCP）。
 - 最终报告只由 Financial Author 写，`summary_index.json` 只由主 agent 通过注册脚本写。
 
 主产出：`data/stock_info/{name}_{symbol}/financial_reports/<YYYYMMDD>.md` 与 `summary_index.json`。
@@ -212,11 +214,11 @@ python scripts/run_daily_pipeline.py --date <cur_date> --max-workers 6 --all-boo
 data/skill_runs/<cur_date>/
 ├── run_manifest.json
 └── fixed_tracked/
-    ├── 01_global_context.md            # 宏观 / 大盘 / 新闻
+    ├── 01_global_context.md            # 宏观 / 大盘
     ├── 02_basic_snapshot_payload.json  # 个股快照
     ├── 03_agent_input.md               # 投资策略 + P0 筛选输入
     ├── 03_stock_analysis_input.md      # 个股辩论研究方法
-    └── 04_stock_research/              # 固定池 / 持仓 / 短期量化股 / 长期候选的逐股研究包
+    └── 04_stock_research/              # 只覆盖 TRACKED_A_STOCKS 固定池的逐股研究包
 ```
 
 ## 六、验收清单
@@ -224,14 +226,12 @@ data/skill_runs/<cur_date>/
 五步跑完后逐项确认（用 `find` / `ls`，不用 Glob）：
 
 - [ ] `data/global_cache/macro_objective_panel/daily_snapshots/<cur_date>.json` 存在
-- [ ] `data/selection_runs/<cur_date>/12_quant_prefilter_short.csv` 存在且非空
 - [ ] `data/macro_economy/<YYYYMMDD>.md` 的正文日期确实是 `cur_date`
-- [ ] `data/selection_runs/<cur_date>/06_hot_news_state.json` 存在，且 `run_date` == `cur_date`
 - [ ] 财报 `summary_index.json` 已登记本轮新增股票（无新财报时"零新增"也是合法结果）
 - [ ] Step 4 的 `ready_items` 逐只都有对应的 `financial_reports/<YYYYMMDD>.md` 落盘；**空文件视为失败**（并发超限的静默空返回就长这样）
 - [ ] `data/skill_runs/<cur_date>/run_manifest.json` 存在
 - [ ] `data/skill_runs/<cur_date>/fixed_tracked/` 下 `01`、`02`、`03`、`03_stock_analysis_input`、`04_stock_research/` 齐全
-- [ ] `04_stock_research/` 的逐股目录数量与量化初筛 + 固定池 + 持仓的并集量级相符，没有大面积缺失
+- [ ] `04_stock_research/` 的逐股目录数量与 `TRACKED_A_STOCKS` 数量相符,没有大面积缺失
 
 宏观总结的日期核对不能只看文件名：`daily-macro-summary` 允许以前一日文件为模板增量更新，要确认正文头部的数据口径日期也改过来了。
 
@@ -259,7 +259,7 @@ data/skill_runs/<cur_date>/
 
 这种「秒退」会被自动重试一次：`exit 0` + 产物为空 + 耗时 < `FAST_FAIL_SECONDS`（默认 300 秒）时，换 `FALLBACK_MODEL`（默认 `openai/gpt-5.6`，与主模型不同 provider）重跑。**只对秒退重试**——跑了半小时才失败的是真实链路问题（数据源、PDF 转换、余额），从头重来又慢又贵，按「失败与重跑」补那一段更合适。
 
-验收内容 = 「验收清单」里可机器判定的那几项（Step 1 门禁两项 + 宏观 + 新闻 + `run_manifest.json` + `01/02/03/03_stock_analysis_input` + `04_stock_research/` 非空）。额外还检查 `run_manifest.json` 与 `01_global_context.md` 的 **mtime 晚于本轮启动时间**——否则幂等重跑时，上一轮留下的旧文件会让一个空转轮蒙混过关。
+验收内容 = 「验收清单」里可机器判定的那几项（Step 1 门禁 + 宏观 + `run_manifest.json` + `01/02/03/03_stock_analysis_input` + `04_stock_research/` 非空）。额外还检查 `run_manifest.json` 与 `01_global_context.md` 的 **mtime 晚于本轮启动时间**——否则幂等重跑时，上一轮留下的旧文件会让一个空转轮蒙混过关。
 
 排查某一天到底缺什么，不必重跑整轮：
 
@@ -284,13 +284,13 @@ VERIFY_ONLY=1 START_EPOCH_OVERRIDE=0 scripts/cron_daily_data_prep.sh 2026-08-21
 python scripts/refresh_all_for_date.py --date <cur_date>
 
 # Step 3 的财报准备层
-python scripts/prepare_financial_report_skill.py --date <cur_date> --sync-first --json --include-quant-prefilter
+python scripts/prepare_financial_report_skill.py --date <cur_date> --sync-first --json
 
 # Step 5
 python scripts/run_daily_pipeline.py --date <cur_date> --max-workers 6 --all-books
 ```
 
-- Step 3 的 A / B 两路：重新派发同一个 subagent 提示词。
+- Step 3 的宏观一路：重新派发同一个 subagent 提示词。
 - Step 4：只对失败的那几只股票重新派发角色，已经落盘并注册的股票不要重做。
 
 排查顺序：先读 `logs/runs/<日期>/<流程>/` 下对应组件日志和 `merged.log`，再看 `logs/cron_daily_prep/latest_status.json`，最后才动代码。遵守 evidence-first 原则：**先拿到失败现场，再改东西**。

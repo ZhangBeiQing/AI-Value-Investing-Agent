@@ -206,7 +206,11 @@ class SharedDataAccess:
         if (
             include_disclosures
             and not is_etf
-            and (symbolInfo.is_cn_market() or symbolInfo.is_hk_market())
+            and (
+                symbolInfo.is_cn_market()
+                or symbolInfo.is_hk_market()
+                or symbolInfo.market == "US"
+            )
         ):
             disclosures = self._load_disclosure_bundle(
                 symbolInfo,

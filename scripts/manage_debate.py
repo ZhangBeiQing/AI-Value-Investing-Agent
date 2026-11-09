@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--book-type",
         default="fixed_tracked",
-        choices=("fixed_tracked",),
+        choices=("fixed_tracked", "us_tracked"),
     )
     parser.add_argument("--symbol", required=True)
     parser.add_argument(

@@ -24,7 +24,7 @@ from shared_data_access.market_calendar import NonTradingDayError
 
 def main() -> int:
     install_network_timeouts()
-    parser = argparse.ArgumentParser(description="运行 daily pipeline；短期量化初筛股票已并入综合 fixed_tracked。")
+    parser = argparse.ArgumentParser(description="运行 daily pipeline；默认只为 TRACKED_A_STOCKS 固定池生成 01-04。")
     parser.add_argument(
         "--date",
         dest="run_date",

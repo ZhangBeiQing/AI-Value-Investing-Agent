@@ -65,6 +65,10 @@ class ShareInfoProvider:
             fetched = self._fetch_share_info_from_hk(symbolInfo)
             if fetched:
                 result = fetched
+        elif symbolInfo.market == "US":
+            fetched = self._fetch_share_info_from_us(symbolInfo)
+            if fetched:
+                result = fetched
         else:
             LOGGER.warning("%s %s 未支持的股票市场", symbolInfo.stock_name, symbolInfo.symbol)
             raise ValueError(f"{symbolInfo.stock_name} {symbolInfo.symbol} 未支持的股票市场")
@@ -162,6 +166,43 @@ class ShareInfoProvider:
 
         LOGGER.info("从缓存文件获取 %s %s 股本: 总股本 %.2f 亿股", symbolInfo.stock_name, symbolInfo.symbol, total / 1e8)
         return ShareInfoResult(total=total, float_shares=float_shares, source="cninfo_cache")
+
+    def _fetch_share_info_from_us(self, symbolInfo: SymbolInfo) -> Optional[ShareInfoResult]:
+        """Read the total shares implied by eastmoney's US quote snapshot."""
+
+        try:
+            import json
+
+            share_cache_dir = build_cache_dir(
+                symbolInfo,
+                CacheKind.SHARE_INFO,
+                base_dir=self.base_data_dir,
+                ensure=False,
+            )
+            share_file = share_cache_dir / "us_quote.json"
+            if not share_file.exists():
+                LOGGER.warning("美股行情快照不存在: %s", share_file)
+                return None
+            payload = json.loads(share_file.read_text(encoding="utf-8"))
+        except Exception as exc:  # pragma: no cover - file/data failure
+            LOGGER.warning("读取美股行情快照失败: %s", exc)
+            return None
+
+        total = _normalize_share_value(payload.get("total_shares"))
+        if total is None or total <= 0:
+            price = _normalize_share_value(payload.get("price"))
+            market_cap = _normalize_share_value(payload.get("market_cap"))
+            if price and market_cap:
+                total = market_cap / price
+        if total is None or total <= 0:
+            return None
+        LOGGER.info(
+            "从东财行情快照获取美股 %s %s 股本: 总股本 %.2f 亿",
+            symbolInfo.stock_name,
+            symbolInfo.symbol,
+            total / 1e8,
+        )
+        return ShareInfoResult(total=total, float_shares=total, source="eastmoney_quote")
 
     def _fetch_share_info_from_hk(self, symbolInfo:SymbolInfo) -> Optional[ShareInfoResult]:
         try:

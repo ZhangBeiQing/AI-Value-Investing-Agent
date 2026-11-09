@@ -21,6 +21,8 @@ import akshare as ak  # type: ignore
 from configs.stock_pool import (
     FORCED_SHORT_BOOK_STOCKS,
     TRACKED_A_STOCKS,
+    US_BENCHMARK,
+    US_TRACKED_STOCKS,
     StockEntry,
 )
 
@@ -135,7 +137,8 @@ MARKET_CALENDAR_NAMES: Dict[str, Tuple[str, ...]] = {
 }
 
 _SYMBOL_METADATA_MAP: Dict[str, StockEntry] = {
-    entry.symbol.upper(): entry for entry in TRACKED_A_STOCKS
+    entry.symbol.upper(): entry
+    for entry in [*TRACKED_A_STOCKS, *US_TRACKED_STOCKS, US_BENCHMARK]
 }
 for entry in FORCED_SHORT_BOOK_STOCKS:
     _SYMBOL_METADATA_MAP.setdefault(
@@ -216,6 +219,9 @@ class SymbolInfo:
     
     def is_cn_index_market(self) -> bool:
         return self.market == "CN_INDEX"
+
+    def is_us_market(self) -> bool:
+        return self.market == "US"
 
 
 
@@ -741,7 +747,16 @@ def get_stock_name(symbol: str, logger: Optional[logging.Logger] = None) -> str:
     
     # 如果本地映射表中没有，则使用 akshare API 获取
     try:
-        if is_hk_stock(normalized_symbol):
+        if normalized_symbol.endswith(".US"):
+            from shared_data_access.us_market import get_us_stock_name
+
+            stock_name = get_us_stock_name(
+                normalized_symbol.split(".")[0],
+                logger=logger,
+            )
+            if not stock_name:
+                raise ValueError(f"东方财富美股快照未返回名称: {normalized_symbol}")
+        elif is_hk_stock(normalized_symbol):
             # 港股使用 ak.stock_hk_financial_indicator_em
             if logger:
                 logger.info(f"使用 akshare API 获取港股名称: {normalized_symbol}")

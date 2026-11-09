@@ -120,7 +120,7 @@ python scripts/manage_industry_research.py prepare-theme-research \
 
 优先使用政府、交易所、行业协会、公司公告、业绩会、客户和供应商原始材料。关键结论需要一个权威原始来源，或两个相互独立的可靠来源。凡是可能变化的产业事实必须联网补证。
 
-所有外部搜索一律使用阿里云百炼搜索（DSH 用 `mcp__bailian__bailian_web_search`；OpenCode / Claude Code 用 `WebSearch` MCP），不得改用其他搜索通道；它不存在或被禁用时应失败关闭，不自行拼接爬虫或第三方检索 API 替代。搜索只负责语义召回，重大数字仍需打开原始网页或 PDF 核对。
+所有外部搜索按运行环境选择：Codex + GPT 优先使用自带联网搜索，其他环境或模型组合优先使用阿里云百炼搜索 MCP；首选不可用时可使用会话已提供的另一入口，具体遵循 `configs/research/web_research_policy.md`；所有可用入口均不可用时失败关闭，不自行拼接爬虫或第三方检索 API 替代。搜索只负责语义召回，重大数字仍需打开原始网页或 PDF 核对。
 
 默认由当前主agent完成单主题研究，不派发并行subagent，保持单人月度流程可控。
 

@@ -335,7 +335,7 @@ JSON 示例：
 
 ### 4.5 内置搜索的角色
 
-使用运行时内置搜索工具（DSH / Codex 为 `mcp__bailian__bailian_web_search`，OpenCode / Claude Code 为 `WebSearch`）做互联网召回，不依赖外部搜索 MCP。搜索返回的是候选证据，不代表已通过日期和来源审查。
+按 `configs/research/web_research_policy.md` 选择入口做互联网召回：Codex + GPT 优先自带搜索，其他组合优先百炼 MCP。搜索返回的是候选证据，不代表已通过日期和来源审查。
 
 只有需要打开某个官方网站、公告原文或具体页面核对时，才使用页面读取能力。
 

@@ -1,4 +1,4 @@
-更新日期：2026-10-01
+更新日期：2026-11-06
 
 fixed_tracked 当前采用模型自主决策策略：主 Agent 自主选择 P0，不设置固定仓位上限、涨跌触发阈值或强制研究周期；个股角色自主决定估值方法、动作、数量与执行节奏。输入文件、决策字段、事实核验与执行校验保持兼容。研究包的历史投资逻辑记忆不包含 `action_type`、`action_num` 和历史 verdict；正式决策与交易账本仍保留完整记录。策略源更新后需重新生成当天 03 输入才会应用到后续分析。
 
@@ -25,38 +25,42 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 
 由 `services/data_refresh/refresh_orchestrator.py` 编排，按顺序执行：
 
-1. `manage_daily_data` — 刷新宏观面板、价格、财报、`basic_stock_info` 等基础缓存（`TRACKED_A_STOCKS ∪ master_universe`，约 100+ 只）
+1. `manage_daily_data` — 刷新宏观面板、价格、财报、`basic_stock_info` 等基础缓存（默认只有 `TRACKED_A_STOCKS`，约 24 只）
 
-2. `selection.run-news` — 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json`
-3. `selection.build-board-heat-state` — 板块热度分析 → `05_board_heat_state.json` / `05_board_heat_digest.json`
-4. `selection.build-factor-store` → `selection.build-factor-scores` → `selection.build-quant-prefilter` — 生成因子宽表、评分与短/长两本候选 → `12_factor_snapshot.*` / `13_factor_scores.*` / `12_quant_prefilter*.csv`
+2. （已暂停）`selection.run-news` — 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json`
+3. （已暂停）`selection.build-board-heat-state` — 板块热度分析 → `05_board_heat_state.json` / `05_board_heat_digest.json`
+
+   > 2、3 两步由 `configs/feature_flags.py` 控制，当前 `ENABLE_GRADUAL_NEWS_SUMMARY=False`、`ENABLE_BOARD_HEAT_LAYER=False`，默认不执行。
+
+4. （已暂停）`selection.build-factor-store` → `selection.build-factor-scores` → `selection.build-quant-prefilter` — 生成因子宽表、评分与短/长两本候选 → `12_factor_snapshot.*` / `13_factor_scores.*` / `12_quant_prefilter*.csv`
+
+   > 由 `configs/feature_flags.py` 的 `ENABLE_FACTOR_PREFILTER_LAYER=False` 关闭；刷新范围因此不再扩展到 `master_universe`。
 5. 清理 `data/research_artifact_cache/{run_date}/` — 让下一次 `run_daily_pipeline` 必然基于最新数据重建 04 产物
 
 网络请求在相关脚本入口默认设 60 秒单次网络等待上限（可通过 `NETWORK_SOCKET_TIMEOUT_SECONDS` 调整，并非整次请求的总耗时上限）；`manage_daily_data` 的 `basic_stock_info` 子进程另有默认 3600 秒的整步上限（可通过 `MANAGE_DAILY_DATA_STEP_TIMEOUT_SECONDS` 调整）。超时会作为失败记录，不以旧数据冒充当日结果；其他子步骤不共用该整步上限。
 
 跑完后脚本会打印「后续 skill 清单」，下面 1.2~1.6 就是按这份清单逐条往下走。
 
-### 1.2 宏观与新闻总结（人工触发，需 LLM / 联网）
+### 1.2 宏观总结（人工触发，需 LLM / 联网）
 
 ```text
 1. /daily-macro-summary            → data/macro_economy/YYYYMMDD.md
-2. /gradual-hot-news-summary       → data/selection_runs/YYYY-MM-DD/06_hot_news_state.json（完整存档）
-                                      + 06_hot_news_digest.json（由 scripts/build_hot_news_digest.py 派生的轻量摘要，供下游 AI/人工读取）
 ```
 
-- 宏观总结是新闻主题状态的上游校准器；渐进式新闻主题状态是后续 03_agent_input 与各 subagent 的核心研究输入。
-- 详见 `.codex/skills/daily-macro-summary/SKILL.md` 与 `.codex/skills/gradual-hot-news-summary/SKILL.md`。
+- 宏观总结是 `01_global_context.md` 的核心输入。
+- **渐进式新闻总结已暂停**（`configs/feature_flags.py` 的 `ENABLE_GRADUAL_NEWS_SUMMARY=False`）：不再生成 `06_hot_news_state.json` / `06_hot_news_digest.json`，下游 prompt 也不再引用；板块热度层（`05_board_heat_*`）同因 `ENABLE_BOARD_HEAT_LAYER=False` 暂停。
+- 详见 `.codex/skills/daily-macro-summary/SKILL.md`；历史设计见 `.codex/skills/gradual-hot-news-summary/SKILL.md`（文件保留以便一键恢复）。
 
 ### 1.3 财报准备与总结（fixed_tracked + 量化初筛短期股）
 
 ```bash
-3. python scripts/prepare_financial_report_skill.py --date 2026-06-11 --sync-first --json --include-quant-prefilter
+3. python scripts/prepare_financial_report_skill.py --date 2026-06-11 --sync-first --json
 4. /financial-report-summary       → 各股 data/stock_info/{name}_{symbol}/financial_reports/*.md
 ```
 
 - `prepare_financial_report_skill.py` 会同步公告 PDF、整理待生成清单，并为每股生成相互隔离的财报前市场上下文与分析日价格/增强估值上下文；它复用底层股票研究服务，不调用整个 `run_daily_pipeline.py`。
 - `/financial-report-summary` 按细分产业链协调 Industry Researcher，并为每股协调 Expectation Scout 和 Financial Author；Author 一次撰写直接写入 `financial_reports/`，主 agent 通过质量门禁再注册 `summary_index.json`。
-- 财报前预期严格按公告时点截断；年度同花顺预测不能冒充季度一致预期。外部搜索统一使用运行时内置搜索工具，重大数字回到原始来源核验。
+- 财报前预期严格按公告时点截断；年度同花顺预测不能冒充季度一致预期。外部搜索按运行环境选择（Codex + GPT 优先自带搜索，其他组合优先百炼 MCP），重大数字回到原始来源核验。
 - 详见 `.codex/skills/financial-report-summary/SKILL.md`。
 
 ### 1.4 综合 fixed_tracked 01-04 产物
@@ -71,9 +75,8 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 `run_daily_pipeline.py` 默认跳过公告刷新：公告的全市场刷新归属于前一步 `refresh_all_for_date.py`。因此该入口只消费已准备缓存并生成 01-04；仅排障或独立维护公告时才显式传入 `--refresh-disclosures`。
 
 - **fixed_tracked** 取自 `configs/stock_pool.py` 的 `TRACKED_A_STOCKS`
-- **实际持仓**来自 `book-fixed_tracked` 的人工持仓覆盖，必须纳入 fixed_tracked
-- **短期量化候选**直接读取 `12_quant_prefilter_short.csv` 并入 fixed_tracked，不再生成独立交易账本
-- **长期候选**优先取 `09_long_book_candidates.json`，缺失时回退 `12_quant_prefilter_long.csv`，随后并入 fixed_tracked
+- **手工持仓覆盖 / 量化候选**：默认都不并入（`ENABLE_SELECTION_UNIVERSE_MERGE=False`），研究包只覆盖固定池
+- **短期量化候选 / 长期候选**：`ENABLE_SELECTION_UNIVERSE_MERGE=False`（当前默认）时**不并入**，`04_stock_research/` 只覆盖固定池；改回 `True` 才恢复读 `12_quant_prefilter_short.csv` 与 `09_long_book_candidates.json` / `12_quant_prefilter_long.csv`
 
 短期量化候选进入 fixed_tracked 后只代表扩大 P0 候选范围，统一使用 fixed-tracked 的投资策略、仓位约束和多 Agent 辩论；不再有旧的「20 个交易日强制退出」规则。
 
@@ -83,7 +86,7 @@ python scripts/refresh_all_for_date.py --date 2026-08-09 --allow-non-trading-dat
 data/skill_runs/YYYY-MM-DD/
 ├── run_manifest.json                     # 本日 fixed_tracked 来源、symbols、capital_budget
 └── fixed_tracked/
-│   ├── 01_global_context.md              # 宏观/大盘/渐进式新闻总结
+│   ├── 01_global_context.md              # 宏观/大盘
 │   ├── 02_basic_snapshot_payload.json    # basic_stock_info 快照（用于定价基准）
 │   ├── 03_agent_input.md                 # 共享投资策略 + fixed 主 Agent组合研判与 P0 输入
 │   ├── 03_stock_analysis_input.md        # 共享投资策略 + fixed 个股辩论角色研究方法
@@ -136,11 +139,12 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── register_financial_report_summary.py
 │   ├── run_daily_pipeline.py
 │   ├── run_post_trade.py
+│   ├── run_us_research.py       # 美股研究包入口（us_tracked 账本）
 │   ├── merge_subagent_decisions.py
 │   └── ...
 ├── services/                   # 业务编排层
 │   ├── data_refresh/           # 一键刷新编排（refresh_orchestrator.py）
-│   ├── pipeline/               # 01-04 产物生成（daily_pipeline.py + steps/）
+│   ├── pipeline/               # 01-04 产物生成（daily_pipeline.py + steps/ + us_research.py）
 │   ├── prompting/              # system prompt 组装
 │   ├── research/               # 宏观/新闻/财报/个股研究的核心实现
 │   ├── news/                   # 公告抓取 / 原子摘要 / 战略审计（disclosures_builder.py）
@@ -155,6 +159,9 @@ data/skill_runs/YYYY-MM-DD/
 │   ├── data_access.py          # SharedDataAccess.prepare_dataset() 唯一入口
 │   ├── cache_registry.py       # 缓存类型 / TTL / 路径登记
 │   ├── price_fetch.py          # A股/港股/ETF/指数日线抓取与 canonical 归一化
+│   ├── us_market.py            # 美股 secid 探测、行情快照、日线与股本
+│   ├── us_financials.py        # 美股三大报表归一化（长表→A股宽表 + 币种折算）
+│   ├── us_disclosures.py       # SEC EDGAR 申报缓存与公告要点提取
 │   ├── market_calendar.py      # 交易日历（000001.IDX + SSE 回退）
 │   ├── chip_distribution.py    # 筹码分布抓取/回退计算
 │   ├── board_metrics.py        # 板块行情/历史
@@ -193,7 +200,7 @@ data/skill_runs/YYYY-MM-DD/
 
 ### 3.1 统一入口 `SharedDataAccess`
 
-- **唯一入口**：`shared_data_access.SharedDataAccess.prepare_dataset(symbolInfo, as_of_date, ...)` 是访问 akshare / 巨潮的唯一路径。
+- **唯一入口**：`shared_data_access.SharedDataAccess.prepare_dataset(symbolInfo, as_of_date, ...)` 是访问 akshare / 巨潮 / SEC EDGAR 的唯一路径。
 - **交易日入口**：`shared_data_access.market_calendar` 优先使用 `000001.IDX` 实际行情日期，缓存不能完整覆盖请求区间时使用 `pandas_market_calendars` 的 `SSE` 日历；加载失败时直接报错，禁止退化成“周一至周五”近似。
 - 它会先调用 `ensure_symbol_data` 刷新价格、财报、股本、公告缓存，再按 `as_of_date` 截断 DataFrame，组装 `FinancialDataBundle` / `PriceDataBundle` / `ShareInfo` / `DisclosureBundle` 返回。
 - 当历史请求日期早于价格缓存首个交易日时，统一标记为 `not_listed_as_of_date` 并从当日研究集合排除；缓存缺失、损坏或已上市股票异常缺数据仍按错误处理。
@@ -245,18 +252,19 @@ data/skill_runs/YYYY-MM-DD/
 ### 4.1 当前在用的链路
 
 1. `master_universe` → `data/universe/master_universe.json`（选股股票宇宙，由 `bootstrap` 子命令初始化）
-2. `run-news` → 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json`
-3. `build-board-heat-state` → 板块热度研究 → `05_board_heat_state.json` / `05_board_heat_digest.json`
-4. `/daily-macro-summary` + `/gradual-hot-news-summary` → 宏观总结 + 渐进式主题状态 → `06_hot_news_state.json`（存档）与 `06_hot_news_digest.json`（轻量，下游默认读）
-5. `build-factor-store` → `data/factor_store/by_symbol/*` 与 `by_date/{date}.*` + `data/selection_runs/{date}/12_factor_snapshot.*`
-6. `build-factor-scores` → `13_factor_scores.{csv,json}`（按 `factor_scoring.yaml` 配置生成 short_score / long_score）
-7. `build-quant-prefilter` → `12_quant_prefilter.csv` + `12_quant_prefilter_short.csv` + `12_quant_prefilter_long.csv`
+2. （已暂停）`run-news` → 全市场新闻采集 / 去重 / 增强 → `03_news_prompt_input.json`
+3. （已暂停）`build-board-heat-state` → 板块热度研究 → `05_board_heat_state.json` / `05_board_heat_digest.json`
+4. `/daily-macro-summary` → 宏观总结 → `data/macro_economy/YYYYMMDD.md`（`/gradual-hot-news-summary` 已暂停）
+5. （已暂停）`build-factor-store` → `data/factor_store/by_symbol/*` 与 `by_date/{date}.*` + `data/selection_runs/{date}/12_factor_snapshot.*`
+6. （已暂停）`build-factor-scores` → `13_factor_scores.{csv,json}`（按 `factor_scoring.yaml` 配置生成 short_score / long_score）
+7. （已暂停）`build-quant-prefilter` → `12_quant_prefilter.csv` + `12_quant_prefilter_short.csv` + `12_quant_prefilter_long.csv`
 
-### 4.2 量化初筛 → fixed_tracked 的衔接
+### 4.2 量化初筛 → fixed_tracked 的衔接（已暂停）
 
-`run_daily_pipeline` 直接把 `12_quant_prefilter_short.csv` 全部并入 fixed_tracked；长期候选优先读取 `09_long_book_candidates.json`，不存在时回退到 `12_quant_prefilter_long.csv`，同样并入 fixed_tracked。
+2026-11-05 起日常范围收敛为 `TRACKED_A_STOCKS`：
 
-日常默认走「量化初筛 → 综合 fixed_tracked」。短期因子股会出现在 `03_agent_input.md` 的股票池中，并在 `fixed_tracked/04_stock_research/` 生成逐股研究包，供主 Agent 结合当天走势和历史结论筛选 P0。
+- `ENABLE_SELECTION_UNIVERSE_MERGE=False` 时，`run_daily_pipeline` 不再并入 `12_quant_prefilter_short.csv` 与长期候选，`04_stock_research/` 只覆盖固定池
+- 长期候选（`09_long_book_candidates.json`）与量化初筛（`12_quant_prefilter_*`）仍然保留代码路径，需要时把开关改回 `True` 或手动跑选股脚本
 
 ### 4.3 设计文档索引
 
@@ -329,9 +337,9 @@ data/skill_runs/YYYY-MM-DD/
 
 | Skill | 触发场景 |
 | --- | --- |
-| `daily-data-preparation` | 用户说「开始今天的数据准备」→ 串起刷新、宏观/新闻总结、财报 prepare 与研究、`run_daily_pipeline`，产出 01-04 |
+| `daily-data-preparation` | 用户说「开始今天的数据准备」→ 串起刷新、宏观总结、财报 prepare 与研究、`run_daily_pipeline`，产出 01-04 |
 | `daily-macro-summary` | 用户说「更新今天的宏观总结」 → `data/macro_economy/YYYYMMDD.md` |
-| `gradual-hot-news-summary` | 用户说「更新今日热点主题总结」 → `06_hot_news_state.json` |
+| `gradual-hot-news-summary` | **已暂停**（`configs/feature_flags.py`）；仅手动恢复时使用 → `06_hot_news_state.json` |
 | `monthly-industry-research` | 用户说「开始本月行业研究」 → 月度行业雷达与单主题产业链深研 |
 | `auto-selection-daily-pipeline` | 用户说「开始今天自动选股」（实验性，日常通常不跑） |
 | `financial-report-summary` | 用户说「生成财报总结」 → 各股 `financial_reports/*.md` |
@@ -368,6 +376,7 @@ data/skill_runs/YYYY-MM-DD/
 | `docs/fixed_tracked_debate_prompt_design.md` | fixed_tracked 多 Agent 辩论与 Prompt 分层详细设计 |
 | `docs/testing/README.md` | `tests/` 回归测试网的定位、运行方式、约定与覆盖范围 |
 | `docs/backtest/fixed_tracked_agent_backtest_design.md` | fixed_tracked 隔离多 Agent 历史回测系统详细设计 |
+| `docs/us_stock_support_design.md` | 美股数据源映射、财务归一化、币种/ADR 处理与 SEC 公告替换方案 |
 
 ---
 

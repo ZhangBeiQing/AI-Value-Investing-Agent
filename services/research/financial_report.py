@@ -607,6 +607,21 @@ def get_financial_report_summary(
     forecast_text, forecast_path = _load_latest_forecast_markdown(symbol_info, today_dt)
 
     files = _list_report_files(symbol_info)
+    if not files and symbol_info.market == "US":
+        from services.research.us_financial_summary import build_us_financial_summary
+
+        structured = build_us_financial_summary(symbol_info, today_dt)
+        if structured:
+            logger.info("美股 %s 使用结构化财报摘要", symbol_info.symbol)
+            return {
+                "stock": f"{stock_name} ({stock_code})",
+                "content": structured,
+                "metadata": {
+                    "source": "us_structured_summary",
+                    "symbol": symbol_info.symbol,
+                    "today": today_time,
+                },
+            }
     if not files:
         message = {"error": "未找到财报目录或文件", "stock": f"{stock_name} ({stock_code})"}
         if consensus_md or forecast_text:

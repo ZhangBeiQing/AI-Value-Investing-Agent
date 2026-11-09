@@ -166,7 +166,7 @@ def _render_deep_research_prompt(brief: Mapping[str, Any], outputs: Mapping[str,
 
 ## 搜索与证据要求
 
-- 所有外部搜索一律使用运行时内置搜索工具（DSH / Codex 为 `mcp__bailian__bailian_web_search`，OpenCode / Claude Code 为 `WebSearch`）；不可用时失败关闭，不自行拼接爬虫或第三方检索 API 替代。
+- Codex + GPT 优先使用自带联网搜索，其他环境或模型组合优先使用阿里云百炼搜索 MCP；首选不可用时可使用会话已提供的另一入口，具体遵循 `configs/research/web_research_policy.md`；所有可用搜索入口均不可用时失败关闭，不自行拼接爬虫或第三方检索 API 替代。
 - 优先使用政府、交易所、行业协会、公司公告、业绩会和客户/供应商材料。
 - 普通新闻只能作为线索；关键结论至少需要两个相互独立的来源，或一个权威原始来源。
 - 每条关键事实记录 `period_end`、`release_date`、`fetched_at`、来源标题和URL。

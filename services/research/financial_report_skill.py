@@ -19,6 +19,7 @@ from services.research.financial_report_summary_prompts import (
     REPORT_ANALYSIS_PROMPT_TEMPLATE,
 )
 from commons.stock_utils import parse_symbol
+from shared_data_access.us_disclosures import filing_report_period
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -667,9 +668,46 @@ def _resolve_report_type(title: str) -> tuple[Optional[str], Optional[int]]:
     return None, None
 
 
+def _classify_us_report_title(
+    title: str,
+) -> Tuple[Optional[str], Optional[int], Optional[str], int]:
+    """按 SEC 的报告期归类美股季度。
+
+    美股的披露标题形如 ``临时公告（6-K）（报告期 2026-09-30）``，报告期就是会计
+    期间末，比解析英文 ``Third Quarter`` 稳定得多。非自然财年（如英伟达 7 月结账）
+    会按日历季度退化，属于已知限制。
+    """
+
+    period = filing_report_period(title)
+    if not period:
+        return None, None, None, 99
+    try:
+        month = int(period[5:7])
+    except (TypeError, ValueError):
+        return None, None, None, 99
+
+    if month <= 3:
+        report_type, quarter = "q1", 1
+    elif month <= 6:
+        report_type, quarter = "interim", 2
+    elif month <= 9:
+        report_type, quarter = "q3", 3
+    else:
+        report_type, quarter = "annual", 4
+
+    upper = title.upper()
+    if any(form in upper for form in ("10-Q", "10-K", "20-F", "40-F")):
+        return report_type, quarter, "full_report", 0
+    if any(form in upper for form in ("6-K", "8-K")):
+        return report_type, quarter, "earnings_announcement", 2
+    return report_type, quarter, "other_report_like", 5
+
+
 def _classify_report_title(symbol: str, title: str) -> Tuple[Optional[str], Optional[int], Optional[str], int]:
     symbol_info = parse_symbol(symbol)
     text = title.strip()
+    if getattr(symbol_info, "market", "") == "US":
+        return _classify_us_report_title(text)
     report_type, quarter = _resolve_report_type(text)
     if not report_type or not quarter:
         return None, None, None, 99
@@ -700,6 +738,12 @@ def _classify_report_title(symbol: str, title: str) -> Tuple[Optional[str], Opti
 
 
 def _resolve_fiscal_year(title: str, report_date: str) -> int:
+    # 美股标题里带「报告期 YYYY-MM-DD」，就是会计期间末，直接取年份；
+    # 不能用 A 股「年报次年披露」的减一规则，否则会把 2025 年报算成 2024。
+    us_period = filing_report_period(title)
+    if us_period:
+        return int(us_period[:4])
+
     year_match = re.search(
         r"(20\d{2}|\d{2})(?:\s*年|\s*(?:财务|财政)年度)",
         title,

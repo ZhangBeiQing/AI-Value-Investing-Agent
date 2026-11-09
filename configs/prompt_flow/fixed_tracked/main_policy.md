@@ -34,6 +34,14 @@
 {position_return_pct}
 ```
 
+- 持仓币种明细（`price_local`/`avg_cost_local` 为标的原始币种报价，`*_cny` 为按 1 USD = {usd_cny_fx} CNY 折算后的人民币口径）：
+
+```json
+{positions_detail}
+```
+
+> 组合口径：`真实总资产`、`持仓浮动盈亏`、`持仓浮动盈亏率` 均已包含美元持仓按 1 USD = {usd_cny_fx} CNY 的折算；美元标的（代码以 `.US` 结尾）按 1 股为交易单位，A 股按 100 股、港股与 ETF 按对应规则。
+
 ## 股票池
 
 {stock_pool_block}
@@ -46,8 +54,8 @@
 2. `01_global_context.md`：宏观、上证指数和市场状态。
 3. `price_delta_report.md`：按 |变化%| 降序排列的全池价格变化表，`变化%` 为现价较上次深研价的累计变化，`上次印象` 为上次深度分析的估值印象；Step 3 的价格/估值类判断直接对照这两列。
 4. `data/skill_runs/_analysis_index.json`：最近深度分析日期、价格印象和置信度。
-5. `data/selection_runs/{date}/06_hot_news_state.json`：热点主题状态；缺失时记录为无此输入。
-6. `data/selection_runs/{date}/05_board_heat_digest.json`：板块热度；缺失时记录为无此输入。
+
+> 已暂停：渐进式新闻总结（`06_hot_news_state.json`）与板块热度层（`05_board_heat_*`）当前不生成、不读取，见 `configs/feature_flags.py`。不要因为缺少这两个输入而判为数据缺口。
 
 不要读取 `04_stock_research/`。主 Agent只做全池快扫和资源分配，逐股证据审查由辩论 Agent完成。
 

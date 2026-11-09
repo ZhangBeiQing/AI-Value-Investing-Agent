@@ -8,6 +8,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from configs.feature_flags import (
+    board_heat_layer_enabled,
+    gradual_news_summary_enabled,
+)
 from services.prompting.system_prompt import (
     get_skill_prompt_context,
     get_skill_system_prompt,
@@ -81,7 +85,7 @@ def build_user_query(research_files: List[Path], run_date: str, book_type: str) 
         "在完成 USER_QUERY 的两条强制输出前，不要打开任何外部文件。",
         "",
         "- 02_basic_snapshot_payload.json（《基本面数据概览》：basic_stock_info 生成的 basic snapshot；仅供主agent在 Step 0 做全组合快扫与定价基准）",
-        "- 01_global_context.md（宏观/上证/渐进式新闻总结）",
+        "- 01_global_context.md（宏观/上证）",
         "",
         "",
         "## 个股研究包索引（按需逐只打开，禁止批量读取）",
@@ -110,8 +114,16 @@ def build_fixed_main_user_query(
         "- 02_basic_snapshot_payload.json",
         "- 01_global_context.md",
         f"- price_delta_report.md（当前价 vs 上次深研价变化，选 P0 参考）",
-        f"- data/selection_runs/{run_date}/06_hot_news_state.json（可选）",
-        f"- data/selection_runs/{run_date}/05_board_heat_digest.json（可选）",
+        *(
+            [f"- data/selection_runs/{run_date}/06_hot_news_state.json（可选）"]
+            if gradual_news_summary_enabled()
+            else []
+        ),
+        *(
+            [f"- data/selection_runs/{run_date}/05_board_heat_digest.json（可选）"]
+            if board_heat_layer_enabled()
+            else []
+        ),
         f"- {analysis_index_ref}（不存在时按冷启动处理）",
         "",
         "## 个股研究包索引（仅用于确认文件存在，主 Agent 不打开内容）",
@@ -345,6 +357,38 @@ def write_price_delta_report(
     if not rows:
         lines.append("| （无可用上次深研价记录） | - | - | - | - | - |")
 
+    # 快照里存在、但分析索引中没有有效记录的标的（新入池或从未深研）单独列出，
+    # 避免它们因为「没有上次深研价」而从价格变化报告中消失、进而漏掉 P0。
+    covered = {r["symbol"] for r in rows}
+    uncovered: List[Dict[str, Any]] = []
+    for symbol, fields in stocks.items():
+        if symbol in covered or not isinstance(fields, dict):
+            continue
+        cur_price = fields.get("latest_price")
+        if not isinstance(cur_price, (int, float)):
+            continue
+        uncovered.append(
+            {
+                "symbol": symbol,
+                "stock_name": fields.get("stock_name") or symbol,
+                "cur_price": float(cur_price),
+            }
+        )
+    if uncovered:
+        uncovered.sort(key=lambda r: r["symbol"])
+        lines += [
+            "",
+            "## 无历史深研记录的标的（首次深研候选）",
+            "",
+            "这些标的在当前账本的分析索引中没有有效的上次深研价，按规则视作「从未深度分析」，"
+            "应按 P0 规则第 1 条（新入池）或兜底条款直接纳入复核。",
+            "",
+            "| 股票 | 当前价 | 上次印象 |",
+            "| --- | ---: | --- |",
+        ]
+        for r in uncovered:
+            lines.append(f"| {r['stock_name']}（{r['symbol']}） | {r['cur_price']:.2f} | 无 |")
+
     target = Path(output_dir) / PRICE_DELTA_REPORT_FILENAME
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return target
@@ -440,7 +484,7 @@ def write_agent_input_bundle(
             DEFAULT_ANALYSIS_INDEX_REF, analysis_index_ref
         )
     (target_dir / "03_agent_input.md").write_text(agent_input, encoding="utf-8")
-    if book_type == "fixed_tracked":
+    if book_type in {"fixed_tracked", "us_tracked"}:
         stock_analysis_input = build_stock_analysis_input(
             run_date,
             resolved_signature,
