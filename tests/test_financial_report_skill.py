@@ -3,11 +3,33 @@ from pathlib import Path
 from shared_data_access import stockstar_financial_report as stockstar_fallback
 from services.research.financial_report_skill import (
     FinancialReportMeta,
+    _classify_report_title,
     _resolve_fiscal_year,
     _select_latest_two_reports,
     _summary_entry_covers_report,
 )
 from commons.stock_utils import parse_symbol
+
+
+def test_voluntary_earnings_preview_is_classified_as_financial_report() -> None:
+    result = _classify_report_title(
+        "688213.SH", "2026年半年度业绩预告的自愿性披露公告"
+    )
+    assert result == ("interim", 2, "earnings_announcement", 2)
+
+
+def test_voluntary_nonfinancial_notice_remains_excluded() -> None:
+    result = _classify_report_title(
+        "688213.SH", "2026年半年度自愿性披露重大合同公告"
+    )
+    assert result[-1] == 99
+
+
+def test_voluntary_earnings_preview_reply_remains_excluded() -> None:
+    result = _classify_report_title(
+        "688213.SH", "2026年半年度业绩预告的自愿性披露公告问询回复"
+    )
+    assert result[-1] == 99
 
 
 def _report(*, announcement_id: str, report_type: str, quarter: int, fiscal_year: int) -> FinancialReportMeta:
@@ -113,6 +135,21 @@ def test_summary_entry_does_not_cover_new_quarter() -> None:
     }
 
     assert not _summary_entry_covers_report(registered, latest)
+
+
+def test_earnings_change_previews_do_not_cover_actual_interim_report() -> None:
+    latest = _report(
+        announcement_id="actual-interim", report_type="interim",
+        quarter=2, fiscal_year=2026,
+    )
+    registered = {
+        "announcement_id": "preview", "report_date": "2026-07-14",
+        "report_type": "interim", "fiscal_year": 2026, "quarter": 2,
+    }
+    for label in ("业绩预增公告", "业绩预减公告", "业绩预增报告", "盈利预告"):
+        assert not _summary_entry_covers_report(
+            registered, latest, {"preview": "2026年半年度" + label}
+        ), label
 
 
 def test_summary_entry_uses_persisted_period_when_available() -> None:

@@ -19,6 +19,8 @@
 | --- | --- | --- | --- |
 | `{experiment_root}/experiment.json` | `prepare` / `extend` 程序 | 创建、合法延长区间 | 人工或 Agent 不得修改起始日期、初始资金、实验 ID、执行规则；`extend` 只更新结束日期与历史记录 |
 | `{experiment_root}/coverage.json` | `prepare` / `extend` 程序 | 创建或扩展后 | 只读审计结果 |
+| `{experiment_root}/analysis_schedule.json` | 主 Agent | 初始化周度调度、用户改频率、研究窗口结束 | 记录七自然日间隔、锚日期、下一研究日及变更原因；不是完成凭证，不改实验身份或历史成交 |
+| `{experiment_root}/macro_economy/YYYYMMDD.md` | 宏观研究 Agent | 显式 regenerate 或缺少可复用历史稿时 | 历史截止、五节契约、非空白字符不超过 3000；保留共享原稿 |
 | `{experiment_root}/agent_data/backtest-{id}/` | 隔离账本与后处理程序 | 初始化与每次成功执行后 | 禁止使用真实 `data/agent_data` 替代 |
 | `{experiment_root}/checkpoints/` | 程序 | 运行中 | 仅用于恢复，不能手工伪造完成状态 |
 | `{experiment_root}/results/` | `finalize` 程序 | 全部日期完成后 | 扩展实验后旧结果过期，必须重建 |
@@ -30,7 +32,7 @@
 | 准备 | `00_backtest_context.json/.md` | `prepare-day` | 合法决策日 | 文件存在；所有角色先读 `.md` |
 | 准备 | `00_prepare_status.json` | `prepare-day` | 输入/财报门禁检查完成 | `status == ready` 才可 P0 |
 | 准备 | `01`、`02`、`03`、`04` | `prepare-day` / 历史流水线 | 财报门禁通过 | 文件齐全；研究包只限 D 日及以前信息 |
-| 准备 | `../run_manifest.json` | `prepare-day` | 当日 universe 建立 | 确认固定池 + 当日 12 候选 + 已持仓股 |
+| 准备 | `../run_manifest.json` | `prepare-day` | 当日 universe 建立 | 确认当前固定池（含美股）+ 已持仓股 |
 | 目录 | `debate/.../` 空目录 | `manage_debate.py prepare` | P0 已确认 | 只建目录，不写角色结果 |
 | Opening | `advocates/bull/opening.json` | Bull | 目录存在 | JSON 合法；只读本股研究包 |
 | Opening | `advocates/bear/opening.json` | Bear | 目录存在 | JSON 合法；只读本股研究包 |
@@ -39,6 +41,7 @@
 | 质询（可选） | `adjudicator/review_request.json` / `review_resolution.json` | 独立 Adjudicator | 需定向核验 | 问题逐项闭环 |
 | 裁决 | `final/stock_verdict.json` | 独立 Adjudicator | 双方 opening 完成、决定性问题已解 | `validate --require-verdict` 通过 |
 | 合并 | `05_decision.json` | `merge_subagent_decisions.py` 或 `no-trade-day` | 全部 P0 verdict 合法，或 P0 为空 | 决策 schema 通过；顶层系统字段非空/合理 |
+| 组合复核 | `00_portfolio_review.md` | 主 Agent | 全部 P0 verdict 已校验、合并前 | 现金/总 BUY、集中风险与冲突均已处理；改 verdict 交原裁决者 |
 | 执行 | `06_execution_log.json` | `execute-day` | 合法 05 与 D+1 开盘价 | `status=success` 是幂等凭证 |
 | 总结 | `07_daily_summary.json` | `execute-day` | 成功 06 | 记录执行日和组合结果 |
 | 记忆 | `08_history_merge.json` | `execute-day` | 成功 06 | 下一日读取隔离交易记忆 |
@@ -48,10 +51,11 @@
 
 ```text
 00_prepare_status.ready
-  → P0
+  → P0（用户确认）
   → opening × 2
   → Adjudicator（争议时定向回应）
   → stock_verdict + validate
+  → 00_portfolio_review（P0 非空）
   → 05_decision
   → 06_execution(D+1 open)
   → 07 + 08
@@ -60,7 +64,7 @@
 - 同一股票不得跨过任何箭头。
 - 同一交易日不得在 06 成功前开始下一日。
 - 区间最后日没有 D+1，不得生成决策或 06。
-- `P0 = 空` 是唯一不走逐股辩论的正常分支：写显式空 05，再走 D+1 的无交易执行与 06-08。
+- 研究日 `P0 = 空`、用户明确跳过研究日、以及两次周度研究之间的持仓估值日，均走显式空05 → D+1无交易执行 → 06-08。间隔估值日不要求00.ready或01-04，不生成个股分析，不刷新深研日期；研究日仍须先通过准备门禁才能选P0。
 
 ## 5. 目录与信息隔离
 

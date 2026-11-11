@@ -18,11 +18,12 @@ from services.trading.trade_summary import (
     use_agent_data_root,
 )
 from commons import ensure_stock_subdir, get_stock_data_dir, parse_symbol
+from shared_data_access.cache_policy import cached_data_only
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RESEARCH_ARTIFACT_CACHE_ROOT = PROJECT_ROOT / "data" / "research_artifact_cache"
-RESEARCH_ARTIFACT_SCHEMA_VERSION = 5
+RESEARCH_ARTIFACT_SCHEMA_VERSION = 7
 FINANCIAL_REPORT_SELECTION_SLACK_DAYS = 1
 LOGGER = init_component_logger(
     "BuildStockResearch",
@@ -156,6 +157,11 @@ def _artifact_input_fingerprint(symbol: str) -> Dict[str, Any]:
     return {
         "stock_root": str(stock_root),
         "financial_reports": _directory_fingerprint(stock_root / "financial_reports"),
+        "financial_report_aliases": [
+            _directory_fingerprint(root / "financial_reports")
+            for root in sorted(stock_root.parent.glob(f"*_{symbol_info.symbol}"))
+            if root != stock_root and root.is_dir()
+        ],
         "forecast": _directory_fingerprint(stock_root / "forecast"),
         "news_json_mtime_ns": _path_mtime_ns(stock_root / "news" / "news.json"),
         "news_audited_mtime_ns": _path_mtime_ns(stock_root / "news" / "news_audited.json"),
@@ -241,7 +247,11 @@ def _build_read_only_base_artifact(
     # pe_pb_analysis 派生产物，同时把完整 Price/Valuation Report 返回给 04。
     # 不再依赖“历史日期的派生 Markdown 必须已经存在”这一错误前提。
     _ = snapshot_payload, source_data_root
-    price_payload = analyze_stock_dynamics_and_valuation(symbol, run_date)
+    from services.backtest.prices import quote_date_as_of
+
+    # 作用域在每个股票worker内设置，覆盖估值、指数和同业的所有嵌套读取。
+    with cached_data_only():
+        price_payload = analyze_stock_dynamics_and_valuation(symbol, quote_date_as_of(symbol, run_date))
     news_raw = search_stock_news(symbol, run_date, allow_refresh=False)
     try:
         news_payload = json.loads(news_raw)
@@ -254,6 +264,7 @@ def _build_read_only_base_artifact(
         include_consensus=False,
         include_price_drift=False,
         prefer_daily_brief=True,
+        require_historical_cutoff=True,
     )
     return {
         "schema_version": RESEARCH_ARTIFACT_SCHEMA_VERSION,
@@ -261,6 +272,7 @@ def _build_read_only_base_artifact(
         "run_date": run_date,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "mode": "backtest_read_only",
+        "input_fingerprint": _artifact_input_fingerprint(symbol),
         "price_payload": price_payload,
         "news_payload": news_payload,
         "financial_payload": financial_payload,
@@ -335,6 +347,7 @@ def build_research_markdown(
             if (
                 cached.get("schema_version") == RESEARCH_ARTIFACT_SCHEMA_VERSION
                 and cached.get("mode") == "backtest_read_only"
+                and cached.get("input_fingerprint") == _artifact_input_fingerprint(symbol_info.symbol)
             ):
                 base_artifact = cached
             else:

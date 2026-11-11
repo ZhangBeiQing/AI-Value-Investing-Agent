@@ -18,6 +18,7 @@ from services.prompting.system_prompt import (
 )
 from services.snapshot.basic_snapshot import build_basic_snapshot
 from commons.stock_utils import get_stock_data_dir, is_etf_symbol, parse_symbol
+from services.trading.analysis_index import analysis_entry_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -360,9 +361,10 @@ def write_price_delta_report(
     stocks = snapshot_payload.get("stocks", {}) or {}
 
     rows: List[Dict[str, Any]] = []
-    for symbol, entry in book_index.items():
+    for key, entry in book_index.items():
         if not isinstance(entry, dict):
             continue
+        symbol = analysis_entry_symbol(key, entry)
         last = entry.get("last_deep_analysis_price")
         if not isinstance(last, (int, float)) or float(last) <= 0:
             continue
@@ -453,6 +455,30 @@ def build_snapshot_payload(
     source_data_root: str | Path | None = None,
     backtest_read_only: bool = False,
 ) -> Dict[str, Any]:
+    if backtest_read_only and any(symbol.endswith(".US") for symbol in symbols):
+        from services.backtest.prices import quote_date_as_of
+
+        stocks: Dict[str, Any] = {}
+        errors: Dict[str, Any] = {}
+        payload: Dict[str, Any] = {}
+        for group in ([s for s in symbols if not s.endswith(".US")],
+                      [s for s in symbols if s.endswith(".US")]):
+            if not group:
+                continue
+            quote_date = quote_date_as_of(group[0], run_date) if group[0].endswith(".US") else run_date
+            part = build_basic_snapshot(group, quote_date, base_dir=source_data_root,
+                                        max_workers=max_workers, backtest_read_only=True)
+            payload.update(part)
+            for symbol, row in part.get("stocks", {}).items():
+                row["quote_date"] = quote_date_as_of(symbol, run_date)
+            stocks.update(part.get("stocks", {}))
+            errors.update(part.get("errors", {}))
+        payload.update(timestamp=run_date, stocks=stocks, stocks_count=len(stocks))
+        if errors:
+            payload["errors"] = errors
+        else:
+            payload.pop("errors", None)
+        return payload
     return build_basic_snapshot(
         symbols,
         run_date,

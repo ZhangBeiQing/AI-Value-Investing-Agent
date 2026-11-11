@@ -1,246 +1,124 @@
 ---
 name: backtest-fixed-tracked
-description: 对指定历史区间运行 fixed_tracked 的隔离多 Agent 回测。按交易日串行生成历史输入、自动完成 P0选股 与 P0股票 辩论、合并 05，并以 D+1 开盘价模拟成交；不触碰真实账本或真实交易。
+description: 对当前 fixed_tracked 固定股池做每周一次的隔离历史回测；复用主干研究与决策规则，研究间隔七个自然日，期间持仓估值，订单仍按下一交易日开盘成交。
 ---
 
 # fixed_tracked 历史回测
 
-## 1. 用途与角色
+## 规则来源与职责
 
-当用户要求“回测固定股池”“测试某段日期的固定池收益”或“用某金额从某日回测到某日”时使用本 Skill。
+主 Agent 是实验调度器：检查输入、调度研究、选择 P0、组合复核与程序校验。不得代写个股研究或裁决，不向角色注入投资观点。
 
-主 Agent 是**历史实验调度器**，不是个股研究员。职责只有：
+- 数据准备分工：`.codex/skills/daily-data-preparation/SKILL.md`。
+- 宏观：`.codex/skills/daily-macro-summary/SKILL.md`。
+- 财报：`.codex/skills/financial-report-summary/SKILL.md` 和其角色模板。
+- P0、Bull/Bear、独立 Adjudicator、质询、数量决策：`.codex/skills/auto-trading-fixed-tracked/SKILL.md` 及其 references。
+- 当天策略：历史目录内 `03_agent_input.md` 与 `03_stock_analysis_input.md`；由当前主干 policy 生成。
+- 回测额外约束：本 skill 与 `references/artifact-contract.md`、`references/orchestration.md`、`references/guarded-web-policy.md`、`references/result-review.md`，开始前完整读取。
 
-1. 创建或续跑隔离实验；
-2. 按真实交易日从早到晚推进；
-3. 准备当天历史输入并处理财报门禁；
-4. 按 `auto-trading-fixed-tracked` 调度 P0、辩论、独立裁决；
-5. 自动合并 `05_decision.json`，以 D+1 开盘价模拟成交；
-6. 校验、断点恢复与期末结果检查。
+回测不维护第二套选股、投资或仓位规则。个股角色、schema 和共同研究方法直接复用主干，不复制到派单文字中。
 
-不得代替 Bull、Bear 或 Adjudicator 做个股结论；不得把主 Agent 的个股观点写进 subagent prompt。
+## 实验边界
 
-## 2. 必读文件与唯一规则来源
+- 日期 D 是分析日，可知信息截止 D 日 23:59:59 北京时间；成交使用紧邻下一实验交易日的精确开盘价。缺价记 pending，不替换价格、不自动跨日重试订单。
+- 实验交易日由 CN 市场日历程序解析，禁止按工作日猜测。最后一日只做收盘估值；不生成区间外订单。
+- 股池由 `configs.stock_pool.fixed_tracked_symbols()` 冻结，包含当前 A/H 股、ETF 与美股。默认不并入量化候选或其他选股结果。未上市标的按缓存覆盖证据排除；已持仓股须继续覆盖。
+- 美股研究、02 与持仓估值只能用 D 日北京时间截止前已收盘的美东行情，显示真实 quote_date；美元资产沿用主干人民币折算。香港及美国休市时不存在该日精确开盘价的订单保留 pending。
+- 全部 00-08、账本、交易记忆和缓存写在 `data/backtests/fixed_tracked/{experiment_id}/`。禁止写正式交易目录或调用真实后处理入口。
+- 共享财报深研可以通过历史日期门禁后发布；共享派生估值可以按日期接口重建，不得混入实验动作或仓位。已完成的真实交易输入与历史原稿不覆盖。
+- 默认每周分析一次。研究日完成准备、P0、辩论、组合复核、05、D+1 执行及 06-08 后，推进至下一研究日；期间交易日仅做显式无交易结算，跨日不并行。
+- 使用运行时通用 subagent，继承当前模型；角色并发与批次跟随对应主干 skill，不自行另定研究角色或降级模型。
+- P0 仍须用户明确确认。回测在组合复核通过后自动合并和模拟执行，不再增加第二次人工确认。
+- 当前实验 schema 为 2。旧实验只保留供审计，拒绝续跑，不能把新股池或新执行规则套在旧账本上。
 
-开始前必须完整读取：
-
-1. [产物与所有权契约](references/artifact-contract.md)
-2. [逐日调度与角色模板](references/orchestration.md)
-3. [联网防穿越规则](references/guarded-web-policy.md)
-4. [结果检查](references/result-review.md)
-
-个股辩论的角色规则、JSON 契约和独立裁决方法只复用：
-
-```text
-.codex/skills/auto-trading-fixed-tracked/references/
-configs/prompt_flow/fixed_tracked/stock_decision.schema.json
-```
-
-不要在本 Skill 或运行时 prompt 中复制、改写这些个股规则。回测只额外增加历史日期和隔离目录约束。
-
-## 3. 绝对约束
-
-- 禁止使用 `find /`、`find / -name ...`、`locate` 或任何从根目录 / 全盘递归搜索的命令；在 WSL 下这类命令会遍历 `/mnt/c`、`/proc`、`/sys` 等，极慢并常伪装成卡死。需要查找文件时用 `rg --files`，或限定目录并加 `-maxdepth`，或直接使用已知的绝对路径；skill 已给出所需文件路径时不要再去搜索。
-- 激活环境：`source /home/zhangbeiqing/venv/ai_stock/bin/activate`。
-- `decision_date` 是 D 日收盘后；可用信息截止 D 日 `23:59:59 +08:00`；成交只能发生在紧邻交易日 D+1 的开盘价。
-- 交易日只能由实验程序解析。禁止按自然日、周末或工作日自行猜测；禁止把区间最后一个交易日当作决策日。
-- 一天必须完成 `准备 → P0 → 辩论/05 → D+1 模拟成交 → 06/07/08`，才可进入下一天。跨日绝不并行。
-- 所有运行产物、账本、决策和交易记忆都在 `data/backtests/fixed_tracked/{experiment_id}/`。禁止写真实 `data/agent_data`、正式 `data/skill_runs` 或真实交易账本。
-- 共享写入只允许两类例外：按公告日、通过日期因果门禁的 `data/stock_info/*/financial_reports/` 深度基本面总结；以及由正常日期接口按 D 日重建的 `data/stock_info/*/{analysis,pe_pb_analysis}` 派生中间结果。两者都不得包含回测仓位、交易动作或 D 日之后的信息。
-- 不得因为共享目录没有现成历史 Markdown 就让 04 输出空估值；必须走正常日期接口重建并在读取时按 D 日截断。
-- `12_quant_prefilter_long.csv` 只扩展当日研究范围，不能直接形成交易动作。
-- 回测与日常交易 Skill 的人工暂停差异：**P0 选股结果必须先交用户评审并获得明确确认**，确认前禁止派发任何 Bull/Bear/Adjudicator subagent；待确认的重点股清单要先展示给用户；05 和模拟成交则自动推进。任何情况下**绝不**调用真实模式的 `run_post_trade.py`。
-- 回测模式下所有个股 subagent（Bull/Bear/Adjudicator）一律用 `subagent_type=general`
-- 联网只在实验 `network_mode=guarded_web` 下允许，并严格执行 [联网防穿越规则](references/guarded-web-policy.md)。
-
-## 4. 目录和文件所有权
-
-实验根目录：
-
-```text
-data/backtests/fixed_tracked/{experiment_id}/
-├── experiment.json                 # 创建后不可改的实验身份与配置；extend 只追加结束日期历史
-├── coverage.json                   # 覆盖率审计
-├── skill_runs/{D}/fixed_tracked/   # D 日所有 00-08 与 debate 产物
-├── agent_data/backtest-{id}/       # 隔离持仓、订单和交易记忆
-├── checkpoints/                    # 程序进度
-└── results/                        # finalize 后的净值与汇总
-```
-
-当天各文件由谁写、何时可推进，完全以 [产物与所有权契约](references/artifact-contract.md) 为准。弱模型遇到任何“该不该写/能不能继续”的问题，先查该表，不能自行推断。
-
-## 5. 创建、检查与扩展实验
-
-### 5.1 新实验
+## 创建与恢复
 
 ```bash
 source /home/zhangbeiqing/venv/ai_stock/bin/activate
 python scripts/manage_fixed_tracked_backtest.py prepare \
-  --start-date {start_date} \
-  --end-date {end_date} \
-  --initial-cash {initial_cash} \
-  --network-mode guarded_web
+  --start-date {start_date} --end-date {end_date} --initial-cash {initial_cash} \
+  --model {verified_runtime_model} --reasoning-effort {verified_runtime_effort} \
+  --model-provider {provider} --runtime {runtime} --network-mode guarded_web
 ```
 
-记录返回的 `experiment_id`，并读取：
+模型参数只记录运行时事实，不切换模型。Codex 可从当前 CODEX_THREAD_ID 会话日志的最新 turn_context 核实模型与推理档位；无法取得时记录 unknown，不猜测。恢复前核对实际模型/档位与 experiment.json，变化时另建实验。
 
-```text
-data/backtests/fixed_tracked/{experiment_id}/experiment.json
-data/backtests/fixed_tracked/{experiment_id}/coverage.json
-```
-
-`experiment_id` 的起始日期与创建时刻不可变。需要更早起点时新建实验，不能修改既有实验起点。
-
-默认重建历史 01-04；不得把未来的正式产物复制到历史日期。只有用户明确确认旧正式输入已完成日期因果和 Prompt 兼容审计时，才允许 `prepare-day --reuse-existing-inputs`。
-
-### 5.2 恢复或向后扩展
-
-中断、异常或需要确认当前状态时：
+读取 experiment.json 和 coverage.json。历史输入始终按当前规则重建，不复制正式 01-04，不手改实验身份或完成状态。
 
 ```bash
-python scripts/manage_fixed_tracked_backtest.py status \
-  --experiment-id {experiment_id}
+python scripts/manage_fixed_tracked_backtest.py status --experiment-id {experiment_id}
+python scripts/manage_fixed_tracked_backtest.py extend --experiment-id {experiment_id} --end-date {new_end_date}
 ```
 
-续跑从 `status.progress.next_date` 开始；禁止重复执行已有成功 `06_execution_log.json` 的日期。
+恢复从 progress.next_date 与 next_stage 继续。成功 06 是幂等凭证，禁止重复成交。extend 只向后延长原实验，新增区间完成后重新 finalize。
 
-用户要求延长结束日期时：
+## 每周研究节奏
 
-```bash
-python scripts/manage_fixed_tracked_backtest.py extend \
-  --experiment-id {experiment_id} \
-  --end-date {new_end_date}
-```
+- 首次研究日默认为实验起始交易日；用户指定日期或中途调整节奏时以用户指令为准。以本轮计划研究日 D 为锚，下一计划日期为 D + 7 个自然日，例如 2026-07-03 → 2026-07-10，不按五个交易日替代。
+- 若 D+7 休市，按实验 CN 交易日历顺延至第一个交易日；下一轮从实际研究日重新加七天。不超过实验末日，末日仍只做估值。
+- 用户跳过本轮或本轮 P0 为空，也消耗本轮研究窗口，下一次仍按本轮日期加七天，不能次日重新选 P0。
+- 主 Agent 在实验根目录 `analysis_schedule.json` 记录当前节奏、锚日期、下一研究日及用户中途变更原因；它是调度记录，不修改 experiment.json 的实验身份或已成交历史。中途改频率必须在最终结果中说明分段节奏。
+- 研究间隔内不生成 01-04、不更新宏观、不派发个股/财报研究、不做每日 P0；只用现有 `no-trade-day` 和 `execute-day` 按日历串行写空 05 与 06-08，延续持仓和净值，不伪造单股 verdict，也不把无交易日写成新的深研日期。
+- 到达下一研究日前，必须结清前面的所有实验交易日。`status.progress.next_date` 是下一待结算日期，不一定是研究日，必须与 `analysis_schedule.json` 一起读取。不得直接跳日期绕过前日完成校验。
+- 研究日 P0 扫描至少覆盖上次研究以来的事件，不能只看主干默认的最近三个交易日；使用十四日事件窗口检查整个间隔，对影响盈利、估值、治理或风险的实质变化定向核验。其他选股、仓位和裁决规则仍复用主干，不另设周度交易规则。
+- 成交日保持研究日紧邻的下一实验交易日，不推迟到下一周研究日；间隔内 pending 仍不自动重试。
 
-不得新建目录、复制账本或修改 `experiment_id`。扩展后旧结束日自动转为普通决策日；旧 `results/summary.json` 过期，新增区间完成后必须重新 `finalize`。
+间隔无交易结算的恢复与命令示例见 `references/orchestration.md` 第1节。
 
-## 6. 单日状态机
-
-对实验交易日序列中的每一个非最后交易日，严格按下列状态推进。任何状态失败就停止该日；不能跳到后续状态，也不能跳到下一天。
-
-```text
-READY
-  → PREPARED
-  → FINANCIAL_GATE_PASSED
-  → P0_READY
-  → P0_APPROVED_BY_USER （必须用户明确确认后才可继续）
-  → DEBATE_COMPLETE 或 NO_TRADE_05
-  → DECISION_05_VALID
-  → EXECUTED_D_PLUS_1
-  → DAILY_MEMORY_WRITTEN
-```
-
-最后一个交易日只做收盘估值，不创建无法在区间内成交的 05 或订单。
-
-### 6.1 PREPARED：准备当天输入
+## 研究日数据准备
 
 ```bash
 python scripts/manage_fixed_tracked_backtest.py prepare-day \
-  --experiment-id {experiment_id} \
-  --date {decision_date} \
-  --build-missing-inputs \
-  --max-workers 6
+  --experiment-id {experiment_id} --date {decision_date} --build-missing-inputs --max-workers 6
 ```
 
-读取 `{root}/00_prepare_status.json`，其中 `{root}` 为：
+本命令先读本地缓存，检查历史资料、宏观、财报深研与摘要，再生成隔离 01-04；不会自动刷新全池公告或启动模型。
+读取 `{root}/00_prepare_status.json`，`{root}={experiment_root}/skill_runs/{decision_date}/fixed_tracked`。只有 ready 才能进入 P0。
 
-```text
-data/backtests/fixed_tracked/{experiment_id}/skill_runs/{decision_date}/fixed_tracked
-```
+1. **needs_shared_data**：读取 shared_inputs.issues。通过现有数据准备入口补指定股票的缺口，例如 `prepare_single_stock.py --symbol {symbol} --date {decision_date} --only data`；禁止未检查就全池强刷。抓取面向真实时间取足历史，读取时截断。不得以旧交易日价格冒充所需收盘；缺少原文或日历时明确失败。
+2. **needs_macro_research**：默认复用 D 日以前宏观稿；本次需要重写时创建实验显式加 `--macro-summary-policy regenerate`。按日常数据准备的模板派发一个独立宏观 subagent，额外传历史截止、00_backtest_context.md 与隔离输出 `{experiment_root}/macro_economy/YYYYMMDD.md`。主 Agent 不代写。首日重建基线、之后逐日更新，遵守当前五节和 3000 非空白字符上限；保留共享原稿，禁止回退现实 latest 面板。
+3. **needs_financial_research**：按 financial_research 区分 required_items（缺少最新历史深研或需要更新）和 daily_brief_items（仅缺摘要）。展示 existing_historical_research、rejected_historical_reports 和原因，不能把有旧深研说成没有研究。财报原文只能是输入，不是深研总结。
+4. 宏观 subagent 可与纯 Python 财报 prepare 并行。两者结束后由主 Agent 直接调度财报 skill 的研究角色；完整深研与只补摘要分别走对应模板。只补摘要不联网、不改全文、不重做行业和预期研究。所有角色先读历史上下文；缺 PDF Markdown 时先确认 pymupdf4llm 就绪。
+5. 新深研注册保留 `--as-of-date {decision_date} --require-deep-research --require-daily-brief`。不以原文存在、文件名公告日期或摘要格式通过代替历史真实性与内容核验。同一报告期的业绩公告与正式报告可复用已覆盖的研究；经营数据公告不按标题一刀切排除，指引与实际结果须明确区分，后续新增实际结果需要对照更新。
+6. 宏观和财报通过验收后重跑同日 prepare-day。修复已有输入时加 `--force-rebuild-inputs`，只重建未成交日期。必须检查 01、02、03_agent_input、03_stock_analysis_input、每股非空 04 以及 run_manifest；不得因空目录或缺股而报 ready。
 
-只有 `status == ready` 才可进入 P0。还必须确认以下输入存在：
+财报选择跨同 symbol 的名称目录查找，跳过误放原文。历史复用核对研究知识截止，不将晚于 D 的研究重标为历史摘要。被拒绝的未来资料不进入角色上下文。
 
-```text
-00_backtest_context.md
-01_global_context.md
-02_basic_snapshot_payload.json
-03_agent_input.md
-03_stock_analysis_input.md
-04_stock_research/
-../run_manifest.json
-```
+## P0、辩论与组合复核
 
-### 6.2 财报门禁
+按日常交易 skill 的阶段 A/B/C 执行。主 Agent只读 00、01、02、03、p0_event_report、price_delta_report、隔离分析索引和最近决策快照，不读 04。
+展示 P0 的股票、触发原因、批次和 P1 说明，等待用户明确确认；不预先指定 BUY/SELL 方向。用户明确指定研究范围时服从其授权。
 
-若 `status == needs_financial_research`：
+确认后按 references/orchestration.md 替换路径与实际隔离持仓，使用同一 Bull/Bear → 独立 Adjudicator → 必要质询 → validate。主 Agent 不代写 verdict。
 
-1. 读取 `00_prepare_status.json.financial_research`；只处理 `required_items`。
-2. 按返回的 `preparation_command` 准备材料。
-3. 使用 `financial-report-summary` Skill 完成其完整多角色闭环；所有角色额外完整读取本股 workdir 的 `00_backtest_context.md`。
-4. 使用返回的 `registration_command_template` 注册总结，**必须保留** `--as-of-date {decision_date}`。
-5. 运行返回的 `resume_prepare_day_command`，重新生成同一天 04。
-6. 再读 `00_prepare_status.json`；只有变为 `ready` 才可继续。
+合并前按主干阶段 C 复核多股 BUY 总额、现金、币种、价格日期、卖出上限、交易单位、集中风险和关键争议，写 `{root}/00_portfolio_review.md`。调整数量交原裁决者并重新校验，不能靠执行器缩量弥补组合复核遗漏。
 
-不得把“有财报原文”当成“已有深度总结”；不得用 D 日之后的财报、研报或总结补齐。`unavailable_items` 只表示 D 日前确实无法识别原文，04 必须明确记录该缺口。
-
-旧实验需要修复已生成的空 04 时，财报总结注册完成后重跑：
-
-```bash
-python scripts/manage_fixed_tracked_backtest.py prepare-day \
-  --experiment-id {experiment_id} \
-  --date {decision_date} \
-  --build-missing-inputs \
-  --force-rebuild-inputs \
-  --max-workers 6
-```
-
-### 6.3 P0 与空 P0
-
-主 Agent只读 `{root}/00`、`01`、`02`、`03`、`p0_event_report.md`、`price_delta_report.md`、`{experiment_root}/agent_data/backtest-{experiment_id}/latest_decision_snapshot.json`（存在时）和存在时的市场级文件；不得打开 `04_stock_research/*`。快照中的最近分析日期、价格印象和完整待核验事项用于结合当天变化选择 P0。按当天 `03_agent_input.md` 选择 P0。
-
-**P0 选出后必须暂停并把候选清单提交用户评审**：展示每只股票、入选理由与建议方向（BUY/SELL/HOLD/FLAT），等用户明确确认或给出增删修改后，才可进入 6.4 派发辩论。用户未确认前，禁止启动任何 Bull/Bear/Adjudicator subagent。
-
-若 P0 为空，只生成显式空 05：
+P0 为空时通过 no-trade-day 生成显式空 05，仍做 D+1 无交易结算，不伪造单股裁决。
 
 ```bash
 python scripts/manage_fixed_tracked_backtest.py no-trade-day \
-  --experiment-id {experiment_id} \
-  --date {decision_date} \
-  --reason "P0 为空，组合层未发现需要深度辩论的交易机会"
+  --experiment-id {experiment_id} --date {decision_date} --reason {reason}
 ```
 
-随后直接进入 D+1 模拟成交；不要伪造单股 verdict。
+## 合并与模拟执行
 
-### 6.4 辩论、05 和模拟成交
-
-P0 非空时，逐股辩论的精确顺序、唯一输出路径、并发批次、角色 prompt 和校验命令见 [逐日调度与角色模板](references/orchestration.md)。核心顺序不可变：
-
-```text
-prepare（隔离实际持仓）→ Bull/Bear opening → 独立 Adjudicator
-→ 必要时原会话定向回应 → validate → merge 05 → execute-day
-```
-
-所有 P0 完成后，自动合并当日 `05_decision.json`，补齐其顶层 `summary_date`、`system_risk_notes`、`system_focus_items` 并校验。然后只通过隔离入口执行：
+按 orchestration.md 对所有 P0 validate，通过 merge_subagent_decisions.py 合并 05，补齐顶层系统字段，然后：
 
 ```bash
 python scripts/manage_fixed_tracked_backtest.py execute-day \
-  --experiment-id {experiment_id} \
-  --date {decision_date} \
-  --execution-date {next_trading_date}
+  --experiment-id {experiment_id} --date {decision_date} --execution-date {next_trading_date}
 ```
 
-成功时必须出现 `{root}/06_execution_log.json`、`07_daily_summary.json`、`08_history_merge.json`；同时隔离交易记忆目录会更新 `latest_decision_snapshot.json`，保留实验分析范围及持仓中各股最近分析日期、价格印象和完整待核验事项，供下一交易日 P0 筛选读取。`06` 是幂等凭证：已有匹配的成功 06 时不得再次成交。
+执行沿用主干先 SELL 后 BUY 的批次、交易单位和人民币计价。非法数量、卖超或现金不足整批拒绝，不按置信度排序、不向下取整、不自动缩量。不解析自然语言预案的条件订单。
+成功后验收 06、07、08 与隔离最近分析快照。账本有执行但缺 06 时停止，核对中断现场，不重复下单。
 
-## 7. 结束、校验与汇报
-
-所有决策日完成后：
+## 结束与异常
 
 ```bash
-python scripts/manage_fixed_tracked_backtest.py finalize \
-  --experiment-id {experiment_id}
+python scripts/manage_fixed_tracked_backtest.py finalize --experiment-id {experiment_id}
 ```
 
-按 [结果检查](references/result-review.md) 核验净值、现金、持仓、订单、D+1 开盘价、最大回撤、重复订单、`lookahead_risk`、`survivorship_bias` 与真实账本未变。
+所有决策日执行完成后才可 finalize。按 result-review.md 核对净值、币种、现金与持仓、成交价、重复订单、pending/rejected 以及偏差标记。
+报告实验 ID、日期范围、资金、收益、回撤、成交次数和数据限制。本回测使用当前股池回看历史，零费用/滑点且允许受约束联网，属于策略模拟，不是无偏实盘业绩。
 
-向用户报告：实验 ID、实际交易日期范围、初始/最终资产、累计收益、最大回撤、成交次数、未成交订单原因、数据和前视偏差限制。不得把回测结果描述为无偏 point-in-time 实盘业绩。
-
-## 8. 失败处理速查
-
-| 现场 | 正确处理 | 禁止做法 |
-| --- | --- | --- |
-| `prepare-day` 非 `ready` | 读 `00_prepare_status.json`，处理财报门禁或缺失输入后重跑 | 跳过 04 或带着缺输入进入 P0 |
-| 某角色文件缺失/JSON 无效 | 让该文件唯一所有者修复，再校验 | 主 Agent 手写其研究结论或跳过该股 |
-| 质询未解决或裁决数量非法 | 原角色核验并修正，再 validate | 主 Agent 代写个股结论 |
-| 05 校验失败 | 修复对应 verdict 或顶层系统字段后再合并 | 用空壳 05 绕过校验 |
-| 开盘价缺失 | 保留 `pending` 订单及原因，按执行日志处理 | 用收盘价、未来价格或估算价替代 |
-| 中断 | 先 `status`，只从 `next_date` 继续 | 删除 06、重复成交或重新初始化账本 |
+失败按具体状态修复；不重启仍在运行的长命令，不跳过门禁，不删除成功 06。长命令每 60 秒检查并告知进展，最多等待一小时；停止或恢复时保留现场。

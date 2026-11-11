@@ -312,6 +312,12 @@ def get_similar_stocks(symbolInfo: SymbolInfo, base_dir: Path | str | None = Non
                     })
             return similar_stocks
     
+    from shared_data_access.cache_policy import is_cached_data_only
+
+    if is_cached_data_only():
+        LOGGER.warning("%s 相似股票缓存缺失，只读模式跳过模型补建", stock_name)
+        return []
+
     # 如果CSV中没有，则通过API获取
     try:
         prompt = f"""

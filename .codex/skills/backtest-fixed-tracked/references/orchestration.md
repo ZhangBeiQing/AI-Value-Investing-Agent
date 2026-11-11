@@ -1,4 +1,4 @@
-# 回测逐日调度与角色模板
+# 回测每周研究、逐日结算与角色模板
 
 本文件只定义“当天怎样调度”。文件所有权、推进门和隔离边界以 [产物与所有权契约](artifact-contract.md) 为准；历史联网边界以 [联网防穿越规则](guarded-web-policy.md) 为准。
 
@@ -11,7 +11,7 @@ decision_date = D 日收盘后生成研究和 05
 execution_date = 实验交易日序列中 D 的紧邻下一日
 ```
 
-每一天先执行：
+研究日才执行以下准备；非研究日不运行此命令：
 
 ```bash
 python scripts/manage_fixed_tracked_backtest.py prepare-day \
@@ -21,12 +21,28 @@ python scripts/manage_fixed_tracked_backtest.py prepare-day \
   --max-workers 6
 ```
 
-读 `{root}/00_prepare_status.json`。`needs_financial_research` 时严格按主 Skill 的财报门禁处理；任何其他非 `ready` 状态都停止当天。
+读 `{root}/00_prepare_status.json`。`needs_shared_data` 时先通过现有准备入口补指定缓存缺口，不自动刷新全池；`needs_financial_research` 时按主 Skill 处理完整深研与日常摘要补建两类任务；`needs_macro_research` 时派发独立宏观 subagent，主 Agent 不代写。历史准备的角色分工、并行顺序和验收复用主 Skill 6.2，宏观及财报研究未就绪不得生成 01-04 或进入 P0。其他非 `ready` 状态停止当天并处理具体缺口。
 
 ```text
 {root} = data/backtests/fixed_tracked/{experiment_id}/skill_runs/{decision_date}/fixed_tracked
 {skill_runs_root} = data/backtests/fixed_tracked/{experiment_id}/skill_runs
 ```
+
+### 周期间隔与恢复
+
+研究日按主 Skill 的七个自然日节奏选择，并在实验根目录 `analysis_schedule.json` 记录。用户跳过当天研究也占用本轮窗口。日期从 `resolve_experiment_trading_dates()` 获取，末日不生成决策。
+
+从 `status.progress.next_date` 起，到下一研究日之前的每个未完成交易日，依次执行：
+
+```bash
+python scripts/manage_fixed_tracked_backtest.py no-trade-day \
+  --experiment-id {experiment_id} --date {interval_date} \
+  --reason "每周一次研究：本日为间隔持仓估值日，无新增交易"
+python scripts/manage_fixed_tracked_backtest.py execute-day \
+  --experiment-id {experiment_id} --date {interval_date}
+```
+
+`execute-day` 省略执行日期时由程序解析紧邻下一交易日。已有成功06且07/08齐备的日期直接跳过，已有合法空05则只执行；若已有非空决策、失败06或账本与06不一致，先核对现场，不能覆盖或静默吞掉。每个日期结算成功才推进，不能把中间日期留空后直接 prepare 下一周。间隔内不生成宏观或01-04，不调用研究角色。下一研究日的财报与宏观门禁照常完整执行。
 
 ## 2. P0 与空 P0
 
@@ -58,7 +74,7 @@ python scripts/manage_fixed_tracked_backtest.py no-trade-day \
 
 复用 `auto-trading-fixed-tracked/SKILL.md` 的当前单裁决流程：两份独立 opening → 一名独立 Adjudicator → validate。
 仅决定性争议时复用原 Advocate 定向回应。
-全部角色使用通用 subagent，继承当前模型；并发不超过平台额度与 10 的较小值。
+全部角色使用通用 subagent，继承当前模型；并发上限与批次遵循日常交易 skill 和平台实际额度。
 派单只传角色、日期、股票、必读文件和授权输出路径，不转述规则或注入个股结论。
 
 ## 4. 回测路径与持仓
@@ -83,7 +99,9 @@ python scripts/manage_debate.py prepare --date {decision_date} --symbol {symbol}
 python scripts/manage_debate.py validate --date {decision_date} --symbol {symbol} --base-dir {skill_runs_root} --require-verdict
 ```
 
-## 6. 合并、校验与 D+1 执行
+## 6. 组合复核、合并、校验与 D+1 执行
+
+合并前按日常交易 skill 阶段 C 完成现金、BUY 总额、币种/价格日期、SELL 持仓上限、交易单位、集中风险、系统风险、跨 verdict 冲突与关键假设复核。现金来自实验隔离账本，不预支尚未成交的卖出收入。写 `{root}/00_portfolio_review.md` 记录依据和处理结果；需要改数量由原裁决者改 verdict 并重新 validate，需要补关键论证则走原会话质询。存在未处理问题时不得合并或执行；通过后自动推进，无需第二次人工确认。
 
 所有 P0 都通过 `--require-verdict` 后：
 

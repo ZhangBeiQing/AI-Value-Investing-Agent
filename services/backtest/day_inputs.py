@@ -3,24 +3,25 @@
 from __future__ import annotations
 
 import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from core.logging import get_logger
 from services.pipeline.daily_pipeline import SKILL_FLOW_CONFIG, run_book_pipeline
-from services.backtest.announcements import prepare_backtest_announcements
-from services.backtest.coverage import ensure_experiment_decision_date
+from services.backtest.coverage import ensure_experiment_decision_date, ensure_previous_days_completed
 from services.backtest.experiment import BacktestExperiment
 from services.backtest.financials import (
     inspect_backtest_financial_research,
-    prepare_backtest_financial_disclosures,
 )
 from services.backtest.ledger import BacktestLedger
+from services.backtest.macro import inspect_experiment_macro
+from services.backtest.shared_inputs import inspect_shared_inputs
 from services.backtest.locking import locked_experiment_stage
 from services.backtest.universe import build_daily_universe
-from shared_data_access.historical_prices import close_on_or_before
+from services.backtest.prices import historical_close
+from services.trading.price_tools import _symbol_fx_rate
+from configs.stock_pool import USD_CNY_FX_RATE
 from commons import parse_symbol
 from services.trading.trade_summary import (
     get_portfolio_historical_context,
@@ -86,15 +87,12 @@ def _portfolio_position_summary(
         avg_cost = average_costs[symbol]
         label = _position_label(symbol)
         costs[label] = round(avg_cost, 4)
-        price = close_on_or_before(
-            parse_symbol(symbol),
-            run_date,
-            base_dir=experiment.context.source_data_root,
-        )
+        price = historical_close(symbol, run_date, experiment.context.source_data_root)
         if price is None:
             missing_price_symbols.append(symbol)
             continue
-        _, close = price
+        _, close_local = price
+        close = close_local * _symbol_fx_rate(symbol)
         profits[label] = round((close - avg_cost) * shares, 2)
         if avg_cost > 0:
             return_pct = (close / avg_cost - 1.0) * 100.0
@@ -107,12 +105,33 @@ def _portfolio_position_summary(
     return costs, profits, return_pcts
 
 
-COPY_INPUTS = (
+REQUIRED_INPUTS = (
     "01_global_context.md",
     "02_basic_snapshot_payload.json",
     "03_agent_input.md",
     "03_stock_analysis_input.md",
 )
+
+
+def missing_day_inputs(book_dir: Path, symbols: list[str]) -> list[str]:
+    missing = [name for name in REQUIRED_INPUTS
+               if not (book_dir / name).is_file() or (book_dir / name).stat().st_size == 0]
+    research_dir = book_dir / "04_stock_research"
+    for symbol in symbols:
+        files = list(research_dir.glob(f"*_{symbol}_*_research.md"))
+        if not files or not any(path.stat().st_size for path in files):
+            missing.append(f"04_stock_research/{symbol}")
+    snapshot = book_dir / "02_basic_snapshot_payload.json"
+    if snapshot.is_file():
+        try:
+            payload = json.loads(snapshot.read_text(encoding="utf-8"))
+            for symbol in symbols:
+                row = payload.get("stocks", {}).get(symbol, {})
+                if not row or row.get("latest_price") is None:
+                    missing.append(f"02_basic_snapshot_payload.json/{symbol}")
+        except (ValueError, AttributeError, TypeError):
+            missing.append("02_basic_snapshot_payload.json/invalid")
+    return missing
 
 
 @locked_experiment_stage
@@ -125,6 +144,7 @@ def write_no_trade_decision(
     """Write an explicit empty 05 for a day on which P0 is empty."""
 
     ensure_experiment_decision_date(experiment, run_date)
+    ensure_previous_days_completed(experiment, run_date)
     book_dir = experiment.context.skill_runs_root / run_date / "fixed_tracked"
     book_dir.mkdir(parents=True, exist_ok=True)
     target = book_dir / "05_decision.json"
@@ -186,27 +206,29 @@ def prepare_backtest_day(
     experiment: BacktestExperiment,
     run_date: str,
     *,
-    reuse_existing_inputs: bool = False,
     build_missing_inputs: bool = False,
     force_rebuild_inputs: bool = False,
     max_workers: int = 4,
-    focus_symbols: set[str] | None = None,
 ) -> dict[str, Any]:
     datetime.strptime(run_date, "%Y-%m-%d")
     if run_date < experiment.start_date or run_date > experiment.end_date:
         raise ValueError("run_date 不在实验日期范围内")
     ensure_experiment_decision_date(experiment, run_date)
+    ensure_previous_days_completed(experiment, run_date)
     book_dir = (
         experiment.context.skill_runs_root
         / run_date
         / "fixed_tracked"
     )
     book_dir.mkdir(parents=True, exist_ok=True)
+    if (book_dir / "06_execution_log.json").exists():
+        raise ValueError("已执行日期的历史输入禁止重建；请用 status 检查进度")
     context_json, context_md = _write_backtest_context(
         experiment,
         run_date,
         book_dir,
     )
+    macro_research, macro_summary_override = inspect_experiment_macro(experiment, run_date)
     ledger = BacktestLedger(
         agent_data_root=experiment.context.agent_data_root,
         signature=experiment.signature,
@@ -219,73 +241,18 @@ def prepare_backtest_day(
     )
     symbols, universe_metadata = build_daily_universe(experiment, run_date, ledger)
     research_symbols = symbols
-    if focus_symbols:
-        research_symbols = [
-            s for s in symbols if s in focus_symbols
-        ]
-        for s in focus_symbols:
-            if s not in research_symbols:
-                research_symbols.append(s)
-    copied: list[str] = []
-    missing: list[str] = []
-    source_book = (
-        experiment.context.source_data_root
-        / "skill_runs"
-        / run_date
-        / "fixed_tracked"
-    )
-    if reuse_existing_inputs and source_book.is_dir():
-        for filename in COPY_INPUTS:
-            source = source_book / filename
-            target = book_dir / filename
-            if source.exists() and not target.exists():
-                shutil.copy2(source, target)
-                copied.append(filename)
-        source_research = source_book / "04_stock_research"
-        target_research = book_dir / "04_stock_research"
-        if source_research.is_dir() and not target_research.exists():
-            shutil.copytree(source_research, target_research)
-            copied.append("04_stock_research")
+    missing = missing_day_inputs(book_dir, research_symbols)
 
-    for filename in COPY_INPUTS:
-        if not (book_dir / filename).exists():
-            missing.append(filename)
-    if not (book_dir / "04_stock_research").is_dir():
-        missing.append("04_stock_research")
-
+    shared_inputs = inspect_shared_inputs(experiment, run_date, research_symbols)
     generated_inputs = False
-    announcement_preparation: dict[str, Any] = {
-        "status": "not_needed",
-        "reason": "未重建当日 01-04",
-    }
-    financial_disclosure_preparation: dict[str, Any] = {
-        "status": "not_needed",
-        "reason": "未重建当日 01-04",
-    }
-    financial_research: dict[str, Any] = {
-        "status": "not_checked",
-        "reason": "未重建当日 01-04",
-    }
+    financial_research = inspect_backtest_financial_research(
+        experiment, run_date, research_symbols, backtest_context_path=context_md,
+    )
     if build_missing_inputs:
-        announcement_preparation = prepare_backtest_announcements(
-            experiment,
-            research_symbols,
-            max_workers=max_workers,
-        )
-        financial_disclosure_preparation = prepare_backtest_financial_disclosures(
-            experiment,
-            research_symbols,
-            max_workers=max_workers,
-        )
-        financial_research = inspect_backtest_financial_research(
-            experiment,
-            run_date,
-            research_symbols,
-            backtest_context_path=context_md,
-            focus_symbols=focus_symbols,
-        )
         if (
-            financial_research["status"] == "ready"
+            shared_inputs["status"] == "ready"
+            and financial_research["status"] == "ready"
+            and macro_research["status"] == "ready"
             and (missing or force_rebuild_inputs)
         ):
             state = ledger.latest(on_or_before=run_date)
@@ -311,6 +278,21 @@ def prepare_backtest_day(
             if float(state.positions.get("CASH", 0.0) or 0.0) > 0:
                 held_positions["CASH"] = float(state.positions["CASH"])
             portfolio_value_amount = f"{total_value:,.2f} 元"
+            position_details = []
+            for symbol, shares in state.positions.items():
+                if symbol == "CASH" or shares <= 0:
+                    continue
+                quote_date, price_local = historical_close(symbol, run_date, experiment.context.source_data_root)
+                rate = _symbol_fx_rate(symbol)
+                cost_cny = position_costs[_position_label(symbol)]
+                position_details.append({
+                    "symbol": symbol, "shares": shares, "quote_date": quote_date,
+                    "currency": "USD" if symbol.endswith(".US") else "HKD" if symbol.endswith(".HK") else "CNY",
+                    "fx_rate": rate, "price_local": price_local, "price_cny": price_local * rate,
+                    "avg_cost_local": cost_cny / rate, "avg_cost_cny": cost_cny,
+                    "market_value_cny": price_local * rate * shares,
+                    "profit_cny": position_profit[_position_label(symbol)],
+                })
             prompt_context = {
                 "date": run_date,
                 "positions": json.dumps(
@@ -345,6 +327,8 @@ def prepare_backtest_day(
                 ),
                 "portfolio_value": f"{portfolio_value_amount}，",
                 "portfolio_value_amount": portfolio_value_amount,
+                "usd_cny_fx": str(USD_CNY_FX_RATE),
+                "positions_detail": json.dumps(position_details, ensure_ascii=False, indent=2),
             }
             run_book_pipeline(
                 run_date,
@@ -359,15 +343,10 @@ def prepare_backtest_day(
                 research_cache_root=experiment.context.research_cache_root,
                 agent_data_root=experiment.context.agent_data_root,
                 prompt_context_override=prompt_context,
+                macro_summary_override=macro_summary_override,
             )
             generated_inputs = True
-        missing = [
-            filename
-            for filename in COPY_INPUTS
-            if not (book_dir / filename).exists()
-        ]
-        if not (book_dir / "04_stock_research").is_dir():
-            missing.append("04_stock_research")
+        missing = missing_day_inputs(book_dir, research_symbols)
 
     manifest = {
         "run_date": run_date,
@@ -377,7 +356,7 @@ def prepare_backtest_day(
             {
                 "book_type": "fixed_tracked",
                 "signature": experiment.signature,
-                "source_type": "frozen_tracked_plus_daily_quant_long",
+                "source_type": "frozen_current_fixed_tracked",
                 "symbols": symbols,
                 "symbol_sources": universe_metadata,
             }
@@ -398,17 +377,21 @@ def prepare_backtest_day(
         "manifest": str(manifest_path),
         "symbol_count": len(symbols),
         "universe": universe_metadata,
-        "copied_inputs": copied,
         "generated_inputs": generated_inputs,
         "force_rebuild_inputs": force_rebuild_inputs,
-        "announcement_preparation": announcement_preparation,
-        "financial_disclosure_preparation": financial_disclosure_preparation,
+        "shared_inputs": shared_inputs,
         "financial_research": financial_research,
+        "macro_research": macro_research,
         "missing_inputs": missing,
         "status": (
+            "needs_shared_data" if shared_inputs["status"] != "ready" else
             "needs_financial_research"
             if financial_research.get("status") == "needs_financial_research"
-            else ("ready" if not missing else "needs_input_generation")
+            else (
+                "needs_macro_research"
+                if macro_research["status"] != "ready"
+                else ("ready" if not missing else "needs_input_generation")
+            )
         ),
     }
     (book_dir / "00_prepare_status.json").write_text(

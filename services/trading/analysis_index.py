@@ -14,18 +14,23 @@ from core.logging import get_logger
 LOGGER = get_logger("AnalysisIndex")
 
 
-def _snapshot_price_map(skill_runs_root: Path, book_type: str, run_date: str) -> dict[str, float]:
+def analysis_entry_symbol(key: str, entry: dict[str, Any]) -> str:
+    """Read both legacy code keys and human-readable name_code keys."""
+    return entry.get("symbol") or key.rsplit("_", 1)[-1]
+
+
+def _snapshot_stocks(skill_runs_root: Path, book_type: str, run_date: str) -> dict:
     snapshot_path = skill_runs_root / run_date / book_type / "02_basic_snapshot_payload.json"
-    if not snapshot_path.is_file():
-        return {}
     try:
-        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        return json.loads(snapshot_path.read_text(encoding="utf-8")).get("stocks", {}) or {}
     except (json.JSONDecodeError, OSError):
         return {}
-    stocks = payload.get("stocks", {}) or {}
+
+
+def _snapshot_price_map(skill_runs_root: Path, book_type: str, run_date: str) -> dict[str, float]:
     return {
         symbol: float(fields["latest_price"])
-        for symbol, fields in stocks.items()
+        for symbol, fields in _snapshot_stocks(skill_runs_root, book_type, run_date).items()
         if isinstance(fields, dict) and isinstance(fields.get("latest_price"), (int, float))
     }
 
@@ -50,8 +55,14 @@ def update_analysis_index(
         index = json.loads(index_path.read_text(encoding="utf-8"))
     else:
         index = {}
-    book_index = index.setdefault(book_type, {})
+    book_index = {}
+    for key, value in index.get(book_type, {}).items():
+        symbol = analysis_entry_symbol(key, value)
+        if not value.get("stock_name") and key != symbol:
+            value["stock_name"] = key.rsplit("_", 1)[0]
+        book_index[symbol] = value
     current_prices = _snapshot_price_map(snapshot_root or skill_runs_root, book_type, run_date)
+    snapshot_stocks = _snapshot_stocks(snapshot_root or skill_runs_root, book_type, run_date)
 
     for entry in decision.get("stock_decisions", []):
         symbol = entry.get("symbol", "")
@@ -64,6 +75,12 @@ def update_analysis_index(
             )
             continue
         book_index[symbol] = {
+            "stock_name": (
+                entry.get("stock_name")
+                or snapshot_stocks.get(symbol, {}).get("stock_name")
+                or (book_index.get(symbol) or {}).get("stock_name", "")
+            ),
+            "symbol": symbol,
             "deep_analysis_date": run_date,
             "last_deep_analysis_price": current_prices.get(symbol),
             "price_impression": entry.get("price_impression", ""),
@@ -72,6 +89,14 @@ def update_analysis_index(
         }
 
     for symbol, entry in book_index.items():
+        entry["symbol"] = symbol
+        if not entry.get("stock_name"):
+            entry["stock_name"] = snapshot_stocks.get(symbol, {}).get("stock_name", "")
+        if not entry.get("stock_name") and entry.get("deep_analysis_date"):
+            historical_stocks = _snapshot_stocks(
+                skill_runs_root, book_type, entry["deep_analysis_date"]
+            )
+            entry["stock_name"] = historical_stocks.get(symbol, {}).get("stock_name", "")
         if entry.get("last_deep_analysis_price") is not None:
             continue
         historical_date = entry.get("deep_analysis_date")
@@ -82,6 +107,10 @@ def update_analysis_index(
             if historical_price is not None:
                 entry["last_deep_analysis_price"] = historical_price
 
+    index[book_type] = {
+        f"{entry['stock_name']}_{symbol}" if entry.get("stock_name") else symbol: entry
+        for symbol, entry in book_index.items()
+    }
     skill_runs_root.mkdir(parents=True, exist_ok=True)
     temp_path: Path | None = None
     try:
@@ -99,4 +128,4 @@ def update_analysis_index(
     LOGGER.info("分析索引已更新: %s (%s -> %s 只)", index_path, book_type, len(book_index))
 
 
-__all__ = ["update_analysis_index"]
+__all__ = ["analysis_entry_symbol", "update_analysis_index"]

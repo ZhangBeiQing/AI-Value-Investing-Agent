@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from core.logging import get_logger
-from services.backtest.coverage import resolve_experiment_trading_dates
+from services.backtest.coverage import resolve_experiment_trading_dates, inspect_backtest_progress
 from services.backtest.experiment import BacktestExperiment
 from services.backtest.ledger import BacktestLedger
 from services.backtest.locking import locked_experiment_stage
@@ -36,6 +36,9 @@ def _read_orders(path: Path) -> list[dict[str, Any]]:
 def finalize_backtest(
     experiment: BacktestExperiment,
 ) -> tuple[Path, Path]:
+    progress = inspect_backtest_progress(experiment)
+    if progress["completed_execution_count"] != progress["decision_date_count"]:
+        raise ValueError("回测尚有未完成的决策/执行日，不能 finalize 生成完整区间业绩")
     ledger = BacktestLedger(
         agent_data_root=experiment.context.agent_data_root,
         signature=experiment.signature,

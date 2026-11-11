@@ -11,13 +11,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from configs.stock_pool import TRACKED_A_STOCKS
+from configs.stock_pool import fixed_tracked_symbols, USD_CNY_FX_RATE
 from core.logging import get_logger
 from core.run_context import DEFAULT_BACKTESTS_ROOT, DEFAULT_DATA_ROOT, RunContext
 
 
 LOGGER = get_logger("FixedTrackedBacktest")
 EXPERIMENT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")
+EXPERIMENT_SCHEMA_VERSION = 2
 
 
 def _git_metadata() -> tuple[str, bool]:
@@ -53,9 +54,13 @@ def _prompt_hashes() -> dict[str, str]:
     project_root = Path(__file__).resolve().parents[2]
     roots = [
         project_root / "configs" / "prompt_flow" / "fixed_tracked",
-        project_root / "configs" / "research" / "web_research_policy.md",
+        project_root / "configs" / "research",
+        project_root / "configs" / "stock_pool.py",
         project_root / ".codex" / "skills" / "auto-trading-fixed-tracked",
         project_root / ".codex" / "skills" / "backtest-fixed-tracked",
+        project_root / ".codex" / "skills" / "daily-data-preparation",
+        project_root / ".codex" / "skills" / "daily-macro-summary",
+        project_root / ".codex" / "skills" / "financial-report-summary",
     ]
     files: list[Path] = []
     for root in roots:
@@ -108,6 +113,8 @@ def create_backtest_experiment(
     initial_cash: float = 500000.0,
     experiment_id: str = "",
     network_mode: str = "guarded_web",
+    model_config: dict[str, str] | None = None,
+    macro_summary_policy: str = "reuse",
     excluded_symbols: Iterable[str] = (),
     source_data_root: str | Path = DEFAULT_DATA_ROOT,
     backtests_root: str | Path = DEFAULT_BACKTESTS_ROOT,
@@ -118,6 +125,17 @@ def create_backtest_experiment(
         raise ValueError("start_date 不能晚于 end_date")
     if initial_cash <= 0:
         raise ValueError("initial_cash 必须大于 0")
+    if macro_summary_policy not in {"reuse", "regenerate"}:
+        raise ValueError("macro_summary_policy 必须为 reuse 或 regenerate")
+    recorded_model = {
+        "model": "unknown",
+        "reasoning_effort": "unknown",
+        "provider": "unknown",
+        "runtime": "unspecified",
+        "verification": "not_recorded",
+        **(model_config or {}),
+        "role_model_policy": "inherit_current",
+    }
     resolved_id = experiment_id or _default_experiment_id(start_date)
     if not EXPERIMENT_ID_PATTERN.match(resolved_id):
         raise ValueError(f"experiment_id 非法: {resolved_id}")
@@ -135,14 +153,14 @@ def create_backtest_experiment(
         (experiment_root / relative).mkdir(parents=True, exist_ok=True)
 
     commit, dirty = _git_metadata()
-    base_universe = tuple(entry.symbol for entry in TRACKED_A_STOCKS)
+    base_universe = tuple(fixed_tracked_symbols())
     normalized_excluded = tuple(
         dict.fromkeys(
             str(symbol).strip() for symbol in excluded_symbols if str(symbol).strip()
         )
     )
     payload: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": EXPERIMENT_SCHEMA_VERSION,
         "experiment_id": resolved_id,
         "created_at": datetime.now().isoformat(),
         "start_date": start_date,
@@ -151,18 +169,19 @@ def create_backtest_experiment(
         "initial_positions": {},
         "base_universe": list(base_universe),
         "excluded_symbols": list(normalized_excluded),
-        "universe_mode": "frozen_current_tracked_plus_daily_quant_long",
-        "long_candidate_policy": "daily_12_quant_prefilter_long",
+        "universe_mode": "frozen_current_fixed_tracked",
         "survivorship_bias": True,
         "network_mode": network_mode,
         "lookahead_risk": network_mode != "disabled",
         "execution_rule": "next_trading_day_open",
+        "usd_cny_fx": USD_CNY_FX_RATE,
         "commission_rate": 0.0,
         "stamp_duty_rate": 0.0,
         "slippage_bps": 0.0,
         "git_commit": commit,
         "working_tree_dirty": dirty,
-        "model_config": {},
+        "model_config": recorded_model,
+        "macro_summary_policy": macro_summary_policy,
         "prompt_hashes": _prompt_hashes(),
         "paths": context.as_dict(),
     }
@@ -290,6 +309,10 @@ def load_backtest_experiment(
     if not path.exists():
         raise FileNotFoundError(f"回测实验不存在: {path}")
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != EXPERIMENT_SCHEMA_VERSION:
+        raise ValueError("旧版回测使用过时的股池与交易规则，只保留审计，不能续跑；请创建新实验")
+    if payload.get("usd_cny_fx") != USD_CNY_FX_RATE:
+        raise ValueError("当前主干美元折算口径与实验记录不同，不能混用计价规则；请创建新实验")
     resolved_source_root = (
         source_data_root
         or (payload.get("paths") or {}).get("source_data_root")

@@ -10,7 +10,7 @@ from time import perf_counter
 from typing import Any, Dict, Iterable, List
 
 from configs.feature_flags import selection_universe_merge_enabled
-from configs.stock_pool import FIXED_TRACKED_US_SYMBOLS, TRACKED_A_STOCKS
+from configs.stock_pool import fixed_tracked_symbols
 from core.logging import init_component_logger
 from services.pipeline.steps.build_agent_input import build_snapshot_payload
 from services.pipeline.steps.build_agent_input import write_agent_input_bundle
@@ -216,11 +216,7 @@ def build_run_manifest(run_date: str, *, base_dir: str = "data") -> Dict[str, An
     # 长期候选、量化初筛短期股、manual_position_override.json 都不再自动并入；
     # 需要恢复旧的全量口径时改 configs/feature_flags.py 的 ENABLE_SELECTION_UNIVERSE_MERGE。
     merge_selection_universe = selection_universe_merge_enabled()
-    tracked_symbols = [entry.symbol for entry in TRACKED_A_STOCKS]
-    # 固定股池内的美股标的与 A 股/港股同批生成研究包，共用 fixed_tracked 账本。
-    for symbol in FIXED_TRACKED_US_SYMBOLS:
-        if symbol not in tracked_symbols:
-            tracked_symbols.append(symbol)
+    tracked_symbols = fixed_tracked_symbols()
     if merge_selection_universe:
         manual_position_symbols = _load_manual_position_symbols(base_dir)
         short_prefilter_symbols = _load_prefilter_symbols(short_prefilter)
@@ -325,6 +321,7 @@ def run_book_pipeline(
     agent_data_root: str | Path | None = None,
     prompt_context_override: Dict[str, str] | None = None,
     allow_news_refresh: bool = False,
+    macro_summary_override: str | None = None,
 ) -> tuple[Path, Dict[str, Any]]:
     target_symbols = [symbol for symbol in symbols if symbol]
     target_dir = Path(output_dir)
@@ -345,6 +342,7 @@ def run_book_pipeline(
         target_dir,
         backtest_read_only=backtest_read_only,
         source_data_root=source_data_root,
+        macro_summary_override=macro_summary_override,
     )
     global_context_sec = perf_counter() - stage_start
 

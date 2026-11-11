@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from core.logging import get_logger
-from services.backtest.coverage import next_experiment_trading_date
+from services.backtest.coverage import next_experiment_trading_date, ensure_previous_days_completed
 from services.backtest.experiment import BacktestExperiment
 from services.backtest.ledger import BacktestLedger
 from services.backtest.locking import locked_experiment_stage
 from services.trading.post_trade_pipeline import validate_decision_json
+from services.trading.trade_executor import _validate_lot_size
+from services.trading.price_tools import _symbol_fx_rate
 from services.trading.trade_summary import (
     get_portfolio_historical_context,
     initialize_data_files,
@@ -21,6 +24,7 @@ from services.trading.trade_summary import (
     use_agent_data_root,
 )
 from shared_data_access.historical_prices import exact_price
+from shared_data_access.market_calendar import inspect_market_session
 from commons import parse_symbol
 
 
@@ -30,11 +34,6 @@ LOGGER = get_logger("BacktestExecution")
 def _entry_symbol(entry: dict[str, Any]) -> str:
     value = entry.get("symbol") or entry.get("stock_code")
     return str(value or "").strip()
-
-
-def _lot_size(symbol: str) -> int:
-    info = parse_symbol(symbol)
-    return 100 if info.is_cn_market() else 1
 
 
 def _stable_order_id(
@@ -63,21 +62,18 @@ def _execution_price(
     symbol: str,
     execution_date: str,
 ) -> float | None:
-    return exact_price(
-        parse_symbol(symbol),
+    info = parse_symbol(symbol)
+    if info.market in {"US", "HK"} and not inspect_market_session(
+        execution_date, market=info.market, base_dir=experiment.context.source_data_root,
+    ).is_trading_day:
+        return None
+    price = exact_price(
+        info,
         execution_date,
         "开盘",
         base_dir=experiment.context.source_data_root,
     )
-
-
-def _rank_buy(entry: dict[str, Any], held_symbols: set[str]) -> tuple[float, int, str]:
-    symbol = _entry_symbol(entry)
-    try:
-        confidence = float(entry.get("confidence_score") or 0.0)
-    except (TypeError, ValueError):
-        confidence = 0.0
-    return (-confidence, 0 if symbol in held_symbols else 1, symbol)
+    return price if price is not None and math.isfinite(price) and price > 0 else None
 
 
 @locked_experiment_stage
@@ -94,6 +90,7 @@ def simulate_post_trade(
         experiment,
         decision_date,
     )
+    ensure_previous_days_completed(experiment, decision_date)
     if execution_date != expected_execution_date:
         raise ValueError(
             f"execution_date 必须是下一交易日 {expected_execution_date}，"
@@ -117,6 +114,8 @@ def simulate_post_trade(
             and existing.get("decision_date") == decision_date
             and existing.get("execution_date") == execution_date
         ):
+            if not daily_summary_path.exists() or not history_path.exists():
+                raise RuntimeError("06 已成功但 07/08 缺失，需修复归档；禁止再次成交")
             return log_path, daily_summary_path, history_path
         raise RuntimeError(f"已有不匹配的回测执行日志: {log_path}")
 
@@ -131,141 +130,74 @@ def simulate_post_trade(
         initial_cash=experiment.initial_cash,
         symbols=list(experiment.base_universe),
     )
+    if any(record.get("decision_date") == decision_date for record in ledger.records()):
+        raise RuntimeError("隔离账本已有当日执行但缺少成功 06；拒绝重复成交，请核对中断现场")
     state = ledger.latest(on_or_before=execution_date)
     positions = dict(state.positions)
-    held_symbols = {
-        symbol
-        for symbol, shares in positions.items()
-        if symbol != "CASH" and float(shares or 0) > 0
-    }
     entries = list(decision.get("stock_decisions") or [])
-    sell_entries = [
-        entry for entry in entries if str(entry.get("action_type") or "").upper() == "SELL"
-    ]
-    buy_entries = sorted(
-        (
-            entry
-            for entry in entries
-            if str(entry.get("action_type") or "").upper() == "BUY"
-        ),
-        key=lambda entry: _rank_buy(entry, held_symbols),
-    )
-
+    if decision.get("summary_date") != decision_date:
+        raise ValueError("05 的 summary_date 与决策日不一致")
+    symbols = [_entry_symbol(entry) for entry in entries]
+    if len(symbols) != len(set(symbols)):
+        raise ValueError("同一天每只股票只能有一个最终决策")
+    allowed = set(experiment.base_universe) | set(positions)
+    if set(symbols) - allowed:
+        raise ValueError("决策包含固定股池与隔离持仓以外的股票")
     orders: list[dict[str, Any]] = []
     actions: list[dict[str, Any]] = []
     order_ids: list[str] = []
 
-    for entry in sell_entries + buy_entries:
-        symbol = _entry_symbol(entry)
-        action = str(entry.get("action_type") or "").upper()
-        requested = int(entry.get("action_num") or 0)
-        order_id = _stable_order_id(
-            experiment.experiment_id,
-            decision_date,
-            symbol,
-            action,
-        )
-        order: dict[str, Any] = {
-            "order_id": order_id,
-            "decision_date": decision_date,
-            "execution_date": execution_date,
-            "symbol": symbol,
-            "action": action,
-            "requested_shares": requested,
-            "filled_shares": 0,
-            "execution_price": None,
-            "status": "rejected",
-            "reason": "",
-            "adjustments": [],
-        }
-        if not symbol or requested <= 0:
-            order["reason"] = "invalid_order"
-            orders.append(order)
+    # Same sell-then-buy batches and quantity rules as the daily executor.
+    # A batch fails as a whole: the simulator never invents quantities or ranks research.
+    for action in ("SELL", "BUY"):
+        batch = [entry for entry in entries if entry.get("action_type") == action]
+        if not batch:
             continue
-        lot_size = _lot_size(symbol)
-        normalized = requested - requested % lot_size
-        if normalized != requested:
-            order["adjustments"].append(
-                {
-                    "type": "lot_size_round_down",
-                    "from_shares": requested,
-                    "to_shares": normalized,
-                    "lot_size": lot_size,
-                }
-            )
-        if normalized <= 0:
-            order["reason"] = "below_minimum_lot"
-            orders.append(order)
+        trades = {_entry_symbol(entry): entry["action_num"] for entry in batch}
+        lot_error = _validate_lot_size(action.lower(), trades, decision_date)
+        batch_orders = []
+        for symbol, quantity in trades.items():
+            local_price = _execution_price(experiment, symbol, execution_date)
+            rate = _symbol_fx_rate(symbol)
+            batch_orders.append({
+                "order_id": _stable_order_id(experiment.experiment_id, decision_date, symbol, action),
+                "decision_date": decision_date, "execution_date": execution_date,
+                "symbol": symbol, "action": action, "requested_shares": quantity,
+                "filled_shares": 0, "execution_price": None, "price_local": local_price,
+                "fx_rate": rate, "price_cny": local_price * rate if local_price is not None else None,
+                "status": "rejected", "reason": "", "adjustments": [],
+            })
+        reason = "invalid_trade_unit" if lot_error else ""
+        if not reason and any(order["price_cny"] is None for order in batch_orders):
+            for order in batch_orders:
+                order.update(status="pending", reason="exact_open_price_missing")
+            orders.extend(batch_orders)
             continue
-        price = _execution_price(experiment, symbol, execution_date)
-        if price is None:
-            order["status"] = "pending"
-            order["reason"] = "exact_open_price_missing"
-            orders.append(order)
+        if not reason and action == "SELL" and any(
+            quantity > float(positions.get(symbol, 0)) for symbol, quantity in trades.items()
+        ):
+            reason = "insufficient_position"
+        total = sum((order["price_cny"] or 0) * order["requested_shares"] for order in batch_orders)
+        if not reason and action == "BUY" and total > float(positions.get("CASH", 0)):
+            reason = "insufficient_cash"
+        if reason:
+            for order in batch_orders:
+                order["reason"] = reason
+            orders.extend(batch_orders)
             continue
-
-        filled = normalized
-        if action == "SELL":
-            available = int(float(positions.get(symbol, 0) or 0))
-            filled = min(filled, available)
-            filled -= filled % lot_size
-            if filled != normalized:
-                order["adjustments"].append(
-                    {
-                        "type": "position_cap",
-                        "from_shares": normalized,
-                        "to_shares": filled,
-                    }
-                )
-            if filled <= 0:
-                order["reason"] = "insufficient_position"
-                orders.append(order)
-                continue
-            positions[symbol] = available - filled
+        for order in batch_orders:
+            symbol = order["symbol"]
+            quantity = order["requested_shares"]
+            positions[symbol] = float(positions.get(symbol, 0)) + (quantity if action == "BUY" else -quantity)
             if positions[symbol] == 0:
-                positions.pop(symbol, None)
-            positions["CASH"] = round(
-                float(positions.get("CASH", 0.0)) + price * filled,
-                4,
-            )
-        else:
-            cash = float(positions.get("CASH", 0.0) or 0.0)
-            affordable = int(cash // (price * lot_size)) * lot_size
-            filled = min(filled, affordable)
-            if filled != normalized:
-                order["adjustments"].append(
-                    {
-                        "type": "cash_cap",
-                        "from_shares": normalized,
-                        "to_shares": filled,
-                    }
-                )
-            if filled <= 0:
-                order["reason"] = "insufficient_cash"
-                orders.append(order)
-                continue
-            positions["CASH"] = round(cash - price * filled, 4)
-            positions[symbol] = int(float(positions.get(symbol, 0) or 0)) + filled
-
-        order.update(
-            {
-                "filled_shares": filled,
-                "execution_price": price,
-                "status": "filled",
-                "reason": "",
-            }
-        )
-        orders.append(order)
-        order_ids.append(order_id)
-        actions.append(
-            {
-                "order_id": order_id,
-                "action": action.lower(),
-                "symbol": symbol,
-                "shares": filled,
-                "price": price,
-            }
-        )
+                positions.pop(symbol)
+            order.update(status="filled", filled_shares=quantity, execution_price=order["price_cny"])
+            actions.append({"order_id": order["order_id"], "action": action.lower(),
+                            "symbol": symbol, "shares": quantity, "price": order["price_cny"],
+                            "price_local": order["price_local"], "fx_rate": order["fx_rate"]})
+            order_ids.append(order["order_id"])
+        positions["CASH"] = round(float(positions.get("CASH", 0)) + (total if action == "SELL" else -total), 2)
+        orders.extend(batch_orders)
 
     new_state = ledger.append_execution(
         decision_date=decision_date,

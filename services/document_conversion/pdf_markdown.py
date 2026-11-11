@@ -112,6 +112,8 @@ def write_pdf_conversion_artifacts(
     source_pdf: str | Path,
 ) -> None:
     md_path = Path(markdown_path)
+    if result.profile == "financial_report" and "financial_reports" in md_path.parts:
+        raise ValueError("财报 PDF 原文只能写披露/研究输入目录，禁止写入 financial_reports 总结目录")
     md_path.parent.mkdir(parents=True, exist_ok=True)
     md_path.write_text(result.markdown, encoding="utf-8")
     pdf_markdown_metadata_path(md_path).write_text(
@@ -179,6 +181,8 @@ class PDFMarkdownConverter:
 
         if output_dir:
             output_path = Path(output_dir) / f"{pdf_path.stem}.md"
+            if profile == "financial_report" and "financial_reports" in output_path.parts:
+                raise ValueError("财报原文禁止写入 financial_reports 总结目录")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(markdown, encoding="utf-8")
             LOGGER.info("Markdown 已保存到: %s", output_path)

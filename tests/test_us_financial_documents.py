@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
 from commons import parse_symbol
@@ -210,6 +212,93 @@ def test_is_quarter_end_rejects_event_dates() -> None:
     assert _is_quarter_end("2026-09-30") is True
     assert _is_quarter_end("2026-06-04") is False
     assert _is_quarter_end("") is False
+
+
+def test_8k_results_item_on_event_date_is_financial_but_regfd_is_not():
+    assert is_us_financial_filing(
+        "8-K", "重大事项公告（8-K）（报告期 2026-09-02；事项 2.02,8.01,9.01）",
+        "Financial Results and Quarterly Dividend",
+    )
+    assert not is_us_financial_filing(
+        "8-K", "重大事项公告（8-K）（报告期 2026-09-02；事项 7.01,9.01）",
+    )
+
+
+def test_sync_8k_results_on_non_quarter_end_materializes_earnings(monkeypatch, tmp_path):
+    from services.news import disclosures_builder as builder
+
+    meta = builder.AnnouncementMeta(
+        announcement_id="earnings", org_id="1730168", stock_code="AVGO.US",
+        title="重大事项公告（8-K）（报告期 2026-09-02；事项 2.02,8.01,9.01）",
+        date="2026-09-02", url="", category="8-K", primary_document="main.htm",
+    )
+    items = {"earnings": meta}
+    monkeypatch.setattr(builder, "index_path", lambda _: tmp_path / "index.json")
+    monkeypatch.setattr(builder, "load_index", lambda _: items)
+    monkeypatch.setattr(builder, "save_index", lambda *args: None)
+    monkeypatch.setattr(builder, "md_dir", lambda _: tmp_path)
+    monkeypatch.setattr(builder, "build_us_financial_document_markdown", lambda **kw: "quarterly financial results")
+
+    class Access:
+        def prepare_dataset(self, **kwargs):
+            pass
+
+    assert builder._sync_us_financial_documents(parse_symbol("AVGO.US"), data_access=Access()) == 1
+    assert meta.is_financial_report
+    assert Path(meta.md_path).read_text() == "quarterly financial results"
+
+
+def test_select_8k_results_with_stale_false_marker_before_full_10q(monkeypatch, tmp_path):
+    from services.news import disclosures_builder as builder
+    from services.research import financial_report_skill as skill
+
+    root = tmp_path / "AVGO.US"
+    (root / "disclosures").mkdir(parents=True)
+    (root / "disclosures/index.json").write_text("{}")
+    entries = {}
+    for ident, form, period, day, marked in [
+        ("q2", "10-Q", "2026-05-03", "2026-06-09", True),
+        ("release", "8-K", "2026-09-02", "2026-09-02", False),
+        ("q3", "10-Q", "2026-08-02", "2026-09-10", True),
+    ]:
+        title = f"财报（{form}）（报告期 {period}）"
+        if form == "8-K":
+            title += "（事项 2.02,8.01,9.01）"
+        entries[ident] = builder.AnnouncementMeta(
+            announcement_id=ident, org_id="1", stock_code="AVGO.US", title=title,
+            date=day, url="", category=form, is_financial_report=marked,
+        )
+    monkeypatch.setattr(skill, "_stock_root", lambda _: root)
+    monkeypatch.setattr(skill, "load_index", lambda _: entries)
+    latest, previous = skill.select_latest_two_reports("AVGO.US", available_on_date="2026-09-04")
+    assert latest.announcement_id == "release"
+    assert previous.announcement_id == "q2"
+
+
+def test_us_full_report_after_release_uses_filing_date_not_8k_event_quarter(monkeypatch, tmp_path):
+    from services.news import disclosures_builder as builder
+    from services.research import financial_report_skill as skill
+
+    (tmp_path / "disclosures").mkdir()
+    (tmp_path / "disclosures/index.json").write_text("{}")
+    entries = {}
+    for ident, form, period, day in [
+        ("q1", "10-Q", "2026-03-31", "2026-04-30"),
+        ("release", "8-K", "2026-07-22", "2026-07-22"),
+        ("q2", "10-Q", "2026-06-30", "2026-07-23"),
+    ]:
+        title = f"财报（{form}）（报告期 {period}）"
+        if form == "8-K":
+            title += "（事项 2.02,9.01）"
+        entries[ident] = builder.AnnouncementMeta(
+            announcement_id=ident, org_id="1", stock_code="GOOGL.US", title=title,
+            date=day, url="", category=form, is_financial_report=form == "10-Q",
+        )
+    monkeypatch.setattr(skill, "_stock_root", lambda _: tmp_path)
+    monkeypatch.setattr(skill, "load_index", lambda _: entries)
+    latest, previous = skill.select_latest_two_reports("GOOGL.US", available_on_date="2026-09-04")
+    assert latest.announcement_id == "q2"
+    assert previous.announcement_id == "q1"
 
 
 def test_document_missing_primary_does_not_return_tables_only(monkeypatch):

@@ -18,8 +18,8 @@ from services.research.financial_report_summary_prompts import (
     FUTURE_OUTLOOK_PROMPT_TEMPLATE,
     REPORT_ANALYSIS_PROMPT_TEMPLATE,
 )
-from commons.stock_utils import parse_symbol
-from shared_data_access.us_disclosures import filing_report_period
+from commons.stock_utils import is_etf_symbol, parse_symbol
+from shared_data_access.us_disclosures import filing_report_period, is_us_financial_filing
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -82,6 +82,7 @@ PRE_DISCLOSURE_HINTS = (
     "业绩预告", "盈利预告", "业绩快报", "主要经营数据公告", "主要经营数据的公告", "主要经营数据",
 )
 REPORT_EXCLUDE_HINTS = (
+    "持续督导", "保荐", "行动方案",
     "说明会", "制度", "问询", "回复", "利润分配", "权益分派", "募集资金", "非经营性资金占用",
     "关联资金往来", "审计委员会", "董事会", "监事会", "自愿性披露", "环境", "ESG", "社会责任",
     "英文版", "英文简版", "更正", "修订", "补充", "通告", "股东大会", "回购", "可转债", "规程",
@@ -147,6 +148,20 @@ def _copy_to_workdir(source: Path, target: Path) -> None:
     shutil.copyfile(source, target)
 
 
+def _copy_report_to_workdir(source: Path, target: Path, *, historical_mode: bool) -> None:
+    """Keep cached disclosures intact; historical inputs exclude unbound live supplements."""
+    if not historical_mode:
+        _copy_to_workdir(source, target)
+        return
+    content = source.read_text(encoding="utf-8")
+    marker = "## 补充：结构化财务报表（第三方数据）"
+    if marker in content:
+        content = content.split(marker, 1)[0].rstrip() + "\n"
+        LOGGER.info("历史财报输入移除未绑定本次申报的第三方补充: %s", source)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+
+
 def _clear_stale_research_outputs(
     research_outputs_dir: Path,
     *,
@@ -155,6 +170,11 @@ def _clear_stale_research_outputs(
     current_analysis_date: str,
 ) -> None:
     """Remove only known generated artifacts when the workdir advances report."""
+
+    legacy_snapshot = research_outputs_dir / "expectation_snapshot.md"
+    if legacy_snapshot.is_file():
+        legacy_snapshot.unlink()
+        LOGGER.info("移除旧预期快照，避免与本次独立Scout研究混用: %s", legacy_snapshot)
 
     if (
         existing_manifest.get("latest_announcement_id") == current_announcement_id
@@ -215,13 +235,13 @@ def prepare_financial_report_workdir(
     disclosures_md_dir = workdir.parent / "disclosures" / "md"
     disclosures_pdf_dir = workdir.parent / "disclosures" / "pdfs"
 
-    _copy_to_workdir(latest_path, latest_target)
+    _copy_report_to_workdir(latest_path, latest_target, historical_mode=backtest_context_path is not None)
     if backtest_context_path is not None:
         _copy_to_workdir(backtest_context_path, backtest_context_target)
     elif backtest_context_target.exists():
         backtest_context_target.unlink()
     if previous_path:
-        _copy_to_workdir(previous_path, previous_target)
+        _copy_report_to_workdir(previous_path, previous_target, historical_mode=backtest_context_path is not None)
     elif previous_target.exists():
         previous_target.unlink()
 
@@ -296,6 +316,8 @@ def prepare_financial_report_workdir(
         f"- 最新财报公告日期：{bundle.latest_report.date}",
         f"- 公告时间：{bundle.latest_report.announcement_datetime or '未取得'}",
         f"- 财报前市场日：{context.pre_announcement_market_date}",
+        f"- 预期重建的业绩首发日：{context.expectation_announcement_date or bundle.latest_report.date}（可能早于完整报表申报日）",
+        f"- 上一期原始财报公开日期：{bundle.previous_report.date if bundle.previous_report else '无'}；若不早于预期截止，Expectation Scout 禁止读取02_previous_report.md，仅Author可在本次分析日已公开时读取。",
         f"- workdir：`{workdir}`",
         (
             f"- 运行模式：历史回测；全体角色必须先完整读取 `{backtest_context_target}`，"
@@ -327,11 +349,12 @@ def prepare_financial_report_workdir(
         "- 正常研究不批量读取多年财报。只有固定基本面规则定义的明确历史缺口出现时，才先在 Markdown 目录按文件名、报告期和关键词定位；目标报告没有 Markdown 时再读取对应 PDF。",
         "- 不得修改披露缓存，不得批量转换 PDF，不得因本轮研究自动调用 PDF 转换（pymupdf4llm）。找不到或无法可靠提取时，记录数据缺口及其影响。",
         "- 所有角色继续服从各自时间边界和禁读规则；目录中存在文件不代表该角色有权读取。",
+        *( ["- 历史模式下，原文缓存末尾的“补充：结构化财务报表（第三方数据）”不属于该次公司披露，所有角色禁止读取或使用该补充；本次workdir已在读取阶段排除。"] if backtest_context_path is not None else [] ),
         "",
         "## 角色读取边界",
         "",
         "- Expectation Scout 禁止读取最新财报、当前市场上下文和任何财报后信息；只能读取财报前上下文、上一期原始财报、上期基本面记忆中可验证的旧假设，以及公告前来源。",
-        "- Industry Researcher 可读取公司财报以识别业务暴露，但必须独立验证细分产业链，不得沿用候选行业标签下结论。",
+        "- Industry Researcher 先独立形成经营情景及兑现阶段倍数；不读取 pre_announcement_market_context.md、current_market_context.md、个股研究包、历史估值结论或交易决策。既有产业卡片在独立假设完成后再复核。研究方法以 industry_chain_research 固定规则为准。",
         "- Financial Author 第一遍不得读取上期基本面记忆；形成当前事实判断后再读取它做假设兑现检查。",
         "- Financial Author 一次撰写直接交付最终报告，初稿即最终报告。",
         "",
@@ -361,6 +384,7 @@ def prepare_financial_report_workdir(
         "latest_report_date": bundle.latest_report.date,
         "latest_announcement_datetime": bundle.latest_report.announcement_datetime,
         "pre_announcement_market_date": context.pre_announcement_market_date,
+        "expectation_announcement_date": context.expectation_announcement_date,
         "historical_research_path": str(context.historical_research_path) if context.historical_research_path else None,
         "latest_report_path": str(latest_target),
         "previous_announcement_id": bundle.previous_report.announcement_id if bundle.previous_report else None,
@@ -613,6 +637,11 @@ def update_summary_index(
     previous_report: Optional[Any],
     output_path: Path,
 ) -> Path:
+    from services.research.financial_report_validation import summary_file_issue
+
+    issue = summary_file_issue(output_path)
+    if issue:
+        raise ValueError(f"拒绝登记财报总结: {issue}: {output_path}")
     latest_announcement_id = getattr(latest_report, "announcement_id", None) or latest_report["announcement_id"]
     latest_date = getattr(latest_report, "date", None) or latest_report["date"]
     latest_report_type = getattr(latest_report, "report_type", None) or latest_report.get("report_type") or "unknown"
@@ -715,7 +744,11 @@ def _classify_report_title(symbol: str, title: str) -> Tuple[Optional[str], Opti
     if not report_type or not quarter:
         return None, None, None, 99
 
-    if any(hint in text for hint in REPORT_EXCLUDE_HINTS):
+    # 自愿披露的预告、快报或经营数据仍是新的财务信息；其他排除项继续生效。
+    exclude_hints = REPORT_EXCLUDE_HINTS
+    if any(hint in text for hint in PRE_DISCLOSURE_HINTS):
+        exclude_hints = tuple(hint for hint in exclude_hints if hint != "自愿性披露")
+    if any(hint in text for hint in exclude_hints):
         return report_type, quarter, None, 99
 
     # A 股代码优先使用 A 股口径正文，避免误拿 H 股镜像披露
@@ -818,7 +851,11 @@ def _load_financial_report_entries(symbol: str) -> List[FinancialReportMeta]:
     index: Dict[str, AnnouncementMeta] = load_index(disclosures_index)
     results: List[FinancialReportMeta] = []
     for meta in index.values():
-        if not meta.is_financial_report:
+        # 兼容尚未重建标记的 SEC 缓存，避免旧 False 遮蔽明确的 Item 2.02。
+        explicit_us_report = symbol.endswith(".US") and is_us_financial_filing(
+            meta.category or "", meta.title,
+        )
+        if not meta.is_financial_report and not explicit_us_report:
             continue
         report_type, quarter, report_kind, priority = _classify_report_title(symbol, meta.title)
         if not report_type or not quarter:
@@ -849,6 +886,14 @@ def _load_financial_report_entries(symbol: str) -> List[FinancialReportMeta]:
             item.announcement_id,
         )
     )
+    if symbol.endswith(".US"):
+        # 8-K 的报告期常是发布日期（如7月22日），不能据此把Q2业绩稿
+        # 排到次日披露、真正报告期为6月30日的10-Q之前。
+        results.sort(key=lambda item: (
+            -(int(item.date.replace("-", "")) if item.date else 0),
+            item.priority,
+            item.announcement_id,
+        ))
     return results
 
 
@@ -936,7 +981,9 @@ def _summary_entry_period(entry: Dict[str, Any]) -> Optional[tuple[int, int]]:
     return fiscal_year, quarter
 
 
-_PREVIEW_ANNOUNCEMENT_MARKERS = ("业绩预告", "业绩快报")
+_PREVIEW_ANNOUNCEMENT_MARKERS = (
+    "业绩预告", "业绩快报", "业绩预增", "业绩预减", "盈利预告",
+)
 
 
 def _is_preview_announcement_title(title: str) -> bool:
@@ -944,8 +991,6 @@ def _is_preview_announcement_title(title: str) -> bool:
 
     text = str(title or "")
     if not text:
-        return False
-    if "报告" in text and "预告" not in text and "快报" not in text:
         return False
     return any(marker in text for marker in _PREVIEW_ANNOUNCEMENT_MARKERS)
 
@@ -970,6 +1015,22 @@ def _summary_entry_covers_report(
     return True
 
 
+def registered_summary_covers_report(symbol: str, path: Path, latest: FinancialReportMeta) -> bool:
+    """Same fiscal period may have an earlier earnings release than the full report."""
+    index = load_summary_index(symbol)
+    titles = {report.announcement_id: report.title for report in _load_financial_report_entries(symbol)}
+    entries = [index.get("latest_completed_report") or {}, *(index.get("history") or [])]
+    for entry in entries:
+        if not isinstance(entry, dict) or not entry.get("output_path"):
+            continue
+        candidate = Path(entry["output_path"])
+        if not candidate.is_absolute():
+            candidate = PROJECT_ROOT / candidate
+        if candidate.resolve() == path.resolve() and _summary_entry_covers_report(entry, latest, titles):
+            return True
+    return False
+
+
 def _should_skip(symbol: str, latest: FinancialReportMeta) -> bool:
     summary_index = load_summary_index(symbol)
     announcement_titles = {
@@ -990,7 +1051,14 @@ def _should_skip(symbol: str, latest: FinancialReportMeta) -> bool:
         output_path = Path(raw_path)
         if not output_path.is_absolute():
             output_path = PROJECT_ROOT / output_path
-        if output_path.exists() and output_path.stat().st_size > 0:
+        from services.research.financial_report_validation import summary_file_issue
+
+        if summary_file_issue(output_path) is None:
+            if str(entry.get("announcement_id") or "") != latest.announcement_id:
+                content = output_path.read_text(encoding="utf-8", errors="replace")
+                if re.search(r"本期公告[^\n]{0,100}非完整(?:三季报|季报|财报)", content):
+                    # Keep the research as a baseline; it explicitly says it has no actual report yet.
+                    continue
             return True
     return False
 
@@ -1062,6 +1130,9 @@ def build_stock_report_bundles(
         final_mandate = item.get("final_mandate") or "unknown"
         industry_name = str(item.get("primary_board") or item.get("board") or item.get("industry") or "所属行业")
         if not isinstance(symbol, str) or not symbol:
+            continue
+        if is_etf_symbol(parse_symbol(symbol)):
+            LOGGER.info("跳过 ETF/指数财报研究准备: %s", symbol)
             continue
         latest, previous = _select_latest_two_reports(
             symbol,

@@ -10,7 +10,6 @@ import pytest
 
 from core.run_context import RunContext
 from services.backtest.execution import simulate_post_trade
-from services.backtest import announcements as backtest_announcements
 from services.backtest import day_inputs as backtest_day_inputs
 from services.backtest.day_inputs import write_no_trade_decision
 from services.backtest.coverage import (
@@ -298,8 +297,9 @@ def test_isolated_next_open_execution_and_idempotency(tmp_path: Path) -> None:
         source_data_root=source_root,
     )
     universe, metadata = build_daily_universe(experiment, DECISION_DATE, ledger)
-    assert "601179.SH" in universe
-    assert metadata["note"].startswith("12_quant_prefilter_long.csv 只扩展研究范围")
+    assert "601179.SH" not in universe
+    assert "TSM.US" in universe
+    assert not list(experiment.context.selection_runs_root.glob("**/*.csv"))
 
     book_dir = (
         experiment.context.skill_runs_root / DECISION_DATE / "fixed_tracked"
@@ -533,54 +533,6 @@ def test_backtest_research_rebuilds_historical_price_and_valuation(
     assert "扣非PE(TTM): 10.0" in markdown
 
 
-def test_backtest_announcements_prepare_each_symbol_once_per_experiment(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    experiment = create_backtest_experiment(
-        start_date=DECISION_DATE,
-        end_date=EXECUTION_DATE,
-        experiment_id="announcement-once",
-        source_data_root=tmp_path / "source_data",
-        backtests_root=tmp_path / "backtests" / "fixed_tracked",
-        network_mode="guarded_web",
-    )
-    calls: list[str] = []
-
-    def fake_prepare_one(_experiment, symbol: str, *, lookback_days: int) -> dict:
-        calls.append(symbol)
-        return {
-            "status": "success",
-            "prepared_at": "2026-08-04T12:00:00",
-            "lookback_days": lookback_days,
-            "added_summary_count": 0,
-            "raw_news_item_count": 0,
-            "audited_news_item_count": 0,
-        }
-
-    monkeypatch.setattr(
-        backtest_announcements,
-        "_prepare_one_symbol",
-        fake_prepare_one,
-    )
-    first = backtest_announcements.prepare_backtest_announcements(
-        experiment,
-        [SYMBOL],
-        max_workers=1,
-    )
-    second = backtest_announcements.prepare_backtest_announcements(
-        experiment,
-        [SYMBOL],
-        max_workers=1,
-    )
-
-    assert calls == [SYMBOL]
-    assert first["prepared_symbol_count"] == 1
-    assert second["prepared_symbol_count"] == 0
-    assert second["cached_symbol_count"] == 1
-    assert Path(second["checkpoint"]).exists()
-
-
 def test_backtest_prepare_day_stops_before_04_when_financial_research_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -600,16 +552,7 @@ def test_backtest_prepare_day_stops_before_04_when_financial_research_missing(
         "build_daily_universe",
         lambda *_args, **_kwargs: ([SYMBOL], {"symbols": [SYMBOL]}),
     )
-    monkeypatch.setattr(
-        backtest_day_inputs,
-        "prepare_backtest_announcements",
-        lambda *_args, **_kwargs: {"status": "skipped"},
-    )
-    monkeypatch.setattr(
-        backtest_day_inputs,
-        "prepare_backtest_financial_disclosures",
-        lambda *_args, **_kwargs: {"status": "skipped"},
-    )
+    monkeypatch.setattr(backtest_day_inputs, "inspect_shared_inputs", lambda *a: {"status": "ready"})
     monkeypatch.setattr(
         backtest_day_inputs,
         "inspect_backtest_financial_research",
@@ -774,52 +717,6 @@ def test_empty_p0_day_is_valid_only_in_backtest_path(tmp_path: Path) -> None:
     assert ledger.latest().positions["CASH"] == 500000.0
 
 
-def test_missing_long_prefilter_is_built_from_shared_factor_snapshot(
-    tmp_path: Path,
-) -> None:
-    source_root = tmp_path / "source_data"
-    factor_dir = source_root / "factor_store" / "by_date"
-    factor_dir.mkdir(parents=True, exist_ok=True)
-    factor_path = factor_dir / f"{DECISION_DATE}.csv"
-    pd.DataFrame(
-        [
-            {
-                "symbol": "601179.SH",
-                "stock_name": "中国西电",
-                "long_score": 0.9,
-                "short_score": 0.1,
-                "latest_volume": 1.0,
-                "liquidity_score": 0.8,
-                "basic_info_asof_date": DECISION_DATE,
-            }
-        ]
-    ).to_csv(factor_path, index=False)
-    original = factor_path.read_bytes()
-    backtests_root = tmp_path / "backtests" / "fixed_tracked"
-    experiment = create_backtest_experiment(
-        start_date=DECISION_DATE,
-        end_date=EXECUTION_DATE,
-        experiment_id="quant-build",
-        source_data_root=source_root,
-        backtests_root=backtests_root,
-        network_mode="disabled",
-    )
-    ledger = BacktestLedger(
-        agent_data_root=experiment.context.agent_data_root,
-        signature=experiment.signature,
-        source_data_root=source_root,
-    )
-    universe, _ = build_daily_universe(experiment, DECISION_DATE, ledger)
-    assert "601179.SH" in universe
-    assert (
-        experiment.context.selection_runs_root
-        / DECISION_DATE
-        / "12_quant_prefilter_long.csv"
-    ).exists()
-    assert factor_path.read_bytes() == original
-    assert not (source_root / "selection_runs" / DECISION_DATE).exists()
-
-
 def test_shared_data_access_classifies_pre_listing_date(tmp_path: Path) -> None:
     target = price_cache_dir(parse_symbol("00100.HK"), base_dir=tmp_path)
     target.mkdir(parents=True, exist_ok=True)
@@ -850,7 +747,7 @@ def test_historical_manifest_excludes_known_not_listed_symbols(
     from services.pipeline import daily_pipeline as daily_pipeline_module
 
     monkeypatch.setattr(
-        daily_pipeline_module,
+        __import__("configs.stock_pool", fromlist=["TRACKED_A_STOCKS"]),
         "TRACKED_A_STOCKS",
         [
             StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),
@@ -956,7 +853,7 @@ def test_backtest_universe_excludes_pre_listing_symbols(
     from services.backtest import experiment as experiment_module
 
     monkeypatch.setattr(
-        experiment_module,
+        __import__("configs.stock_pool", fromlist=["TRACKED_A_STOCKS"]),
         "TRACKED_A_STOCKS",
         [
             StockEntry("00100.HK", "MINIMAX-WP", "人工智能"),

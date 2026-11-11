@@ -2474,7 +2474,13 @@ def ensure_symbol_data(
             financial_cache_dir.exists() and not financial_status.missing_files
         )
 
-        financial_behind, behind_detail = _financial_cache_behind(financial_cache_dir) if financial_cache_dir.exists() else (True, "缓存目录不存在")
+        # A股法定季度披露期限不适用于半年报港股和非自然财年的美股。
+        # 显式跳过刷新时，只保留缺失缓存的初始化，不因报告期再次强刷。
+        financial_behind, behind_detail = (
+            _financial_cache_behind(financial_cache_dir)
+            if symbolInfo.is_cn_market() and not skip_financial_refresh and financial_cache_dir.exists()
+            else (False, "")
+        )
 
         if not skip_financial_refresh or not financial_cache_ready or financial_behind:
             if skip_financial_refresh and not financial_cache_ready:

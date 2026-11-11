@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from core.logging import get_logger
-from shared_data_access.historical_prices import close_on_or_before
-from commons import parse_symbol
+from services.backtest.prices import historical_close, quote_date_as_of
+from services.trading.price_tools import _symbol_fx_rate
 
 
 LOGGER = get_logger("BacktestLedger")
@@ -238,18 +238,14 @@ class BacktestLedger:
             shares = float(raw_shares or 0)
             if shares <= 0:
                 continue
-            price = close_on_or_before(
-                parse_symbol(symbol),
-                target_date,
-                base_dir=self.source_data_root,
-            )
+            price = historical_close(symbol, target_date, self.source_data_root)
             if price is None:
                 stale.append(symbol)
                 continue
             price_date, close = price
-            if price_date != target_date:
+            if price_date != quote_date_as_of(symbol, target_date):
                 stale.append(symbol)
-            total += close * shares
+            total += close * _symbol_fx_rate(symbol) * shares
         return round(total, 4), stale
 
     def _append_position(self, record: dict[str, Any]) -> None:

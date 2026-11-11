@@ -68,3 +68,40 @@ def test_update_analysis_index_does_not_regress_to_older_analysis(tmp_path):
     index = json.loads((root / "_analysis_index.json").read_text(encoding="utf-8"))
     assert index["fixed_tracked"]["01801.HK"]["deep_analysis_date"] == "2026-09-21"
     assert index["fixed_tracked"]["01801.HK"]["price_impression"] == "合理"
+
+
+def test_named_index_migration_update_and_price_report_preserve_stock(tmp_path):
+    from services.pipeline.steps.build_agent_input import write_price_delta_report
+
+    root = tmp_path / "skill_runs"
+    _write_snapshot(root, "2026-07-01", "512800.SH", 0.737)
+    snapshot = {"stocks": {"512800.SH": {"stock_name": "银行ETF", "latest_price": 0.748}}}
+    path = root / "2026-07-02" / "fixed_tracked" / "02_basic_snapshot_payload.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    index_path = root / "_analysis_index.json"
+    index_path.write_text(json.dumps({"fixed_tracked": {"512800.SH": {
+        "deep_analysis_date": "2026-07-01", "last_deep_analysis_price": 0.737,
+        "price_impression": "合理偏低估",
+    }}}), encoding="utf-8")
+
+    update_analysis_index({}, "fixed_tracked", "2026-07-02", root)
+    migrated = json.loads(index_path.read_text(encoding="utf-8"))["fixed_tracked"]
+    assert list(migrated) == ["银行ETF_512800.SH"]
+    assert migrated["银行ETF_512800.SH"]["deep_analysis_date"] == "2026-07-01"
+    assert migrated["银行ETF_512800.SH"]["symbol"] == "512800.SH"
+    report = write_price_delta_report(
+        "2026-07-02", path.parent, snapshot, analysis_index_ref=str(index_path)
+    )
+    assert "银行ETF（512800.SH）" in report.read_text(encoding="utf-8")
+    assert "+1.5%" in report.read_text(encoding="utf-8")
+
+    update_analysis_index({"stock_decisions": [{
+        "symbol": "512800.SH", "stock_name": "银行ETF", "price_impression": "合理",
+    }]}, "fixed_tracked", "2026-07-02", root)
+    updated = json.loads(index_path.read_text(encoding="utf-8"))["fixed_tracked"]
+    assert list(updated) == ["银行ETF_512800.SH"]
+    assert updated["银行ETF_512800.SH"]["last_deep_analysis_price"] == 0.748
+
+    update_analysis_index({}, "fixed_tracked", "2026-07-03", root)
+    assert list(json.loads(index_path.read_text(encoding="utf-8"))["fixed_tracked"]) == ["银行ETF_512800.SH"]

@@ -24,18 +24,9 @@ from commons.stock_utils import parse_symbol
 
 
 def _is_meaningful_summary(path: Path) -> bool:
-    if not path.exists() or not path.is_file():
-        return False
-    try:
-        content = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return False
-    stripped = content.strip()
-    if not stripped:
-        return False
-    # 防止只建了一个占位空标题、注释或极短内容就被误登记
-    non_whitespace_len = len("".join(stripped.split()))
-    return non_whitespace_len >= 80
+    from services.research.financial_report_validation import summary_file_issue
+
+    return summary_file_issue(path) is None
 
 
 def build_parser() -> argparse.ArgumentParser:

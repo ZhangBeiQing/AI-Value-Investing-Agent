@@ -267,6 +267,7 @@ class BasicStockInfoService:
         symbol_infos: Optional[Dict[str, SymbolInfo]] = None,
         target_dates: Optional[Dict[str, date]] = None,
         persist_snapshot: bool = True,
+        cache_only: bool = False,
     ) -> None:
         self.base_dir = resolve_base_dir(base_dir)
         self.price_lookback_days = max(price_lookback_days, MIN_PRICE_LOOKBACK_DAYS)
@@ -278,6 +279,7 @@ class BasicStockInfoService:
         self.symbol_infos = symbol_infos or {}
         self.target_dates = target_dates or {}
         self.persist_snapshot = persist_snapshot
+        self.cache_only = cache_only
         base_analysis_date = (
             analysis_datetime.date()
             if analysis_datetime is not None
@@ -493,6 +495,7 @@ class BasicStockInfoService:
                 force_refresh_financials=self.force_refresh_financials,
                 skip_price_refresh=self.skip_price_refresh,
                 skip_financial_refresh=self.skip_financial_refresh,
+                cache_only=self.cache_only,
             )
             stock_name = dataset.symbolInfo.stock_name
         except (CacheIntegrityError, DataUnavailableError) as exc:
@@ -959,6 +962,22 @@ class BasicStockInfoService:
         if ttm_from_sheet and ttm_from_sheet > 0:
             return market_cap / ttm_from_sheet
 
+        hk_revenue_source = profit_sheet
+        if {"REPORT_DATE", "DATE_TYPE_CODE", "OPERATE_INCOME"}.issubset(financial_abstract.columns):
+            hk_revenue_source = financial_abstract
+        if hk_revenue_source is not None and not hk_revenue_source.empty and "DATE_TYPE_CODE" in hk_revenue_source.columns:
+            revenue_col = next((col for col in ("TOTAL_OPERATE_INCOME", "OPERATE_INCOME") if col in hk_revenue_source.columns), None)
+            if revenue_col:
+                revenue_sheet = hk_revenue_source.copy()
+                revenue_sheet["HOLDER_PROFIT"] = revenue_sheet[revenue_col]
+                ttm = calculate_rolling_ttm_profit(revenue_sheet, profit_column="HOLDER_PROFIT", logger=LOGGER)
+                if not ttm.empty:
+                    revenue = ttm.iloc[-1]["TTM_NET_PROFIT_RAW"]
+                    if pd.notna(revenue) and revenue > 0:
+                        return market_cap / float(revenue)
+            # A current-quarter revenue field is not a TTM denominator.
+            return None
+
         if financial_abstract.empty:
             return None
         if "指标" in financial_abstract.columns:
@@ -1091,6 +1110,7 @@ def basic_info(
     today_time: Optional[Union[str, datetime]] = None,
     use_cache: bool = True,
     persist_snapshot: bool = True,
+    cache_only: bool = False,
 ) -> Dict[str, Any]:
     analysis_dt = _parse_analysis_time(today_time)
     analysis_date = (
@@ -1145,6 +1165,7 @@ def basic_info(
             symbol_infos=symbol_infos,
             target_dates=target_dates,
             persist_snapshot=persist_snapshot,
+            cache_only=cache_only,
         )
         payload = service.build_payload_from_normalized(missing_symbols)
         computed_data = payload.get("stocks", {})
@@ -1200,6 +1221,7 @@ def build_basic_snapshot(
         # 生成流水线产物时直接重算，避免 basic_info_cache 里的旧派生字段污染输出。
         use_cache=False,
         persist_snapshot=not backtest_read_only,
+        cache_only=backtest_read_only,
     )
 
 

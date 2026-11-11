@@ -108,13 +108,21 @@ def is_us_financial_filing(
 ) -> bool:
     """判断一条 SEC 申报是否应作为"财报"进入财务研究链路。
 
-    ``6-K`` / ``8-K`` 只有在标题已含业绩稿特征时才判为财报；索引里的 6-K 标题
+    ``8-K`` 的 Item 2.02 明确为业绩披露，不要求事件日为季末。
+    其他 ``6-K`` / ``8-K`` 只有在标题已含业绩稿特征时才判为财报；索引里的 6-K 标题
     通常只有表单名，这类申报由 ``sync_financial_reports_for_stock`` 在读取正文
     要点后回填 ``is_financial_report``。
     """
 
     normalized = (form or "").strip().upper()
     if normalized in STATEMENT_FORMS:
+        return True
+    # 8-K 的报告期是事件日，不是财季末；Item 2.02 明确表示经营业绩披露。
+    # 业绩稿可同时宣布股息，不能被标题中的 dividend 排除。
+    if normalized == "8-K" and re.search(
+        r"(?:事项|items?)\s*[:：]?\s*[\d.,\s]*\b2\.02\b",
+        f"{title or ''} {description or ''}", re.IGNORECASE,
+    ):
         return True
     if normalized not in EARNINGS_RELEASE_FORMS:
         return False

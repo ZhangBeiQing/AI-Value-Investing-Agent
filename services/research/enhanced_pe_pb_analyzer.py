@@ -354,16 +354,11 @@ class EnhancedPEPBAnalyzer:
             pb = self._compute_pb(dataset, market_cap, symbol)
             ps = self._compute_ps(profit_sheet, market_cap)
 
-        if symbol.is_hk_market() and hk_abstract_metrics:
-            equity_value_map_override = hk_abstract_metrics.get("equity_map") or {}
-        else:
-            equity_value_map_override = None
-
-        historical_source = deduct_ttm_df if not deduct_ttm_df.empty else ttm_profit_df
-        if equity_value_map_override:
-            equity_value_map = equity_value_map_override
-        else:
-            equity_value_map = self._build_equity_value_map(dataset, symbol)
+        historical_source = self._build_profit_events(
+            symbol=symbol, profit_sheet=profit_sheet,
+            deduct_ttm_df=deduct_ttm_df, fallback_ttm_df=ttm_profit_df,
+        )
+        equity_value_map = self._build_equity_value_map(dataset, symbol)
         historical_pe = self._build_historical_pe_records(
             historical_source, price_series, total_shares, equity_value_map
         )
@@ -372,8 +367,8 @@ class EnhancedPEPBAnalyzer:
         )
         extreme_price_metrics = self._build_extreme_price_metrics(
             price_series=price_series,
-            deduct_ttm_df=deduct_ttm_df,
-            fallback_ttm_df=ttm_profit_df,
+            deduct_ttm_df=historical_source,
+            fallback_ttm_df=pd.DataFrame(),
             total_shares=total_shares,
             yoy_percent_map=yoy_percent_map,
             years=3.5,
@@ -516,7 +511,7 @@ class EnhancedPEPBAnalyzer:
     def _get_price_at(series: pd.Series, when: datetime) -> Optional[float]:
         filtered = series[series.index <= pd.Timestamp(when)]
         if filtered.empty:
-            return float(series.iloc[-1])
+            return None
         return float(filtered.iloc[-1])
 
     @staticmethod
@@ -569,7 +564,7 @@ class EnhancedPEPBAnalyzer:
     def _build_equity_value_map(
         self, dataset: PreparedData, symbol: SymbolInfo
     ) -> Dict[str, float]:
-        """构建公告期 -> 归母净资产的映射，供历史PB计算使用。"""
+        """构建公告次日 -> 归母净资产的映射，供历史PB计算使用。"""
         sheet = dataset.financials.balance_sheet
         if sheet.empty:
             return {}
@@ -596,7 +591,7 @@ class EnhancedPEPBAnalyzer:
                 report_dt = row.get(notice_col)
             if pd.isna(report_dt):
                 continue
-            key_str = pd.Timestamp(report_dt).strftime("%Y-%m-%d")
+            key_str = (pd.Timestamp(row[notice_col]).normalize() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
             equity_map[key_str] = equity_value
         return equity_map
 
@@ -631,7 +626,10 @@ class EnhancedPEPBAnalyzer:
                 break
         if not revenue_col:
             return None
-        revenue_frame = profit_sheet[["REPORT_DATE", revenue_col]].copy()
+        revenue_columns = ["REPORT_DATE", revenue_col]
+        if "REPORT_TYPE" in profit_sheet.columns:
+            revenue_columns.append("REPORT_TYPE")
+        revenue_frame = profit_sheet[revenue_columns].copy()
         revenue_frame = revenue_frame.rename(columns={revenue_col: "PARENT_NETPROFIT"})
         revenue_ttm = calculate_rolling_ttm_profit(revenue_frame, logger=LOGGER)
         if revenue_ttm.empty:
@@ -771,19 +769,28 @@ class EnhancedPEPBAnalyzer:
             ttm_profit = float(row.get("TTM_NET_PROFIT_RAW") or 0)
             if ttm_profit == 0:
                 continue
-            price = self._get_price_at(price_series, report_date.to_pydatetime())
+            available_prices = price_series[
+                (price_series.index >= row["effective_date"])
+                & (price_series.index <= self.analysis_datetime)
+            ]
+            if available_prices.empty:
+                continue
+            valuation_date = available_prices.index[0]
+            price = float(available_prices.iloc[0])
             if price is None or price <= 0:
                 continue
             eps = ttm_profit / total_shares
             pe_value = price * total_shares / ttm_profit
             pb_value = None
             if equity_value_map:
-                equity_val = equity_value_map.get(report_date.strftime("%Y-%m-%d"))
+                known_dates = [key for key in equity_value_map if pd.Timestamp(key) <= valuation_date]
+                equity_val = equity_value_map[max(known_dates)] if known_dates else None
                 if equity_val and equity_val > 0:
                     pb_value = price * total_shares / equity_val
             records.append(
                 {
                     "报告期": report_date.strftime("%Y-%m-%d"),
+                    "估值日期": valuation_date.strftime("%Y-%m-%d"),
                     "TTM扣非净利润(亿元)": ttm_profit / 1e8,
                     "TTM每股收益(元)": eps,
                     "股价(元)": price,
@@ -791,7 +798,7 @@ class EnhancedPEPBAnalyzer:
                     "PB": pb_value,
                 }
             )
-        return records[-12:]
+        return records
 
     def _build_historical_peg_records(
         self,
@@ -816,7 +823,13 @@ class EnhancedPEPBAnalyzer:
             report_date = pd.to_datetime(current["REPORT_DATE"])
             if pd.isna(report_date) or report_date < window_start:
                 continue
-            price = self._get_price_at(price_series, report_date.to_pydatetime())
+            available_prices = price_series[
+                (price_series.index >= current["effective_date"])
+                & (price_series.index <= self.analysis_datetime)
+            ]
+            if available_prices.empty:
+                continue
+            price = float(available_prices.iloc[0])
             if price is None or price <= 0:
                 continue
             pe_value = price * total_shares / current_profit if current_profit != 0 else None
@@ -839,7 +852,7 @@ class EnhancedPEPBAnalyzer:
                     "PEG": peg,
                 }
             )
-        return records[-12:]
+        return records
 
     def _build_extreme_price_metrics(
         self,
@@ -1104,16 +1117,6 @@ class EnhancedPEPBAnalyzer:
         fallback_ttm_df: pd.DataFrame,
         hk_abstract_metrics: Optional[Dict[str, Any]] = None,
     ) -> pd.DataFrame:
-        if hk_abstract_metrics:
-            hk_frame = hk_abstract_metrics.get("frame")
-            if isinstance(hk_frame, pd.DataFrame) and not hk_frame.empty and "TTM_NET_PROFIT_RAW" in hk_frame.columns:
-                work = hk_frame[["REPORT_DATE", "TTM_NET_PROFIT_RAW"]].copy()
-                work["REPORT_DATE"] = pd.to_datetime(work["REPORT_DATE"], errors="coerce")
-                work = work.dropna(subset=["REPORT_DATE", "TTM_NET_PROFIT_RAW"])
-                work["effective_date"] = work["REPORT_DATE"]
-                work = work[work["effective_date"] <= self.analysis_datetime]
-                return work.sort_values(["effective_date", "REPORT_DATE"]).reset_index(drop=True)
-
         source_df = deduct_ttm_df if not deduct_ttm_df.empty else fallback_ttm_df
         if source_df.empty or profit_sheet.empty:
             return pd.DataFrame()
@@ -1133,7 +1136,10 @@ class EnhancedPEPBAnalyzer:
         notice_map = notice_map.rename(columns={notice_col: "effective_date"})
 
         merged = work.merge(notice_map, on="REPORT_DATE", how="left")
-        merged["effective_date"] = merged["effective_date"].fillna(merged["REPORT_DATE"])
+        # Date-only disclosures are usable from the next calendar day; the
+        # price lookup then selects the first actual trading close.
+        merged = merged.dropna(subset=["effective_date"])
+        merged["effective_date"] = merged["effective_date"].dt.normalize() + pd.Timedelta(days=1)
         merged = merged[merged["effective_date"] <= self.analysis_datetime]
         return merged.sort_values(["effective_date", "REPORT_DATE"]).reset_index(drop=True)
 
@@ -1145,20 +1151,6 @@ class EnhancedPEPBAnalyzer:
         total_shares: float,
         hk_abstract_metrics: Optional[Dict[str, Any]] = None,
     ) -> pd.DataFrame:
-        if hk_abstract_metrics:
-            hk_frame = hk_abstract_metrics.get("frame")
-            if isinstance(hk_frame, pd.DataFrame) and not hk_frame.empty and "BPS" in hk_frame.columns:
-                work = hk_frame[["REPORT_DATE", "BPS"]].copy()
-                work["REPORT_DATE"] = pd.to_datetime(work["REPORT_DATE"], errors="coerce")
-                work["BPS"] = pd.to_numeric(work["BPS"], errors="coerce")
-                work = work.dropna(subset=["REPORT_DATE", "BPS"])
-                work["EQUITY_VALUE"] = work["BPS"] * total_shares
-                work["effective_date"] = work["REPORT_DATE"]
-                work = work[work["effective_date"] <= self.analysis_datetime]
-                return work[["effective_date", "REPORT_DATE", "EQUITY_VALUE"]].sort_values(
-                    ["effective_date", "REPORT_DATE"]
-                ).reset_index(drop=True)
-
         if balance_sheet.empty:
             return pd.DataFrame()
         notice_col = self._extract_notice_column(balance_sheet, "资产负债表", symbol)
@@ -1174,6 +1166,7 @@ class EnhancedPEPBAnalyzer:
         work = work.dropna(subset=["EQUITY_VALUE"])
         work = work[work[notice_col] <= self.analysis_datetime]
         work = work.rename(columns={notice_col: "effective_date"})
+        work["effective_date"] = work["effective_date"].dt.normalize() + pd.Timedelta(days=1)
         return work[["effective_date", "REPORT_DATE", "EQUITY_VALUE"]].sort_values(
             ["effective_date", "REPORT_DATE"]
         ).reset_index(drop=True)
@@ -1280,11 +1273,11 @@ class EnhancedPEPBAnalyzer:
     def _find_latest_report_row(df: pd.DataFrame, cutoff: pd.Timestamp) -> Optional[pd.Series]:
         if df.empty:
             return None
-        mask = df["REPORT_DATE"] <= cutoff.to_pydatetime()
+        mask = df["effective_date"] <= cutoff
         filtered = df.loc[mask]
         if filtered.empty:
             return None
-        return filtered.iloc[-1]
+        return filtered.sort_values(["effective_date", "REPORT_DATE"]).iloc[-1]
 
     def _resolve_yoy_percent_for_report(
         self,
@@ -1538,7 +1531,8 @@ class EnhancedPEPBAnalyzer:
             lines.append("")
             lines.append(history_table.to_markdown(index=False, floatfmt=".3f").replace("nan", ""))
             lines.append("")
-            lines.append("_* 表示估值基准日数据_")
+            lines.append("_* 表示估值基准日数据。历史行取财报公告次日起首个交易日收盘价；报告期不代表当时已公开。_")
+            lines.append("历史价格为复权口径，配合当前股本折算；增发、回购等实质股本变化需另行核验。季度采样及价格极值不是每日PE最低值或分位。")
             lines.append("")
 
         if info.extreme_price_metrics:
@@ -1610,6 +1604,7 @@ class EnhancedPEPBAnalyzer:
         price_col = "股价(美元)" if is_us else "股价(元)"
         desired_order = [
             "报告期",
+            "估值日期",
             profit_col,
             price_col,
             pe_col_name,
@@ -1625,6 +1620,7 @@ class EnhancedPEPBAnalyzer:
                 continue
             record_map[report_key] = {
                 "报告期": report_key,
+                "估值日期": entry.get("估值日期"),
                 profit_col: entry.get("TTM扣非净利润(亿元)"),
                 price_col: entry.get("股价(元)"),
                 pe_col_name: entry.get("PE"),
@@ -1657,6 +1653,7 @@ class EnhancedPEPBAnalyzer:
         deduct_profit_for_display = snapshot.deduct_profit_raw or snapshot.ttm_profit_raw
         current_row = {
             "报告期": snapshot.analysis_time.strftime("%Y-%m-%d") + "*",
+            "估值日期": snapshot.analysis_time.strftime("%Y-%m-%d"),
             profit_col: deduct_profit_for_display / 1e8 if deduct_profit_for_display else None,
             price_col: snapshot.price,
             pe_col_name: self._get_display_pe_value(snapshot) or snapshot.pe_ttm,

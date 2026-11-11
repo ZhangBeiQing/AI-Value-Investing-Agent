@@ -68,8 +68,9 @@ def build_global_context(
     *,
     backtest_read_only: bool = False,
     source_data_root: str | Path | None = None,
+    macro_summary_override: str | None = None,
 ) -> str:
-    macro_text = get_macro_summary(
+    macro_text = macro_summary_override if macro_summary_override is not None else get_macro_summary(
         today_time=run_date,
         include_objective_panel=not backtest_read_only,
     )
@@ -109,6 +110,7 @@ def write_global_context(
     *,
     backtest_read_only: bool = False,
     source_data_root: str | Path | None = None,
+    macro_summary_override: str | None = None,
 ) -> Path:
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -118,6 +120,7 @@ def write_global_context(
             run_date,
             backtest_read_only=backtest_read_only,
             source_data_root=source_data_root,
+            macro_summary_override=macro_summary_override,
         ),
         encoding="utf-8",
     )

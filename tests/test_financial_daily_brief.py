@@ -34,6 +34,7 @@ def test_daily_brief_replaces_full_content_but_keeps_original_path(tmp_path):
     assert payload["content"] in text
     assert "完整财报独有正文" not in text
     assert str(report.resolve()) in text
+    assert "完整读取完整版§15" in text
     assert metadata["mode"] == "daily_brief"
 
 

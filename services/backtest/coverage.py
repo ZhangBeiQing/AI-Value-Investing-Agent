@@ -65,6 +65,22 @@ def next_experiment_trading_date(
     return dates[index + 1]
 
 
+def ensure_previous_days_completed(experiment: BacktestExperiment, run_date: str) -> None:
+    dates = resolve_experiment_trading_dates(experiment)
+    for prior in dates:
+        if prior >= run_date:
+            break
+        book = experiment.context.skill_runs_root / prior / "fixed_tracked"
+        try:
+            execution = json.loads((book / "06_execution_log.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            execution = {}
+        if execution.get("status") != "success" or any(
+            not (book / filename).is_file() for filename in ("07_daily_summary.json", "08_history_merge.json")
+        ):
+            raise ValueError(f"前一决策日 {prior} 尚未完成，禁止跳到 {run_date}")
+
+
 def audit_experiment_coverage(
     experiment: BacktestExperiment,
 ) -> dict[str, Any]:
@@ -83,12 +99,6 @@ def audit_experiment_coverage(
             name for name in REQUIRED_INPUTS if not (source_book / name).exists()
         ]
         research_dir = source_book / "04_stock_research"
-        prefilter = (
-            source_root
-            / "selection_runs"
-            / run_date
-            / "12_quant_prefilter_long.csv"
-        )
         macro_exact = (
             source_root
             / "macro_economy"
@@ -104,7 +114,6 @@ def audit_experiment_coverage(
                     if research_dir.is_dir()
                     else 0
                 ),
-                "long_prefilter_exists": prefilter.exists(),
                 "macro_exact_exists": macro_exact.exists(),
             }
         )
@@ -117,9 +126,6 @@ def audit_experiment_coverage(
         "calendar_source": calendar_source,
         "existing_inputs_complete_count": sum(
             1 for row in rows if row["existing_inputs_complete"]
-        ),
-        "long_prefilter_count": sum(
-            1 for row in rows if row["long_prefilter_exists"]
         ),
         "macro_exact_count": sum(1 for row in rows if row["macro_exact_exists"]),
         "dates": rows,
@@ -160,6 +166,8 @@ def inspect_backtest_progress(
                         "status"
                     )
                     == "success"
+                    and (book_dir / "07_daily_summary.json").is_file()
+                    and (book_dir / "08_history_merge.json").is_file()
                 )
             except Exception:
                 execution_success = False
@@ -170,7 +178,12 @@ def inspect_backtest_progress(
         if not (book_dir / "00_prepare_status.json").exists():
             next_stage = "prepare_day"
         elif not decision_path.exists():
-            next_stage = "agent_decision"
+            try:
+                readiness = json.loads((book_dir / "00_prepare_status.json").read_text(encoding="utf-8"))
+                stage = readiness.get("status")
+            except (OSError, ValueError):
+                stage = None
+            next_stage = "agent_decision" if stage == "ready" else (stage or "prepare_day")
         else:
             next_stage = "execute_day"
         break
@@ -191,5 +204,6 @@ __all__ = [
     "ensure_experiment_decision_date",
     "inspect_backtest_progress",
     "next_experiment_trading_date",
+    "ensure_previous_days_completed",
     "resolve_experiment_trading_dates",
 ]

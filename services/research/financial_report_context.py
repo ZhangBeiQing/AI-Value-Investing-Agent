@@ -48,6 +48,41 @@ class FinancialReportContextResult:
     current_context_path: Path
     prior_memory_path: Path
     existing_industry_research_path: Path
+    expectation_announcement_date: Optional[str] = None
+
+
+def resolve_expectation_announcement_date(
+    symbol: str, stock_root: Path, current_announcement_id: str, filing_date: str,
+) -> str:
+    """Use cached earlier earnings releases, rather than a later full SEC filing."""
+    if not symbol.endswith(".US"):
+        return filing_date
+    from services.news.disclosures_builder import load_index
+    from shared_data_access.us_disclosures import filing_report_period
+
+    index_path = stock_root / "disclosures" / "index.json"
+    if not index_path.exists():
+        return filing_date
+    entries = load_index(index_path)
+    current = entries.get(current_announcement_id)
+    period = filing_report_period(current.title) if current else None
+    if not period:
+        return filing_date
+    candidates = [filing_date]
+    for entry in entries.values():
+        if not entry.date or not (period < entry.date <= filing_date):
+            continue
+        earnings_8k = entry.category == "8-K" and "2.02" in entry.title
+        earnings_6k = (
+            entry.category == "6-K" and entry.is_financial_report
+            and filing_report_period(entry.title) == period
+        )
+        if earnings_8k or earnings_6k:
+            candidates.append(entry.date)
+    result = min(candidates)
+    if result != filing_date:
+        LOGGER.info("财报前预期按业绩首发日截断: symbol=%s release=%s filing=%s", symbol, result, filing_date)
+    return result
 
 
 def _parse_iso_date(value: str) -> date:
@@ -541,6 +576,7 @@ def _select_prior_summary(
     summary_index_payload: dict[str, Any],
     current_announcement_id: str,
     current_report_date: str,
+    historical_cutoff_date: Optional[str] = None,
 ) -> Optional[Path]:
     for entry in summary_index_payload.get("history") or []:
         if entry.get("announcement_id") == current_announcement_id:
@@ -555,6 +591,11 @@ def _select_prior_summary(
         if not candidate.is_absolute():
             candidate = PROJECT_ROOT / candidate
         if candidate.exists():
+            if historical_cutoff_date is not None:
+                from services.research.financial_report_validation import historical_summary_issue
+
+                if historical_summary_issue(candidate, historical_cutoff_date):
+                    continue
             return candidate
     return None
 
@@ -581,6 +622,7 @@ def _write_prior_memory(
     summary_index_path: Path,
     current_announcement_id: str,
     current_report_date: str,
+    historical_cutoff_date: Optional[str] = None,
 ) -> None:
     payload: dict[str, Any] = {}
     if summary_index_path.exists():
@@ -592,6 +634,7 @@ def _write_prior_memory(
         payload,
         current_announcement_id,
         current_report_date,
+        historical_cutoff_date=historical_cutoff_date,
     )
     lines = [
         "# 上期基本面记忆",
@@ -690,9 +733,13 @@ def build_financial_report_context(
 ) -> FinancialReportContextResult:
     """Generate all deterministic, non-conclusive context files for one stock."""
 
+    expectation_date = resolve_expectation_announcement_date(
+        symbol, stock_root, current_announcement_id, announcement_date,
+    )
+    expectation_datetime = announcement_datetime if expectation_date == announcement_date else None
     pre_market_date = resolve_pre_announcement_market_date(
-        announcement_date,
-        announcement_datetime,
+        expectation_date,
+        expectation_datetime,
     )
     try:
         symbol_info = parse_symbol(symbol)
@@ -707,7 +754,9 @@ def build_financial_report_context(
             pre_market_date,
             exc,
         )
-    historical_research = find_historical_research_package(symbol, pre_market_date)
+    # Live research packages can have been rebuilt later under an old directory date.
+    # Historical expectations use raw dated evidence and cached prices instead.
+    historical_research = None if historical_mode else find_historical_research_package(symbol, pre_market_date)
     hk_consensus, hk_consensus_path = _render_hk_pre_announcement_consensus(
         symbol,
         announcement_date,
@@ -726,10 +775,10 @@ def build_financial_report_context(
         _render_pre_context(
             symbol=symbol,
             stock_name=stock_name,
-            announcement_date=announcement_date,
-            announcement_datetime=announcement_datetime,
+            announcement_date=expectation_date,
+            announcement_datetime=expectation_datetime,
             requested_pre_date=pre_market_date,
-            evidence_cutoff=announcement_datetime or announcement_date,
+            evidence_cutoff=expectation_datetime or expectation_date,
             historical_research=historical_research,
             hk_consensus=hk_consensus,
             hk_consensus_path=hk_consensus_path,
@@ -745,7 +794,12 @@ def build_financial_report_context(
         try:
             from services.research.stock_analysis import analyze_stock_dynamics_and_valuation
 
-            market_payload = analyze_stock_dynamics_and_valuation(symbol, analysis_date)
+            market_date = analysis_date
+            if historical_mode:
+                from services.backtest.prices import quote_date_as_of
+
+                market_date = quote_date_as_of(symbol, analysis_date)
+            market_payload = analyze_stock_dynamics_and_valuation(symbol, market_date)
         except Exception as exc:
             market_error = str(exc)
             LOGGER.warning(
@@ -775,6 +829,7 @@ def build_financial_report_context(
         summary_index_path=summary_index_path,
         current_announcement_id=current_announcement_id,
         current_report_date=announcement_date,
+        historical_cutoff_date=pre_market_date if historical_mode else None,
     )
     _write_existing_industry_research(
         industry_path,
@@ -795,6 +850,7 @@ def build_financial_report_context(
         current_context_path=current_path,
         prior_memory_path=prior_path,
         existing_industry_research_path=industry_path,
+        expectation_announcement_date=expectation_date,
     )
 
 

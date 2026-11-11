@@ -500,6 +500,8 @@ def test_prepare_workdir_writes_run_paths_and_policy_copy(tmp_path: Path, monkey
     assert "draft_v1.md" not in agent_input
     assert "challenge_round_01.md" not in agent_input
     assert str(bundle.output_path) in agent_input
+    assert "Industry Researcher 先独立形成经营情景及兑现阶段倍数" in agent_input
+    assert "不读取 pre_announcement_market_context.md、current_market_context.md" in agent_input
     assert "历史披露按需回溯（只读）" in agent_input
     assert str(tmp_path / "disclosures" / "md") in agent_input
     assert str(tmp_path / "disclosures" / "pdfs") in agent_input

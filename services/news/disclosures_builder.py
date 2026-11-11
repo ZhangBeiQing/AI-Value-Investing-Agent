@@ -1524,6 +1524,9 @@ def _sync_us_financial_documents(
             continue
         if form not in EARNINGS_RELEASE_FORMS:
             continue
+        if form == "8-K" and is_us_financial_filing(form, meta.title):
+            accepted_ids.add(meta.announcement_id)
+            continue
         # 财报的报告期必须落在季末（3/6/9/12 月末）；股东大会、董事会决议这类
         # 6-K 的报告期是事件日，用它当财报会把噪声混进研究输入。
         period = filing_report_period(meta.title, meta.date)

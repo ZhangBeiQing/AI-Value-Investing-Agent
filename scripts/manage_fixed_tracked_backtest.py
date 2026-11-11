@@ -50,6 +50,11 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--end-date", required=True)
     prepare.add_argument("--initial-cash", type=float, default=500000.0)
     prepare.add_argument("--experiment-id", default="")
+    prepare.add_argument("--model", default="", help="经运行时核实的实际模型 ID；不用于切换模型。")
+    prepare.add_argument("--reasoning-effort", default="", help="经运行时核实的推理档位。")
+    prepare.add_argument("--model-provider", default="unknown")
+    prepare.add_argument("--runtime", default="unspecified")
+    prepare.add_argument("--macro-summary-policy", choices=("reuse", "regenerate"), default="reuse")
     prepare.add_argument(
         "--network-mode",
         choices=("guarded_web", "disabled"),
@@ -78,11 +83,6 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare_day.add_argument("--experiment-id", required=True)
     prepare_day.add_argument("--date", required=True)
     prepare_day.add_argument(
-        "--reuse-existing-inputs",
-        action="store_true",
-        help="仅在已人工完成日期与 Prompt 兼容审计时复用正式 01-04。",
-    )
-    prepare_day.add_argument(
         "--build-missing-inputs",
         action="store_true",
         help="缺少 01-04 时基于共享只读缓存构建。",
@@ -93,12 +93,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="通过全部门禁后覆盖重建当日 01-04；用于修复旧回测产物。",
     )
     prepare_day.add_argument("--max-workers", type=int, default=4)
-    prepare_day.add_argument(
-        "--focus-symbols",
-        default="",
-        help="逗号分隔的聚焦股票列表（如 300502.SZ,300476.SZ）。"
-        "非空时只对这些股票执行财务门禁，其余股票放宽，用于单只股票聚焦回测。",
-    )
 
     no_trade = subparsers.add_parser(
         "no-trade-day",
@@ -140,6 +134,14 @@ def main() -> int:
             experiment_id=args.experiment_id,
             network_mode=args.network_mode,
             excluded_symbols=excluded_symbols,
+            model_config={
+                "model": args.model or "unknown",
+                "reasoning_effort": args.reasoning_effort or "unknown",
+                "provider": args.model_provider,
+                "runtime": args.runtime,
+                "verification": "operator_verified_runtime" if args.model else "not_recorded",
+            },
+            macro_summary_policy=args.macro_summary_policy,
         )
         coverage = audit_experiment_coverage(experiment)
         print(
@@ -151,7 +153,6 @@ def main() -> int:
                     "existing_inputs_complete_count": coverage[
                         "existing_inputs_complete_count"
                     ],
-                    "long_prefilter_count": coverage["long_prefilter_count"],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -218,7 +219,6 @@ def main() -> int:
                         for key in (
                             "trading_date_count",
                             "existing_inputs_complete_count",
-                            "long_prefilter_count",
                             "macro_exact_count",
                         )
                     },
@@ -230,19 +230,12 @@ def main() -> int:
         )
         return 0
     if args.command == "prepare-day":
-        focus_symbols = None
-        if args.focus_symbols:
-            focus_symbols = {
-                s.strip() for s in args.focus_symbols.split(",") if s.strip()
-            }
         result = prepare_backtest_day(
             experiment,
             args.date,
-            reuse_existing_inputs=args.reuse_existing_inputs,
             build_missing_inputs=args.build_missing_inputs,
             force_rebuild_inputs=args.force_rebuild_inputs,
             max_workers=args.max_workers,
-            focus_symbols=focus_symbols,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0

@@ -104,6 +104,13 @@ configs/research/
 
 `05_agent_input.md` 只保存本次股票、日期、输入路径、角色边界和输出路径。主 Agent 派发角色时只传路径，不复述固定规则。
 
+## 天花板情景与价格比较
+
+Industry Researcher 先独立形成经营情景和兑现阶段倍数，隔离价格上下文与历史估值结论；
+Author 再结合本期财报核验并比较当前市值。倍数需有增长、资本回报、现金质量、竞争及资本成本依据，
+并给出固定利润的倍数敏感性。业务扩展、兑现年份、稀释和分红口径在 §15 写清。
+Bull、Bear 与 Adjudicator 对有深研的公司股票完整读取 §15，独立复核适用性和参数；经营变化可触发季度之间的重估。
+
 产业研究与 `monthly-industry-research` 共享 `industry_chain_research_policy.md`，但财报流程不调用完整月度 skill。
 
 ## 5. 搜索规则
@@ -141,3 +148,5 @@ python scripts/register_financial_report_summary.py \
 - `services/pipeline/steps/build_stock_research.py` 把最近完成的基本面报告嵌入 `04_stock_research`；
 - 每日 Bull、Bear、Juror 与 Finalizer 通过研究包读取基本面结论；
 - 每日交易角色仍必须结合当日 `Valuation Report`、最新价格与联网信息独立决策。
+
+关键计算由 Author 使用 Python/Decimal 实算并核对期间和单位；混合公司检查分部与集团边界，防止集团利润估值后重复加入分部价值。全年FCF、季度桥接与情景表的正文继承同步核对。修订原文后重新绑定摘要；算术修正不表示公司经营新增恶化，也不表示未经核验的其他假设获得事实认可。

@@ -8,6 +8,7 @@ import re
 from datetime import date
 from pathlib import Path
 
+from commons.stock_utils import is_etf_symbol, parse_symbol
 from core.logging import get_logger
 
 
@@ -77,7 +78,7 @@ def daily_financial_content(
     content, status = load_daily_brief(report_path, symbol=symbol, as_of_date=as_of_date)
     mode = "daily_brief" if content is not None else "full_report_fallback"
     notice = (
-        "本节是财报研究摘要，完整财报按需读取。摘要中的历史价格、预期和估值不代表分析日最新值；"
+        "本节是财报研究摘要，交易角色须完整读取完整版§15，其余章节按需回查。摘要中的历史价格、预期和估值不代表分析日最新值；"
         "当日口径以研究包行情、估值和新闻为准。买卖依赖的决定性财务数字须回查原文对应章节。"
         if content is not None else
         f"日常摘要不可用（{status}），本次保留完整财报；未自动截断。"
@@ -88,6 +89,8 @@ def daily_financial_content(
 
 def daily_brief_task(report_path: Path, *, symbol: str, as_of_date: str) -> dict | None:
     """Queue summary-only work for an existing completed report."""
+    if is_etf_symbol(parse_symbol(symbol)):
+        return None
     if not report_path.is_file():
         return None
     content, status = load_daily_brief(report_path, symbol=symbol, as_of_date=as_of_date)

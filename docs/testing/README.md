@@ -23,6 +23,8 @@ python -m pytest tests -q -k price        # 只跑名字含 price 的用例
 
 ## 覆盖范围
 
+分析索引 `_analysis_index.json` 使用 `股票名称_股票代码` 作为条目键，条目内保留 `symbol` 与 `stock_name`。读取兼容旧版纯代码键；更新时迁移名称并保留最近分析日期与价格，不产生重复条目。名称无法从决策或分析快照确认时保留代码。`test_analysis_index.py` 覆盖迁移、再次更新及价格变化报告读取。
+
 | 文件 | 覆盖 |
 | --- | --- |
 | `test_price_normalization.py` | 多来源行情在 `_finalize_price_frame` 的 canonical 列/单位归一 |
@@ -30,10 +32,11 @@ python -m pytest tests -q -k price        # 只跑名字含 price 的用例
 | `test_api_throttle.py` | `api_call_with_delay` 的跨线程最小间隔节流 |
 | `test_etf_data_access.py` | ETF/港股杠杆产品识别与"仅刷价格"路径 |
 | `test_logging_run_dir.py` | 运行日志按「日期 + 流程」聚合与保留策略 |
-| `test_financial_report_context.py` / `test_financial_report_skill.py` | 财报深度研究的上下文隔离与 skill 编排 |
+| `test_financial_report_context.py` / `test_financial_report_skill.py` | 财报深度研究的上下文隔离与 skill 编排；自愿披露的业绩预告须纳入，普通自愿公告及问询回复仍排除 |
 | `test_debate_pipeline.py` | fixed_tracked 多 Agent 辩论编排 |
 | `test_weekly_scoring.py` | 周度固定池评分：派单、日期隔离、JSON 契约校验与等权排名 |
 | `test_fixed_tracked_backtest.py` | 隔离回测：universe、账本、D+1 成交、净值 |
+| `test_backtest_alignment.py` | 历史资料与公告可见性；财报标题中的报告期末不能代替研究知识截止日，未知或晚于分析日的总结拒绝复用 |
 | `test_industry_research.py` | 月度产业雷达与主题深研 |
 | `test_hot_news_digest.py` | 渐进式新闻总结的轻量 digest 派生 |
 | `test_trade_memory_context.py` | 交易历史记忆投影与 prompt 上下文 |
@@ -75,3 +78,4 @@ python -m pytest tests -q -k price        # 只跑名字含 price 的用例
 
 - `tests/` 已纳入 git 跟踪（`.gitignore` 不再忽略 `/tests/`）；`__pycache__/`、`.pytest_cache/` 仍被忽略。
 - 调整测试契约（产物结构、评分口径、字段）时，应在同一提交内同步更新测试，避免测试与代码脱节。
+- 财报覆盖回归包含预增、预减及盈利预告：同期间预告总结不能使后续正式财报被跳过。

@@ -18,6 +18,7 @@ from .shared_financial_utils import (
 from commons import resolve_base_dir, SymbolInfo, is_etf_symbol
 
 from .cache_registry import CacheKind, build_cache_dir, check_cache, ensure_symbol_data
+from .cache_policy import is_cached_data_only
 from .exceptions import (
     CacheIntegrityError,
     DataUnavailableError,
@@ -115,6 +116,7 @@ class SharedDataAccess:
         chip_adjust: str = "qfq",
         prefer_local_chip_distribution: bool = False,
         local_full_history_chip_distribution: bool = False,
+        cache_only: bool = False,
         
     ) -> PreparedData:
         """
@@ -126,6 +128,7 @@ class SharedDataAccess:
             force_refresh: 是否强制刷新所有缓存数据
             skip_price_refresh: 是否跳过价格刷新，仅使用已有价格缓存
             force_refresh_financials: 是否仅强制刷新财务数据
+            cache_only: 只读取缓存，缺失时明确失败，不初始化或刷新外部数据
             include_disclosures: 是否加载公告列表数据
             disclosure_lookback_days: 公告回溯天数，默认使用初始化配置
             force_refresh_disclosures: 是否强制刷新公告缓存
@@ -141,26 +144,33 @@ class SharedDataAccess:
 
         disclosure_window = disclosure_lookback_days or self.disclosure_lookback_days
 
-        ensure_symbol_data(
-            self.base_dir,
-            symbolInfo,
-            logger=self.logger,
-            lookback_price_days=self.price_lookback_days,
-            force_refresh=force_refresh,
-            force_refresh_price=force_refresh_price,
-            skip_price_refresh=skip_price_refresh,
-            force_refresh_financials=force_refresh_financials,
-            skip_financial_refresh=skip_financial_refresh,
-            include_disclosures=include_disclosures,
-            disclosure_lookback_days=disclosure_window,
-            force_refresh_disclosures=force_refresh_disclosures,
-            disclosure_as_of_date=disclosure_as_of_date,
-            include_chip_distribution=include_chip_distribution,
-            force_refresh_chip_distribution=force_refresh_chip_distribution,
-            chip_adjust=chip_adjust,
-            prefer_local_chip_distribution=prefer_local_chip_distribution,
-            local_full_history_chip_distribution=local_full_history_chip_distribution,
-        )
+        cache_only = cache_only or is_cached_data_only()
+        if cache_only and any((
+            force_refresh, force_refresh_price, force_refresh_financials,
+            force_refresh_disclosures, force_refresh_chip_distribution,
+        )):
+            raise ValueError("cache_only 不能与强制刷新同时使用")
+        if not cache_only:
+            ensure_symbol_data(
+                self.base_dir,
+                symbolInfo,
+                logger=self.logger,
+                lookback_price_days=self.price_lookback_days,
+                force_refresh=force_refresh,
+                force_refresh_price=force_refresh_price,
+                skip_price_refresh=skip_price_refresh,
+                force_refresh_financials=force_refresh_financials,
+                skip_financial_refresh=skip_financial_refresh,
+                include_disclosures=include_disclosures,
+                disclosure_lookback_days=disclosure_window,
+                force_refresh_disclosures=force_refresh_disclosures,
+                disclosure_as_of_date=disclosure_as_of_date,
+                include_chip_distribution=include_chip_distribution,
+                force_refresh_chip_distribution=force_refresh_chip_distribution,
+                chip_adjust=chip_adjust,
+                prefer_local_chip_distribution=prefer_local_chip_distribution,
+                local_full_history_chip_distribution=local_full_history_chip_distribution,
+            )
 
         # 判断是否为指数或ETF
         is_index = symbolInfo.market == "CN_INDEX"
@@ -174,7 +184,7 @@ class SharedDataAccess:
             prices = self._load_price_bundle(
                 symbolInfo,
                 as_of_dt,
-                allow_stale_cache=skip_price_refresh,
+                allow_stale_cache=skip_price_refresh or cache_only,
             )
             
             # 为财务数据提供空值
@@ -198,7 +208,7 @@ class SharedDataAccess:
             prices = self._load_price_bundle(
                 symbolInfo,
                 as_of_dt,
-                allow_stale_cache=skip_price_refresh,
+                allow_stale_cache=skip_price_refresh or cache_only,
             )
             share_info = self._load_share_info(symbolInfo, as_of_dt)
 
@@ -317,6 +327,11 @@ class SharedDataAccess:
 
         notice_candidates = ("NOTICE_DATE", "公告日期")
         is_hk_stock = symbolInfo.is_hk_market()
+        hk_notice_dates = {}
+        if is_hk_stock:
+            from .hk_disclosure_dates import load_hk_financial_notice_dates
+
+            hk_notice_dates = load_hk_financial_notice_dates(symbolInfo, base_dir=self.base_dir)
 
         for key, filename in self.REQUIRED_FINANCIAL_FILES.items():
             frame = self._read_csv(cache_dir / filename)
@@ -325,7 +340,7 @@ class SharedDataAccess:
             if not any(col in frame.columns for col in notice_candidates):
                 if is_hk_stock and "REPORT_DATE" in frame.columns:
                     frame = frame.copy()
-                    frame["NOTICE_DATE"] = frame["REPORT_DATE"]
+                    frame["NOTICE_DATE"] = pd.to_datetime(frame["REPORT_DATE"], errors="coerce").dt.strftime("%Y%m%d").map(hk_notice_dates)
                 else:
                     raise CacheIntegrityError(
                         f"{symbolInfo.symbol} 的 {filename} 缺少 NOTICE_DATE/公告日期 列"
@@ -340,7 +355,7 @@ class SharedDataAccess:
                 ):
                     if is_hk_stock and "REPORT_DATE" in frame.columns:
                         frame = frame.copy()
-                        frame["NOTICE_DATE"] = frame["REPORT_DATE"]
+                        frame["NOTICE_DATE"] = pd.to_datetime(frame["REPORT_DATE"], errors="coerce").dt.strftime("%Y%m%d").map(hk_notice_dates)
                     else:
                         raise CacheIntegrityError(
                             f"{symbolInfo.symbol} 的 {filename} 缺少 NOTICE_DATE/公告日期 列"
@@ -366,11 +381,17 @@ class SharedDataAccess:
             try:
                 abstract_df = self._read_csv(abstract_path)
                 if abstract_df is not None:
-                    filtered["financial_abstract"] = filter_financial_abstract_by_cutoff(
-                        abstract_df,
-                        as_of_dt,
-                        release_map=notice_map,
-                    )
+                    if is_hk_stock and "REPORT_DATE" in abstract_df.columns:
+                        abstract_df = abstract_df.copy()
+                        abstract_df["NOTICE_DATE"] = pd.to_datetime(abstract_df["REPORT_DATE"], errors="coerce").dt.strftime("%Y%m%d").map(hk_notice_dates)
+                        filtered["financial_abstract"] = apply_dataframe_cutoff(
+                            {"financial_abstract": abstract_df}, cutoff=as_of_dt,
+                            column_config={"financial_abstract": notice_candidates},
+                        )["financial_abstract"]
+                    else:
+                        filtered["financial_abstract"] = filter_financial_abstract_by_cutoff(
+                            abstract_df, as_of_dt, release_map=notice_map,
+                        )
                 else:
                     filtered["financial_abstract"] = pd.DataFrame()
             except Exception as exc:  # pragma: no cover - defensive

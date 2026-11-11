@@ -83,6 +83,13 @@ FIXED_TRACKED_US_SYMBOLS: List[str] = [
     "AMZN.US",
 ]
 
+
+def fixed_tracked_symbols() -> List[str]:
+    """Current fixed book scope shared by daily preparation and historical replay."""
+    return list(dict.fromkeys(
+        [entry.symbol for entry in TRACKED_A_STOCKS] + FIXED_TRACKED_US_SYMBOLS
+    ))
+
 # 美元兑人民币默认换算比例：仅用于把美元计价持仓折算为人民币口径
 # （总资产、浮动盈亏、仓位比例），不改变标的自身的美元报价。
 USD_CNY_FX_RATE: float = 6.65

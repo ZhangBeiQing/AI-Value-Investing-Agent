@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from core.logging import init_tool_logger
 from configs.stock_pool import TRACKED_A_STOCKS
+from services.research.financial_report_validation import historical_summary_issue, is_raw_financial_report, report_knowledge_cutoff
 from shared_data_access import SharedDataAccess
 from shared_data_access.cache_registry import (
     CacheKind,
@@ -56,11 +57,17 @@ def _stock_root_dir(symbol_info: SymbolInfo) -> Path:
 
 
 def _list_report_files(symbol_info: SymbolInfo) -> List[Path]:
-    target_dir = _stock_root_dir(symbol_info) / "financial_reports"
-    if not target_dir.is_dir():
-        logger.warning("财报目录不存在: %s", target_dir)
-        return []
-    files = [p for p in target_dir.iterdir() if p.suffix.lower() == ".md"]
+    stock_root = _stock_root_dir(symbol_info)
+    roots = [stock_root]
+    if stock_root.parent.is_dir():
+        roots.extend(sorted(
+            p for p in stock_root.parent.iterdir()
+            if p.is_dir() and p != stock_root and p.name.endswith(f"_{symbol_info.symbol}")
+        ))
+    files = [
+        p for root in roots for p in (root / "financial_reports").glob("*.md")
+        if not is_raw_financial_report(p.read_text(encoding="utf-8", errors="replace"))
+    ]
     files.sort()
     return files
 
@@ -138,6 +145,7 @@ def _select_reports(
     today_dt: datetime,
     *,
     available_cutoff_date: Optional[date] = None,
+    prefer_historical_revision: bool = False,
 ) -> Tuple[ReportMeta, Optional[ReportMeta]]:
     metas = [meta for meta in (_parse_report_meta(p) for p in files) if meta]
     if not metas:
@@ -145,8 +153,26 @@ def _select_reports(
 
     selection_cutoff = available_cutoff_date or today_dt.date()
 
+    def revision_date(meta: ReportMeta) -> date:
+        match = re.search(r"_asof_(\d{8})(?:_|$)", meta.stem)
+        if match is None:
+            return date.min
+        try:
+            return datetime.strptime(match.group(1), "%Y%m%d").date()
+        except ValueError:
+            return date.max
+
+    if prefer_historical_revision:
+        metas = [meta for meta in metas if revision_date(meta) <= selection_cutoff]
+
     metas.sort(
-        key=lambda m: (m.release_date, m.fiscal_year, m.fiscal_quarter, m.stem),
+        # 同日同报告期优先使用标准深研文件，手工补充稿不能仅凭后缀覆盖它。
+        key=lambda m: (
+            m.release_date, m.fiscal_year, m.fiscal_quarter,
+            revision_date(m) if prefer_historical_revision else date.min,
+            (report_knowledge_cutoff(m.path) or date.min) if prefer_historical_revision else date.min,
+            m.stem == m.release_date.strftime("%Y%m%d"), m.stem,
+        ),
         reverse=True,
     )
     latest_available = next((m for m in metas if m.release_date <= selection_cutoff), None)
@@ -570,6 +596,7 @@ def get_financial_report_summary(
     include_consensus: bool = True,
     include_price_drift: bool = True,
     prefer_daily_brief: bool = False,
+    require_historical_cutoff: bool = False,
 ) -> dict:
     stock_code = symbol.strip()
     if is_etf_symbol(parse_symbol(stock_code)):
@@ -605,10 +632,27 @@ def get_financial_report_summary(
     )
     consensus_blocks = [part for part in (cn_profit_forecast_md, hk_profit_forecast_md) if part]
     consensus_md = "\n\n---\n\n".join(consensus_blocks).strip()
-    forecast_text, forecast_path = _load_latest_forecast_markdown(symbol_info, today_dt)
+    forecast_text, forecast_path = (
+        ("", None) if require_historical_cutoff
+        else _load_latest_forecast_markdown(symbol_info, today_dt)
+    )
 
     files = _list_report_files(symbol_info)
-    if not files and symbol_info.market == "US":
+    existing_research_paths = [str(path) for path in files]
+    rejected_reports = []
+    if require_historical_cutoff:
+        eligible = []
+        for candidate in files:
+            meta = _parse_report_meta(candidate)
+            if meta is None or meta.release_date > today_dt.date():
+                continue
+            issue = historical_summary_issue(candidate, today_time)
+            if issue:
+                rejected_reports.append({"path": str(candidate), "reason": issue})
+            else:
+                eligible.append(candidate)
+        files = eligible
+    if not files and symbol_info.market == "US" and not require_historical_cutoff:
         from services.research.us_financial_summary import build_us_financial_summary
 
         structured = build_us_financial_summary(symbol_info, today_dt)
@@ -624,7 +668,9 @@ def get_financial_report_summary(
                 },
             }
     if not files:
-        message = {"error": "未找到财报目录或文件", "stock": f"{stock_name} ({stock_code})"}
+        message = {"error": "未找到符合条件的财报研究", "stock": f"{stock_name} ({stock_code})",
+                   "rejected_historical_reports": rejected_reports,
+                   "existing_research_paths": existing_research_paths}
         if consensus_md or forecast_text:
             path_hint = f"- 文件: {forecast_path}" if forecast_path else ""
             parts: List[str] = []
@@ -639,7 +685,8 @@ def get_financial_report_summary(
                 )
             message["content"] = "\n\n---\n\n".join(parts) + "\n\n> 未找到财报目录或文件。\n"
             message["forecast_path"] = str(forecast_path) if forecast_path else None
-        logger.error("财报目录为空: %s", STOCK_BASE_DIR / f"{stock_name}_{stock_code}" / "financial_reports")
+        logger.warning("%s 截至 %s 无符合本次条件的研究；目录中已有 %d 份研究，不等于目录为空",
+                       symbol_info.symbol, today_time, len(existing_research_paths))
         return message
 
     report_selection_cutoff = today_dt.date() + timedelta(days=max(0, int(report_release_slack_days or 0)))
@@ -649,6 +696,7 @@ def get_financial_report_summary(
             files,
             today_dt,
             available_cutoff_date=report_selection_cutoff,
+            prefer_historical_revision=require_historical_cutoff,
         )
     except FileNotFoundError as exc:
         message = {"error": str(exc), "stock": f"{stock_name} ({stock_code})"}
@@ -740,6 +788,7 @@ def get_financial_report_summary(
         "content": enriched_content,
         "metadata": metadata,
         "daily_input": daily_input_metadata,
+        "rejected_historical_reports": rejected_reports,
     }
     logger.info(
         "get_financial_report_summary 成功: report=%s, days_since=%s",
